@@ -190,4 +190,21 @@ public class AudioService extends Service {
             return AudioService.this;
         }
     }
+
+    public boolean mediaIsPlaying() {
+        return m_manager.isPlaying();
+    }
+
+    public String getFormattedTimeUpdate() {
+        return m_manager.formatTimeUpdate();
+    }
+
+    public void sendEvent(String name, String payload) {
+
+        Intent intent = new Intent();
+        intent.setAction(AudioActions.ACTION_EVENT);
+        intent.putExtra( "name",name);
+        intent.putExtra( "payload",payload);
+        sendBroadcast(intent);
+    }
 }

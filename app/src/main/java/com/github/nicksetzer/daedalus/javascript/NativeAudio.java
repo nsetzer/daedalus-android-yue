@@ -6,8 +6,10 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
 
 import com.github.nicksetzer.daedalus.AudioService;
+import com.github.nicksetzer.daedalus.R;
 import com.github.nicksetzer.daedalus.WebActivity;
 import com.github.nicksetzer.daedalus.audio.AudioActions;
 
@@ -107,4 +109,17 @@ public class NativeAudio {
         intent.setAction(AudioActions.ACTION_SEEK);
         m_activity.startForegroundService(intent);
     }
+
+    @JavascriptInterface
+    public boolean isPlaying() {
+
+        AudioService service = m_activity.getBoundService();
+
+        if (service != null) {
+            return service.mediaIsPlaying();
+        }
+
+        return false;
+    }
+
 }

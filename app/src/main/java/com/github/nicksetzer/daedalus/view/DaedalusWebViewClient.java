@@ -8,7 +8,9 @@ import android.webkit.SslErrorHandler;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import com.github.nicksetzer.daedalus.R;
 import com.github.nicksetzer.daedalus.WebActivity;
+import com.github.nicksetzer.daedalus.audio.AudioWebView;
 
 public class DaedalusWebViewClient extends WebViewClient {
 
@@ -65,4 +67,5 @@ public class DaedalusWebViewClient extends WebViewClient {
         final AlertDialog dialog = builder.create();
         dialog.show();
     }
+
 }

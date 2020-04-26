@@ -2089,6 +2089,7 @@ audio=(function(api){
               }).catch(result=>{
                 console.log(result);
               });
+            this.device._sendEvent('handleAudioQueueChanged',queue);
           };
           updateQueue(index,queue){
             this.device._sendEvent('handleAudioQueueChanged',queue);
@@ -2183,29 +2184,34 @@ audio=(function(api){
         class NativeDeviceImpl{
           constructor(device){
             this.device=device;
+            console.error("-------------------------------------");
+            const bind=(x)=>{
+              registerAndroidEvent('on'+x,this['on'+x].bind(this));
+            };
+            bind('prepared');
+            bind('play');
+            bind('pause');
+            bind('stop');
+            bind('error');
+            bind('timeupdate');
+            bind('indexchanged');
           };
           setQueue(queue){
             console.log("setting queue");
             return new Promise((accept,reject)=>{
-                const ids=queue.map(song=>song.id);
-                console.log("set",ids);
                 const lst=queue.map(mapSongToObj);
-                console.log("set",lst);
                 const data=JSON.stringify(lst);
-                console.log("set",data);
                 AndroidNativeAudio.setQueue(data);
+                this.device._sendEvent('handleAudioQueueChanged',queue);
                 accept(true);
               });
           };
           updateQueue(index,queue){
             return new Promise((accept,reject)=>{
-                const ids=queue.map(song=>song.id);
-                console.log("update",ids);
                 const lst=queue.map(mapSongToObj);
-                console.log("update",lst);
                 const data=JSON.stringify(lst);
-                console.log("update",data);
                 AndroidNativeAudio.updateQueue(index,data);
+                this.device._sendEvent('handleAudioQueueChanged',queue);
                 accept(true);
               });
           };
@@ -2243,7 +2249,31 @@ audio=(function(api){
             return;
           };
           isPlaying(){
-            return false;
+            return AndroidNativeAudio.isPlaying();
+          };
+          onprepared(payload){
+
+          };
+          onplay(payload){
+            this.device._sendEvent('handleAudioPlay',{});
+          };
+          onpause(payload){
+            this.device._sendEvent('handleAudioPause',{});
+          };
+          onstop(payload){
+            this.device._sendEvent('handleAudioStop',{});
+          };
+          onerror(payload){
+
+          };
+          ontimeupdate(payload){
+            this.device._sendEvent('handleAudioTimeUpdate',{currentTime:payload.position/1000,
+                              duration:payload.duration/1000});
+          };
+          onindexchanged(payload){
+            const index=payload.index;
+            this.device._sendEvent('handleAudioSongChanged',this.device.queue[index]);
+            
           };
         };
         class AudioDevice{
@@ -2348,7 +2378,8 @@ audio=(function(api){
           };
           queueRemoveIndex(index){
             if(index>=0&&index<this.queue.length){
-              const a=this.queue.splice(index,1);
+              this.queue.splice(index,1);
+              console.log("queue, sliced",index,this.queue.length);
               if(this.current_index>=this.queue.length){
                 this.pause();
                 this.current_index=-1;
@@ -2362,6 +2393,7 @@ audio=(function(api){
                 this.current_index-=1;
                 this.current_song=this.queue[index];
               };
+              console.log("queue, sliced update");
               this.impl.updateQueue(this.current_index,this.queue);
             };
           };
@@ -2374,7 +2406,6 @@ audio=(function(api){
             this.impl.pause();
           };
           _playSong(song){
-            console.log("_playSong");
             this.current_song=song;
             console.log(song);
             this.impl.playSong(this.current_index,this.current_song);
@@ -2382,7 +2413,6 @@ audio=(function(api){
             
           };
           playSong(song){
-            console.log("playSong");
             this.current_index=-1;
             this._playSong(song);
           };
@@ -3544,6 +3574,9 @@ pages=(function(api,audio,components,daedalus,resources){
             if(this.attrs.draggingEle!==child.getDomNode()){
               return;
             };
+            if(!this.attrs.placeholder){
+              return;
+            };
             if(this.attrs.isAnimated){
               return;
             };
@@ -3605,7 +3638,7 @@ pages=(function(api,audio,components,daedalus,resources){
             };
           };
           handleSwipeRight(child){
-            console.log("handle swipe right",child);
+            console.log("handle swipe right",child.attrs.index);
             const index=child.attrs.index;
             audio.AudioDevice.instance().queueRemoveIndex(index);
           };
@@ -3682,6 +3715,7 @@ pages=(function(api,audio,components,daedalus,resources){
             };
           };
           handleAudioQueueChanged(songList){
+            console.log("handleAudioQueueChanged");
             const current_id=audio.AudioDevice.instance().currentSongId();
             let miss=0;
             let hit=0;

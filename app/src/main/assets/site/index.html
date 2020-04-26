@@ -7,6 +7,20 @@
 <link rel="icon" type="image/x-icon" href="file:///android_asset/site/favicon.ico" />
 <title>Daedalus</title>
 <link rel="stylesheet" type="text/css" href="file:///android_asset/site/static/index.css">
+<script type="text/javascript">
+AndroidEvents = {}
+function registerAndroidEvent(name, callback) {
+    AndroidEvents[name] = callback;
+}
+function invokeAndroidEvent(name, payload) {
+    //console.log(`invoke event '${name}': ${payload}`)
+    if (!!AndroidEvents[name]) {
+        AndroidEvents[name](JSON.parse(payload));
+    } else {
+        console.error("unregistered event: " + name);
+    }
+}
+</script>
 <script src="file:///android_asset/site/static/index.js" type="text/javascript"></script>
 </head>
 <body>

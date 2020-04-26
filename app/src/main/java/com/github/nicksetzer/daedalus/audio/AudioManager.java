@@ -10,6 +10,9 @@ import android.support.v4.media.session.PlaybackStateCompat;
 
 import com.github.nicksetzer.daedalus.AudioService;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.IOException;
 
 public class AudioManager {
@@ -92,6 +95,11 @@ public class AudioManager {
                 if (m_autoPlay) {
                     m_mediaPlayer.start();
                 }
+
+                m_service.sendEvent("onprepared", "{}");
+
+                m_service.sendEvent("ontimeupdate", AudioManager.this.formatTimeUpdate());
+
             }
         });
 
@@ -107,6 +115,23 @@ public class AudioManager {
         m_manager.setMode(android.media.AudioManager.MODE_NORMAL);
 
         android.util.Log.e("daedalus-js", "media session created");
+    }
+
+    public String formatTimeUpdate() {
+        JSONObject update = new JSONObject();
+        // position is the time in milliseconds
+        int duration = m_mediaPlayer.getDuration();
+        // duration is -1 during streaming
+        if (duration < 0) {
+            duration = 0;
+        }
+        try {
+            update.put("duration", duration);
+            update.put("position", m_mediaPlayer.getCurrentPosition());
+        } catch (JSONException e) {
+            android.util.Log.e("daedalus-js", "failed to format json");
+        }
+        return update.toString();
     }
 
     public MediaSessionCompat getSession() {
@@ -151,7 +176,9 @@ public class AudioManager {
     }
 
     public void loadIndex(int index) {
+        m_queue.setCurrentIndex(index);
         loadUrl( m_queue.getUrl(index));
+        m_service.sendEvent("onindexchanged", "{\"index\": " + m_queue.getCurrentIndex() + "}");
     }
 
 
@@ -170,6 +197,7 @@ public class AudioManager {
     public void skipToNext() {
         if (m_queue.next()) {
             loadIndex(m_queue.getCurrentIndex());
+            m_service.sendEvent("onindexchanged", "{\"index\": " + m_queue.getCurrentIndex() + "}");
         }
 
     }
@@ -177,12 +205,17 @@ public class AudioManager {
     public void skipToPrev() {
         if (m_queue.prev()) {
             loadIndex(m_queue.getCurrentIndex());
+            m_service.sendEvent("onindexchanged", "{\"index\": " + m_queue.getCurrentIndex() + "}");
         }
     }
 
     public void seek(long pos) {
         // seek to a position, units: ms
         m_mediaPlayer.seekTo((int) pos);
+    }
+
+    public boolean isPlaying() {
+        return m_mediaPlayer.isPlaying();
     }
 
 }

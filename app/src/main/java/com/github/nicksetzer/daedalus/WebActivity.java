@@ -3,13 +3,17 @@ package com.github.nicksetzer.daedalus;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.net.http.SslError;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.view.KeyEvent;
 import android.webkit.ConsoleMessage;
@@ -20,6 +24,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import com.github.nicksetzer.daedalus.audio.AudioActions;
 import com.github.nicksetzer.daedalus.audio.AudioWebView;
 import com.github.nicksetzer.daedalus.javascript.AndroidClient;
 import com.github.nicksetzer.daedalus.javascript.LocalStorage;
@@ -33,6 +38,10 @@ public class WebActivity extends Activity {
 
     String profile = "prd";
 
+    ServiceEventReceiver m_receiver;
+
+    private Handler m_timeHandler = new Handler();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -44,6 +53,9 @@ public class WebActivity extends Activity {
         view.setWebContentsDebuggingEnabled(true);
 
         view.getSettings().setJavaScriptEnabled(true);
+
+        m_receiver = new ServiceEventReceiver();
+        registerReceiver(m_receiver, new IntentFilter(AudioActions.ACTION_EVENT));
 
         view.setWebChromeClient(new DaedalusWebChromeClient());
         view.setWebViewClient(new DaedalusWebViewClient(this, this.profile == "dev"));
@@ -61,6 +73,23 @@ public class WebActivity extends Activity {
         }
 
         launchAudioService();
+
+        runOnUiThread(new Runnable() {
+
+            @Override
+            public void run() {
+                if (m_serviceBound && m_audioService != null) {
+
+                    if (m_audioService.mediaIsPlaying()) {
+                        String update = m_audioService.getFormattedTimeUpdate();
+
+                        WebActivity.this.invokeJavascriptCallback("ontimeupdate", update);
+                    }
+                }
+
+                m_timeHandler.postDelayed(this, 1000);
+            }
+        });
     }
 
     @Override
@@ -144,19 +173,63 @@ public class WebActivity extends Activity {
     private AudioService m_audioService;
     private boolean m_serviceBound = false;
 
-    // m_audioService.GetAudioStatus()
+    @Override
+    protected void onStart() {
+        super.onStart();
+        Intent intent = new Intent(this, AudioService.class);
+        bindService(intent, m_serviceConnection, Context.BIND_AUTO_CREATE);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        unregisterReceiver(m_receiver);
+        if (m_serviceBound) {
+            unbindService(m_serviceConnection);
+        }
+    }
 
     private ServiceConnection m_serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceDisconnected(ComponentName name) {
+            m_audioService = null;
             m_serviceBound = false;
+            android.util.Log.e("daedalus-js", "unbound service");
         }
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             AudioService.AudioBinder myBinder = (AudioService.AudioBinder) service;
             m_audioService = myBinder.getService();
             m_serviceBound = true;
+            android.util.Log.e("daedalus-js", "binding to service");
+
         }
     };
+
+    public AudioService getBoundService() {
+        return m_audioService;
+    }
+
+    public void invokeJavascriptCallback(String name, String payload) {
+
+        AudioWebView view = findViewById(R.id.DaedalusView);
+
+        view.loadUrl("javascript:invokeAndroidEvent('" + name + "', '" + payload.replace("\'", "\\\'") + "')");
+    }
+
+    class ServiceEventReceiver extends BroadcastReceiver {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if(intent.getAction().equals(AudioActions.ACTION_EVENT))
+            {
+                final String name = intent.getExtras().getString("name");
+                final String payload = intent.getExtras().getString("payload");
+                invokeJavascriptCallback(name, payload);
+
+            }
+        }
+
+    }
 
 }
