@@ -4,7 +4,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.media.AudioAttributes;
+import android.media.MediaMetadata;
 import android.media.MediaPlayer;
+import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
@@ -13,7 +15,16 @@ import com.github.nicksetzer.daedalus.AudioService;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.StringWriter;
 
 public class AudioManager {
 
@@ -114,6 +125,9 @@ public class AudioManager {
         m_manager = (android.media.AudioManager) context.getSystemService(context.AUDIO_SERVICE);
         m_manager.setMode(android.media.AudioManager.MODE_NORMAL);
 
+
+        loadQueueData();
+
         android.util.Log.e("daedalus-js", "media session created");
     }
 
@@ -139,21 +153,33 @@ public class AudioManager {
     }
 
     public void setQueueData(final String data) {
+
         m_queue.setData(data);
+
         if (m_queue.length() > 0) {
             m_queue.setCurrentIndex(0);
         } else {
             m_queue.setCurrentIndex(-1);
         }
+
+        saveQueueData(data, m_queue.getCurrentIndex());
+    }
+
+    public String getQueueData() {
+        return m_queue.getData();
     }
 
     public void updateQueueData(int index, final String data) {
+
         m_queue.setData(data);
+
         if (m_queue.length() > 0) {
             m_queue.setCurrentIndex(index);
         } else {
             m_queue.setCurrentIndex(-1);
         }
+
+        saveQueueData(data, m_queue.getCurrentIndex());
     }
 
     public void loadUrl(final String path) {
@@ -170,6 +196,7 @@ public class AudioManager {
 
             m_mediaPlayer.setDataSource(path);
             m_mediaPlayer.prepareAsync();
+
         } catch(IOException e) {
             android.util.Log.e("daedalus-js", e.toString());
         }
@@ -178,9 +205,23 @@ public class AudioManager {
     public void loadIndex(int index) {
         m_queue.setCurrentIndex(index);
         loadUrl( m_queue.getUrl(index));
+
+        // get the current meta data
+        MediaMetadataCompat data = m_queue.getMetadata(index);
+
+        if (data == null) {
+            // replace the existing meta data with dummy data if there was an error
+            data = new MediaMetadataCompat.Builder()
+                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Unknown Artist")
+                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Unknown Album")
+                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Unknown Title")
+                    .build();
+        }
+
+        m_session.setMetadata(data);
+
         m_service.sendEvent("onindexchanged", "{\"index\": " + m_queue.getCurrentIndex() + "}");
     }
-
 
     public void play() {
         m_mediaPlayer.start();
@@ -216,6 +257,67 @@ public class AudioManager {
 
     public boolean isPlaying() {
         return m_mediaPlayer.isPlaying();
+    }
+
+    public void saveQueueData(String data, int index) {
+        String path = m_service.getExternalFilesDir(null)+ "/" + "queue.json";
+
+        try {
+
+            android.util.Log.e("daedalus-js", "write queue path is: '" + path + "'");
+            android.util.Log.e("daedalus-js", "writing " + data.length() + " bytes.");
+
+            File file = new File(path);
+            FileOutputStream stream = new FileOutputStream(file, false);
+
+            stream.write(data.getBytes());
+            stream.flush();
+            stream.close();
+
+            android.util.Log.e("daedalus-js", "saved queue data: " +  m_queue.length());
+        }
+        catch (IOException e) {
+            android.util.Log.e("Exception", "File write failed: " + e.toString());
+        }
+        catch (RuntimeException e) {
+            android.util.Log.e("Exception", "File write failed: " + e.toString());
+        }
+    }
+
+    public void loadQueueData() {
+        String path = m_service.getExternalFilesDir(null)+ "/" + "queue.json";
+        try {
+
+            File f = new File(path);
+            if (!f.exists()) {
+                android.util.Log.e("daedalus-js", "queue data does not exist");
+                return;
+            }
+
+            android.util.Log.e("daedalus-js", "load queue path is: '" + path + "'");
+            FileInputStream stream = new FileInputStream(path);
+
+            InputStreamReader streamReader = new InputStreamReader(stream);
+            BufferedReader reader = new BufferedReader(streamReader);
+
+            StringWriter writer = new StringWriter();
+            String line = reader.readLine();
+
+            while (line != null && !line.equals("")) {
+                writer.write(line);
+                line = reader.readLine();
+            }
+
+            String data = writer.toString();
+            android.util.Log.e("daedalus-js", "read " + data.length() + " bytes.");
+            m_queue.setData(data);
+
+            android.util.Log.e("daedalus-js", "loaded queue data: " + m_queue.length());
+        } catch (IOException e) {
+            android.util.Log.e("daedalus-js", "File read failed: " + e.toString());
+        } catch (RuntimeException e) {
+            android.util.Log.e("daedalus-js", "File read failed: " + e.toString());
+        }
     }
 
 }

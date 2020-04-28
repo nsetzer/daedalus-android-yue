@@ -1072,33 +1072,29 @@ daedalus=(function(){
         };
         DomElement.prototype._update=render_update;
         function workLoop(deadline){
-          let debug=workstack.length>1||updatequeue.length>1;
           let shouldYield=false;
           const initialWorkLength=workstack.length;
           const initialUpdateLength=updatequeue.length;
-          workCounter=0;
-          while(!shouldYield){
-            while(workstack.length>0&&!shouldYield){
-              let unit=workstack.pop();
-              performUnitOfWork(unit);
-              shouldYield=deadline.timeRemaining()<1;
-            };
-            if(workstack.length==0&&wipRoot){
-              commitRoot();
-            };
-            if(workstack.length==0&&updatequeue.length>0&&!wipRoot){
-              wipRoot=updatequeue[0];
-              workstack.push(wipRoot);
-              updatequeue.shift();
-            };
-            shouldYield=deadline.timeRemaining()<1;
+          let initial_delay=deadline.timeRemaining();
+          while(workstack.length>0){
+            let unit=workstack.pop();
+            performUnitOfWork(unit);
           };
-          debug=workstack.length>1||updatequeue.length>1;
+          if(wipRoot){
+            commitRoot();
+          };
+          if(updatequeue.length>0&&!wipRoot){
+            wipRoot=updatequeue[0];
+            workstack.push(wipRoot);
+            updatequeue.shift();
+          };
+          let debug=workstack.length>1||updatequeue.length>1;
           if(!!debug){
-            console.warn("workloop failed to finish",initialWorkLength,'->',workstack.length,
-                          initialUpdateLength,'->',updatequeue.length);
+            console.warn("workloop failed to finish",initial_delay,":",initialWorkLength,
+                          '->',workstack.length,initialUpdateLength,'->',updatequeue.length);
+            
           };
-          requestIdleCallback(workLoop);
+          requestIdleCallback(workLoop,{timeout:250});
         };
         requestIdleCallback(workLoop);
         function performUnitOfWork(fiber){
@@ -2092,7 +2088,7 @@ audio=(function(api){
             this.device._sendEvent('handleAudioQueueChanged',queue);
           };
           updateQueue(index,queue){
-            this.device._sendEvent('handleAudioQueueChanged',queue);
+
           };
           loadQueue(){
             return api.queueGetQueue();
@@ -2179,7 +2175,8 @@ audio=(function(api){
           };
         };
         function mapSongToObj(song){
-          return{url:api.librarySongAudioUrl(song.id)};
+          return{url:api.librarySongAudioUrl(song.id),artist:song.artist,album:song.album,
+                      title:song.title,length:song.length,id:song.id};
         };
         class NativeDeviceImpl{
           constructor(device){
@@ -2207,17 +2204,32 @@ audio=(function(api){
               });
           };
           updateQueue(index,queue){
+            console.log("updating queue");
             return new Promise((accept,reject)=>{
                 const lst=queue.map(mapSongToObj);
                 const data=JSON.stringify(lst);
                 AndroidNativeAudio.updateQueue(index,data);
-                this.device._sendEvent('handleAudioQueueChanged',queue);
                 accept(true);
               });
           };
           loadQueue(){
+            console.log("loading queue");
             return new Promise((accept,reject)=>{
-                accept({result:[]});
+                console.log("loading queue: from promise");
+                let data;
+                try{
+                  data=AndroidNativeAudio.getQueue();
+                }catch(e){
+                  console.error("load queue error: "+e.message);
+                };
+                if(data.length>0){
+                  let tracks=JSON.parse(data);
+                  console.log("loading queue: "+tracks.length);
+                  accept({result:tracks});
+                }else{
+                  console.log("loading queue: error");
+                  accept({result:[]});
+                };
               });
           };
           createQueue(query){
@@ -2304,12 +2316,12 @@ audio=(function(api){
           queueLoad(){
             this.impl.loadQueue().then(result=>{
                 this.queue=result.result;
-                this.impl.updateQueue(this.current_index,this.queue);
+                this._sendEvent('handleAudioQueueChanged',this.queue);
               }).catch(error=>{
                 console.log(error);
                 this.queue=[];
                 this.current_index=-1;
-                this.impl.updateQueue(this.current_index,this.queue);
+                this._sendEvent('handleAudioQueueChanged',this.queue);
               });
             this.stop();
           };
@@ -2317,11 +2329,13 @@ audio=(function(api){
             this.impl.createQueue(query).then(result=>{
                 this.queue=result.result;
                 this.impl.updateQueue(this.current_index,this.queue);
+                this._sendEvent('handleAudioQueueChanged',this.queue);
               }).catch(error=>{
                 console.log(error);
                 this.queue=[];
                 this.current_index=-1;
                 this.impl.updateQueue(this.current_index,this.queue);
+                this._sendEvent('handleAudioQueueChanged',this.queue);
               });
             this.stop();
           };
@@ -2336,6 +2350,7 @@ audio=(function(api){
                 this.current_index+=1;
               };
               this.impl.updateQueue(this.current_index,this.queue);
+              this._sendEvent('handleAudioQueueChanged',this.queue);
             };
           };
           queueMoveSongDown(index){
@@ -2349,6 +2364,7 @@ audio=(function(api){
                 this.current_index-=1;
               };
               this.impl.updateQueue(this.current_index,this.queue);
+              this._sendEvent('handleAudioQueueChanged',this.queue);
             };
           };
           queueSwapSong(index,target){
@@ -2361,6 +2377,7 @@ audio=(function(api){
               this.current_index+=1;
             };
             this.impl.updateQueue(this.current_index,this.queue);
+            this._sendEvent('handleAudioQueueChanged',this.queue);
           };
           queuePlayNext(song){
             const index=this.current_index+1;
@@ -2375,6 +2392,7 @@ audio=(function(api){
               this._sendEvent('handleAudioSongChanged',null);
             };
             this.impl.updateQueue(this.current_index,this.queue);
+            this._sendEvent('handleAudioQueueChanged',this.queue);
           };
           queueRemoveIndex(index){
             if(index>=0&&index<this.queue.length){
@@ -2395,6 +2413,7 @@ audio=(function(api){
               };
               console.log("queue, sliced update");
               this.impl.updateQueue(this.current_index,this.queue);
+              this._sendEvent('handleAudioQueueChanged',this.queue);
             };
           };
           stop(){
@@ -3703,15 +3722,18 @@ pages=(function(api,audio,components,daedalus,resources){
           };
           handleAudioSongChanged(song){
             this.attrs.header.setSong(song);
-            if(song!==null&&song.id){
-              this.attrs.header.setStatus("pending");
-              this.attrs.container.children.forEach(child=>{
-                  child.updateActive(song.id);
-                });
-              this.attrs.header.setTime(0,0);
+            if(song!==null){
+              if(!song.id){
+                this.attrs.header.setStatus("load error: invalid id");
+              }else{
+                this.attrs.header.setStatus("pending");
+                this.attrs.container.children.forEach(child=>{
+                    child.updateActive(song.id);
+                  });
+                this.attrs.header.setTime(0,0);
+              };
             }else{
-              this.attrs.header.setStatus("load error");
-              console.error("song error",song);
+              this.attrs.header.setStatus("load error: null");
             };
           };
           handleAudioQueueChanged(songList){

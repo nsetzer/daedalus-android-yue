@@ -155,16 +155,17 @@ public class AudioService extends Service {
 
                 }
             }
-
-
-
-
         }
         return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
+
+        android.util.Log.e("daedalus", "destroy service");
+        if (m_manager.isPlaying()) {
+            m_manager.stop();
+        }
         super.onDestroy();
     }
 
@@ -193,6 +194,10 @@ public class AudioService extends Service {
 
     public boolean mediaIsPlaying() {
         return m_manager.isPlaying();
+    }
+
+    public String mediaQueueData() {
+        return m_manager.getQueueData();
     }
 
     public String getFormattedTimeUpdate() {

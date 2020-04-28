@@ -44,6 +44,15 @@ public class NativeAudio {
     }
 
     @JavascriptInterface
+    public String getQueue() {
+        AudioService service = m_activity.getBoundService();
+        if (service != null) {
+            return service.mediaQueueData();
+        }
+        return "";
+    }
+
+    @JavascriptInterface
     public void updateQueue(int currentIndex, String jsonQueue) {
         Intent intent = new Intent(m_activity, AudioService.class);
         intent.setAction(AudioActions.ACTION_UPDATE_QUEUE);

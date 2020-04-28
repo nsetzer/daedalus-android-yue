@@ -1,7 +1,14 @@
 package com.github.nicksetzer.daedalus.audio;
 
+import android.media.MediaMetadata;
+import android.support.v4.media.MediaMetadataCompat;
+
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.File;
+import java.io.OutputStreamWriter;
 
 public class AudioQueue {
 
@@ -10,12 +17,17 @@ public class AudioQueue {
     int m_currentIndex = -1;
 
     public void setData(String data) {
-        android.util.Log.i("daedalus-js",data);
+
         try {
             m_queue = new JSONArray(data);
+            android.util.Log.i("daedalus-js","queue data set");
         } catch (JSONException e) {
             android.util.Log.e("daedalus-js","unable to parse json");
         }
+    }
+
+    public String getData() {
+        return m_queue.toString();
     }
 
     public int length() {
@@ -40,6 +52,34 @@ public class AudioQueue {
         return null;
     }
 
+    public MediaMetadataCompat getMetadata(int index) {
+
+        if (m_queue == null) {
+            return null;
+        }
+
+        if (index < 0 || index >= m_queue.length()) {
+            return null;
+        }
+
+        JSONObject obj = null;
+        try {
+            obj =  m_queue.getJSONObject(index);
+        } catch (JSONException e) {
+            android.util.Log.e("daedalus-js", "unable to get index " + index);
+        }
+
+        if (obj == null) {
+            return null;
+        }
+
+        return new MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, obj.optString("artist", "Unknown Artist"))
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, obj.optString("album", "Unknown Album"))
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, obj.optString("title", "Unknown Title"))
+                .build();
+
+    }
     public void setCurrentIndex(int index) {
         m_currentIndex = index;
     }

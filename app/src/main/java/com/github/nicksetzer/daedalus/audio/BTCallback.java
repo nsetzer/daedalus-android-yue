@@ -23,7 +23,13 @@ public class BTCallback extends MediaSessionCompat.Callback {
     public void onPlay() {
 
         android.util.Log.e("daedalus-js", "onplay");
-        m_manager.play();
+        // some bluetooth devices only send play events
+        if (m_manager.isPlaying()) {
+            m_manager.pause();
+        } else {
+            m_manager.play();
+        }
+
     }
 
     @Override

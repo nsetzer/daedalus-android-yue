@@ -55,7 +55,7 @@ public class WebActivity extends Activity {
         view.getSettings().setJavaScriptEnabled(true);
 
         m_receiver = new ServiceEventReceiver();
-        registerReceiver(m_receiver, new IntentFilter(AudioActions.ACTION_EVENT));
+
 
         view.setWebChromeClient(new DaedalusWebChromeClient());
         view.setWebViewClient(new DaedalusWebViewClient(this, this.profile == "dev"));
@@ -176,14 +176,26 @@ public class WebActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
+
+        android.util.Log.e("daedalus-js", "register receiver: ");
+
+        registerReceiver(m_receiver, new IntentFilter(AudioActions.ACTION_EVENT));
+
+
         Intent intent = new Intent(this, AudioService.class);
         bindService(intent, m_serviceConnection, Context.BIND_AUTO_CREATE);
+
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        unregisterReceiver(m_receiver);
+        try {
+            unregisterReceiver(m_receiver);
+        } catch(IllegalArgumentException e) {
+            // api issue on android
+            android.util.Log.e("daedalus-js", "Receiver not registered: " + e.toString());
+        }
         if (m_serviceBound) {
             unbindService(m_serviceConnection);
         }
