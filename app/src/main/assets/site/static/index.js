@@ -557,7 +557,8 @@ daedalus=(function(){
             this.attrs.y=event.pageY-rect.top;
           };
           handleChildDragMove(child,event){
-            if(this.attrs.draggingEle!==child.getDomNode()){
+            if(!this.attrs.draggingEle||this.attrs.draggingEle!==child.getDomNode(
+                            )){
               return;
             };
             event.preventDefault();
@@ -595,7 +596,8 @@ daedalus=(function(){
             };
           };
           handleChildDragEnd(child,event){
-            if(this.attrs.draggingEle!==child.getDomNode()){
+            if(!this.attrs.draggingEle||this.attrs.draggingEle!==child.getDomNode(
+                            )){
               return;
             };
             this.handleChildDragCancel();
@@ -1075,18 +1077,42 @@ daedalus=(function(){
           let shouldYield=false;
           const initialWorkLength=workstack.length;
           const initialUpdateLength=updatequeue.length;
-          let initial_delay=deadline.timeRemaining();
-          while(workstack.length>0){
-            let unit=workstack.pop();
-            performUnitOfWork(unit);
-          };
-          if(wipRoot){
-            commitRoot();
-          };
-          if(updatequeue.length>0&&!wipRoot){
-            wipRoot=updatequeue[0];
-            workstack.push(wipRoot);
-            updatequeue.shift();
+          let initial_delay=0;
+          let friendly=0;
+          if(!!friendly){
+            while(!shouldYield){
+              while(workstack.length>0&&!shouldYield){
+                let unit=workstack.pop();
+                performUnitOfWork(unit);
+                shouldYield=deadline.timeRemaining()<1;
+              };
+              if(workstack.length==0&&wipRoot){
+                commitRoot();
+              };
+              if(workstack.length==0&&updatequeue.length>0&&!wipRoot){
+                wipRoot=updatequeue[0];
+                workstack.push(wipRoot);
+                updatequeue.shift();
+              };
+              shouldYield=deadline.timeRemaining()<1;
+            };
+          }else{
+            while(1){
+              while(workstack.length>0){
+                let unit=workstack.pop();
+                performUnitOfWork(unit);
+              };
+              if(wipRoot){
+                commitRoot();
+              };
+              if(updatequeue.length>0&&!wipRoot){
+                wipRoot=updatequeue[0];
+                workstack.push(wipRoot);
+                updatequeue.shift();
+              }else{
+                break;
+              };
+            };
           };
           let debug=workstack.length>1||updatequeue.length>1;
           if(!!debug){
@@ -1094,9 +1120,9 @@ daedalus=(function(){
                           '->',workstack.length,initialUpdateLength,'->',updatequeue.length);
             
           };
-          requestIdleCallback(workLoop,{timeout:250});
+          setTimeout(workLoop,50);
         };
-        requestIdleCallback(workLoop);
+        setTimeout(workLoop,50);
         function performUnitOfWork(fiber){
           if(!fiber.dom&&fiber.effect=='CREATE'){
             fiber.dom=createDomNode(fiber);
@@ -2192,6 +2218,8 @@ audio=(function(api){
             bind('error');
             bind('timeupdate');
             bind('indexchanged');
+            this._currentTime=0;
+            this._duration=0;
           };
           setQueue(queue){
             console.log("setting queue");
@@ -2249,13 +2277,16 @@ audio=(function(api){
             this.device._sendEvent('handleAudioSongChanged',null);
           };
           currentTime(){
-            return 0;
+            return this._currentTime;
           };
           setCurrentTime(time){
+            const pos=Math.floor(time*1000);
+            console.log(`setting time to ${pos} / ${this._duration}`);
+            AndroidNativeAudio.seekms(pos);
             return;
           };
           duration(){
-            return 0;
+            return this._duration;
           };
           setVolume(volume){
             return;
@@ -2279,8 +2310,20 @@ audio=(function(api){
 
           };
           ontimeupdate(payload){
-            this.device._sendEvent('handleAudioTimeUpdate',{currentTime:payload.position/1000,
-                              duration:payload.duration/1000});
+            if(payload.currentIndex!=this.device.current_index){
+              console.error("detected out of date information");
+              this.device.current_index=payload.currentIndex;
+              if(payload.currentIndex>=0&&payload.currentIndex<this.device.queue.length){
+              
+                let song=this.device.queue[payload.currentIndex];
+                this.device._sendEvent('handleAudioSongChanged',{...song,index:payload.currentIndex});
+                
+              };
+            };
+            this._currentTime=payload.position/1000;
+            this._duration=payload.duration/1000;
+            this.device._sendEvent('handleAudioTimeUpdate',{currentTime:this._currentTime,
+                              duration:this._duration});
           };
           onindexchanged(payload){
             const index=payload.index;
@@ -3552,7 +3595,8 @@ pages=(function(api,audio,components,daedalus,resources){
             if(this.attrs.isAnimated){
               return;
             };
-            if(this.attrs.draggingEle!==child.getDomNode()){
+            if(!this.attrs.draggingEle||this.attrs.draggingEle!==child.getDomNode(
+                            )){
               return;
             };
             let org_event=event;
@@ -3590,7 +3634,8 @@ pages=(function(api,audio,components,daedalus,resources){
             this.handleChildSwipeCancel(child,event,true);
           };
           handleChildSwipeCancel(child,event,success=false){
-            if(this.attrs.draggingEle!==child.getDomNode()){
+            if(!this.attrs.draggingEle||this.attrs.draggingEle!==child.getDomNode(
+                            )){
               return;
             };
             if(!this.attrs.placeholder){

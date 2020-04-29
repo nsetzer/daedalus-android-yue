@@ -4,8 +4,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.media.AudioAttributes;
+import android.media.MediaDescription;
 import android.media.MediaMetadata;
 import android.media.MediaPlayer;
+import android.media.session.MediaSession;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -26,6 +28,14 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.StringWriter;
 
+/*
+TODO: update the media session queue.
+    every time a new song is loaded update the queue with the next few tracks.
+
+        MediaDescription desc = new MediaDescription.Builder().setTitle()
+        MediaSession.QueueItem item = new MediaSession.QueueItem(desc));
+
+ */
 public class AudioManager {
 
     private AudioService m_service;
@@ -142,6 +152,7 @@ public class AudioManager {
         try {
             update.put("duration", duration);
             update.put("position", m_mediaPlayer.getCurrentPosition());
+            update.put("currentIndex", m_queue.getCurrentIndex());
         } catch (JSONException e) {
             android.util.Log.e("daedalus-js", "failed to format json");
         }
@@ -182,9 +193,9 @@ public class AudioManager {
         saveQueueData(data, m_queue.getCurrentIndex());
     }
 
-    public void loadUrl(final String path) {
+    public void loadUrl(final String url) {
 
-        if (path == null) {
+        if (url == null) {
             android.util.Log.e("daedalus-js", "null url given");
             return;
         }
@@ -194,7 +205,9 @@ public class AudioManager {
             }
             m_mediaPlayer.reset();
 
-            m_mediaPlayer.setDataSource(path);
+            // note: logging the url may log the user token
+            android.util.Log.i("daedalus-js", "url: " + url);
+            m_mediaPlayer.setDataSource(url);
             m_mediaPlayer.prepareAsync();
 
         } catch(IOException e) {
@@ -252,7 +265,8 @@ public class AudioManager {
 
     public void seek(long pos) {
         // seek to a position, units: ms
-        m_mediaPlayer.seekTo((int) pos);
+        android.util.Log.e("daedalus-js", "seek to " + pos);
+        m_mediaPlayer.seekTo(pos, MediaPlayer.SEEK_PREVIOUS_SYNC);
     }
 
     public boolean isPlaying() {
@@ -261,18 +275,17 @@ public class AudioManager {
 
     public void saveQueueData(String data, int index) {
         String path = m_service.getExternalFilesDir(null)+ "/" + "queue.json";
-
+        FileOutputStream stream = null;
         try {
 
             android.util.Log.e("daedalus-js", "write queue path is: '" + path + "'");
             android.util.Log.e("daedalus-js", "writing " + data.length() + " bytes.");
 
             File file = new File(path);
-            FileOutputStream stream = new FileOutputStream(file, false);
+            stream = new FileOutputStream(file, false);
 
             stream.write(data.getBytes());
             stream.flush();
-            stream.close();
 
             android.util.Log.e("daedalus-js", "saved queue data: " +  m_queue.length());
         }
@@ -281,11 +294,20 @@ public class AudioManager {
         }
         catch (RuntimeException e) {
             android.util.Log.e("Exception", "File write failed: " + e.toString());
+        } finally {
+            if (stream != null) {
+                try {
+                    stream.close();
+                } catch (IOException e) {
+                    android.util.Log.e("daedalus-js", "File close failed: " + e.toString());
+                }
+            }
         }
     }
 
     public void loadQueueData() {
         String path = m_service.getExternalFilesDir(null)+ "/" + "queue.json";
+        FileInputStream stream = null;
         try {
 
             File f = new File(path);
@@ -295,7 +317,7 @@ public class AudioManager {
             }
 
             android.util.Log.e("daedalus-js", "load queue path is: '" + path + "'");
-            FileInputStream stream = new FileInputStream(path);
+            stream = new FileInputStream(path);
 
             InputStreamReader streamReader = new InputStreamReader(stream);
             BufferedReader reader = new BufferedReader(streamReader);
@@ -317,6 +339,14 @@ public class AudioManager {
             android.util.Log.e("daedalus-js", "File read failed: " + e.toString());
         } catch (RuntimeException e) {
             android.util.Log.e("daedalus-js", "File read failed: " + e.toString());
+        } finally {
+            if (stream != null) {
+                try {
+                    stream.close();
+                } catch (IOException e) {
+                    android.util.Log.e("daedalus-js", "File close failed: " + e.toString());
+                }
+            }
         }
     }
 

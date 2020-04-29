@@ -116,6 +116,7 @@ public class NativeAudio {
     public void seekms(long pos) {
         Intent intent = new Intent(m_activity, AudioService.class);
         intent.setAction(AudioActions.ACTION_SEEK);
+        intent.putExtra("position", pos);
         m_activity.startForegroundService(intent);
     }
 

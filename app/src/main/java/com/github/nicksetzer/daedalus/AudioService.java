@@ -82,6 +82,7 @@ public class AudioService extends Service {
                 .setContentTitle("App is running in background")
                 .setPriority(NotificationManager.IMPORTANCE_MIN)
                 .setCategory(Notification.CATEGORY_SERVICE)
+                .set
                 .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
                 .build();
 
@@ -148,6 +149,11 @@ public class AudioService extends Service {
                     case AudioActions.ACTION_SKIPTOPREV:
                         android.util.Log.e("daedalus", "prev");
                         m_manager.skipToPrev();
+                        break;
+                    case AudioActions.ACTION_SEEK:
+                        android.util.Log.e("daedalus", "prev");
+                        long position = intent.getExtras().getLong("position");
+                        m_manager.seek(position);
                         break;
                     default:
                         android.util.Log.e("daedalus", "unknown action");
