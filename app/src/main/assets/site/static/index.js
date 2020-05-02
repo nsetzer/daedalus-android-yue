@@ -1058,11 +1058,16 @@ daedalus=(function(){
         let updatequeue=[];
         let wipRoot=null;
         let currentRoot=null;
+        let workLoopActive=false;
         let workCounter=0;
         function render(container,element){
           wipRoot={type:"ROOT",dom:container,props:{},children:[element],_fibers:[
                         ],alternate:currentRoot};
           workstack.push(wipRoot);
+          if(!workLoopActive){
+            workLoopActive=true;
+            setTimeout(workLoop,0);
+          };
         };
         function render_update(element){
           if(!element.dirty&&element._fiber!==null){
@@ -1071,58 +1076,72 @@ daedalus=(function(){
                           partial:true};
             updatequeue.push(fiber);
           };
+          if(!workLoopActive){
+            workLoopActive=true;
+            setTimeout(workLoop,0);
+          };
         };
         DomElement.prototype._update=render_update;
-        function workLoop(deadline){
+        function workLoop(deadline=null){
           let shouldYield=false;
           const initialWorkLength=workstack.length;
           const initialUpdateLength=updatequeue.length;
+          let friendly=deadline!=null;
           let initial_delay=0;
-          let friendly=0;
-          if(!!friendly){
-            while(!shouldYield){
-              while(workstack.length>0&&!shouldYield){
-                let unit=workstack.pop();
-                performUnitOfWork(unit);
+          try{
+            if(!!friendly){
+              initial_delay=deadline.timeRemaining();
+              while(!shouldYield){
+                while(workstack.length>0&&!shouldYield){
+                  let unit=workstack.pop();
+                  performUnitOfWork(unit);
+                  shouldYield=deadline.timeRemaining()<1;
+                };
+                if(workstack.length==0&&wipRoot){
+                  commitRoot();
+                };
+                if(workstack.length==0&&updatequeue.length>0&&!wipRoot){
+                  wipRoot=updatequeue[0];
+                  workstack.push(wipRoot);
+                  updatequeue.shift();
+                };
                 shouldYield=deadline.timeRemaining()<1;
               };
-              if(workstack.length==0&&wipRoot){
-                commitRoot();
-              };
-              if(workstack.length==0&&updatequeue.length>0&&!wipRoot){
-                wipRoot=updatequeue[0];
-                workstack.push(wipRoot);
-                updatequeue.shift();
-              };
-              shouldYield=deadline.timeRemaining()<1;
-            };
-          }else{
-            while(1){
-              while(workstack.length>0){
-                let unit=workstack.pop();
-                performUnitOfWork(unit);
-              };
-              if(wipRoot){
-                commitRoot();
-              };
-              if(updatequeue.length>0&&!wipRoot){
-                wipRoot=updatequeue[0];
-                workstack.push(wipRoot);
-                updatequeue.shift();
-              }else{
-                break;
+            }else{
+              while(1){
+                while(workstack.length>0){
+                  let unit=workstack.pop();
+                  performUnitOfWork(unit);
+                };
+                if(wipRoot){
+                  commitRoot();
+                };
+                if(updatequeue.length>0&&!wipRoot){
+                  wipRoot=updatequeue[0];
+                  workstack.push(wipRoot);
+                  updatequeue.shift();
+                }else{
+                  break;
+                };
               };
             };
+          }catch(e){
+            console.error("unhandled workloop exception: "+e.message);
           };
           let debug=workstack.length>1||updatequeue.length>1;
           if(!!debug){
             console.warn("workloop failed to finish",initial_delay,":",initialWorkLength,
                           '->',workstack.length,initialUpdateLength,'->',updatequeue.length);
             
+            if(!friendly){
+              setTimeout(workLoop,50);
+            }else{
+              requestIdleCallback(workLoop);
+            };
+          }else{
+            workLoopActive=false;
           };
-          setTimeout(workLoop,50);
         };
-        setTimeout(workLoop,50);
         function performUnitOfWork(fiber){
           if(!fiber.dom&&fiber.effect=='CREATE'){
             fiber.dom=createDomNode(fiber);

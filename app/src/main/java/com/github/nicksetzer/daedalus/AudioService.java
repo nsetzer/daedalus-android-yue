@@ -24,6 +24,7 @@ import android.os.IBinder;
 
 import com.github.nicksetzer.daedalus.audio.AudioActions;
 import com.github.nicksetzer.daedalus.audio.AudioManager;
+import com.github.nicksetzer.daedalus.audio.Database;
 
 import androidx.annotation.Nullable;
 
@@ -33,6 +34,7 @@ import androidx.media.session.MediaButtonReceiver;
 public class AudioService extends Service {
 
     AudioManager m_manager;
+    Database m_database;
 
     private IBinder m_binder = new AudioBinder();
 
@@ -46,7 +48,10 @@ public class AudioService extends Service {
     @Override
     public void onCreate() {
 
+        m_database = new Database(this);
 
+        m_database.connect();
+        android.util.Log.e("daedalus-js", "" + m_database.m_songsTable.count());
         super.onCreate();
     }
 
@@ -82,7 +87,6 @@ public class AudioService extends Service {
                 .setContentTitle("App is running in background")
                 .setPriority(NotificationManager.IMPORTANCE_MIN)
                 .setCategory(Notification.CATEGORY_SERVICE)
-                .set
                 .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
                 .build();
 
@@ -168,6 +172,9 @@ public class AudioService extends Service {
     @Override
     public void onDestroy() {
 
+        if (m_database != null) {
+            m_database.close();
+        }
         android.util.Log.e("daedalus", "destroy service");
         if (m_manager.isPlaying()) {
             m_manager.stop();
