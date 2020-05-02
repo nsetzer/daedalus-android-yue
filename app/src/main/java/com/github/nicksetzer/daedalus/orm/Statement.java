@@ -1,4 +1,4 @@
-package com.github.nicksetzer.daedalus.audio.orm;
+package com.github.nicksetzer.daedalus.orm;
 
 public class Statement {
 

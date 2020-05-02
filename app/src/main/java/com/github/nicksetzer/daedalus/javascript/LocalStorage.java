@@ -15,6 +15,7 @@ public class LocalStorage {
     @JavascriptInterface
     public String getItem(String key) {
         SharedPreferences prefs = this.m_activity.getPreferences(Context.MODE_PRIVATE);
+        android.util.Log.e("daedalus-js", "storage get item: " + key);
         return prefs.getString(key, "");
     }
 

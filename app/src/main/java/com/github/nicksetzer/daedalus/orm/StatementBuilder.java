@@ -1,16 +1,37 @@
-package com.github.nicksetzer.daedalus.audio.orm;
+package com.github.nicksetzer.daedalus.orm;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
 
 public class StatementBuilder {
 
     public static final String SURROGATE_PRIMARY_KEY = "spk";
+
+    public static String marshall(ParamList params, Object value) {
+
+        if (value == null) {
+            return "NULL";
+        } else if (value instanceof Integer) {
+            return value.toString();
+        } else if (value instanceof Long) {
+            return value.toString();
+        } else if (value instanceof Float) {
+            return value.toString();
+        }else if (value instanceof Double) {
+            return value.toString();
+        } else if (value instanceof String) {
+            params.add(value.toString());
+            return "?";
+        }
+
+        throw new RuntimeException("Unexpected Type: " + value.getClass().getSimpleName());
+    }
 
     public static Statement[] prepareTableSchema(TableSchema[] schema) {
         ArrayList<Statement> statements = new ArrayList<>();
@@ -82,24 +103,25 @@ public class StatementBuilder {
                 continue;
             }
 
+            if (!item.has(column.name)) {
+                continue;
+            }
+
             if (!first) {
                 columns.append(", ");
-                template.append(", ?");
-            } else {
-                template.append("?");
+                template.append(", ");
             }
 
             columns.append(column.name);
 
-            if (item.has(column.name)) {
-                try {
-                    params.add(item.get(column.name).toString());
-                } catch (JSONException e) {
-                    params.add(null);
-                }
-            } else {
-                params.add(null);
+            Object value;
+            try{
+                value = item.get(column.name);
+            } catch (JSONException e) {
+                value = null;
             }
+
+            template.append(marshall(params, value));
 
             first = false;
         }
@@ -168,16 +190,6 @@ public class StatementBuilder {
                 if (column.name.equals(SURROGATE_PRIMARY_KEY)) {
                     continue;
                 }
-
-                if (item.has(column.name)) {
-                    try {
-                        params.add(item.get(column.name).toString());
-                    } catch (JSONException e) {
-                        params.add(null);
-                    }
-                } else {
-                    params.add(null);
-                }
             }
 
             if (!first) {
@@ -218,26 +230,26 @@ public class StatementBuilder {
 
                 if (!first) {
                     columns.append(", ");
-                    template.append(", ?");
-                } else {
-                    template.append("?");
+                    template.append(", ");
                 }
 
                 columns.append(column.name);
 
+                Object value;
                 try {
-                    params.add(item.get(column.name).toString());
+                    value = item.get(column.name);
                 } catch (JSONException e) {
-                    params.add(null);
+                    value = null;
                 }
+                template.append(marshall(params, value));
 
                 first = false;
             }
         }
 
         clause.append(table.name);
-        clause.append(".spk == ?");
-        params.add(Long.toString(spk));
+        clause.append(".spk == ");
+        clause.append(marshall(params, spk));
 
         StringBuilder builder = new StringBuilder();
 
@@ -254,23 +266,48 @@ public class StatementBuilder {
         return new Statement(builder.toString(), params);
     }
 
+    public static Statement prepareUpdateSet1(TableSchema table, Long[] spks, String columnName, Object columnValue) {
+        ParamList params = new ParamList();
+        StringBuilder builder = new StringBuilder();
+        builder.append("UPDATE ");
+        builder.append(table.name);
+        builder.append(" SET ");
+        builder.append(columnName);
+        builder.append(" = ");
+        builder.append(marshall(params, columnValue));
+        builder.append(" WHERE (");
+        builder.append(SURROGATE_PRIMARY_KEY);
+        builder.append(" in (");
+        for (int i=0; i < spks.length; i++) {
+            if (i>0) {
+                builder.append(", ");
+            }
+            builder.append(marshall(params, spks[i]));
+        }
+        builder.append("))");
+
+        return new Statement(builder.toString(), params);
+    }
+
     public static Statement prepareDelete(TableSchema table, long spk) {
         ParamList params = new ParamList();
-        params.add(Long.toString(spk));
         StringBuilder builder = new StringBuilder();
         builder.append("DELETE FROM ");
         builder.append(table.name);
-        builder.append(" WHERE (spk == ?)");
+        builder.append(" WHERE (spk == ");
+        builder.append(marshall(params, spk));
+        builder.append(")");
         return new Statement(builder.toString(), params);
     }
 
     public static Statement prepareDeleteBulk(TableSchema table, long[] spks) {
+        // no params required since all long values can be embedded
         StringBuilder template = new StringBuilder();
         for (int i=0; i < spks.length; i += 1) {
             if (i>0) {
                 template.append(", ");
             }
-            template.append("?");
+            template.append(spks[i]);
         }
 
         StringBuilder builder = new StringBuilder();
@@ -282,10 +319,80 @@ public class StatementBuilder {
         return new Statement(builder.toString());
     }
 
+    public static Statement prepareSelect(TableSchema table, INaturalPrimaryKey npk, long limit, long offset) {
+
+        ParamList params = new ParamList();
+        StringBuilder clause = new StringBuilder();
+        boolean first = true;
+        for (String key  : npk.keySet()) {
+            if (!first) {
+                clause.append(" && ");
+            }
+            clause.append(key);
+            clause.append(" == ");
+            clause.append(marshall(params, npk.get(key)));
+            first = false;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("SELECT * FROM ");
+        builder.append(table.name);
+        builder.append(" WHERE (");
+        builder.append(clause.toString());
+        builder.append(")");
+        if (limit >= 0) {
+            builder.append(" LIMIT ");
+            builder.append(limit);
+        }
+        if (offset >= 0) {
+            builder.append(" OFFSET ");
+            builder.append(offset);
+        }
+
+        return new Statement(builder.toString(), params);
+    }
+
+    public static Statement prepareSelect(TableSchema table, String[] columns, INaturalPrimaryKey npk, long limit, long offset) {
+
+        ParamList params = new ParamList();
+        StringBuilder clause = new StringBuilder();
+        boolean first = true;
+        for (String key  : npk.keySet()) {
+            if (!first) {
+                clause.append(" && ");
+            }
+            clause.append(key);
+            clause.append(" == ");
+            clause.append(marshall(params, npk.get(key)));
+            first = false;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("SELECT ");
+        for (int i=0; i < columns.length; i++) {
+            if (i > 0) {
+                builder.append(", ");
+            }
+            builder.append(columns[i]);
+        }
+        builder.append(" FROM ");
+        builder.append(table.name);
+        builder.append(" WHERE (");
+        builder.append(clause.toString());
+        builder.append(")");
+        if (limit >= 0) {
+            builder.append(" LIMIT ");
+            builder.append(limit);
+        }
+        if (offset >= 0) {
+            builder.append(" OFFSET ");
+            builder.append(offset);
+        }
+
+        return new Statement(builder.toString(), params);
+    }
     public static Statement prepareExists(TableSchema table, String columnName, Object columnValue) {
         ParamList params = new ParamList();
-        params.add(columnValue.toString());
-
         StringBuilder builder = new StringBuilder();
         builder.append("SELECT spk, ");
         builder.append(columnName);
@@ -293,12 +400,15 @@ public class StatementBuilder {
         builder.append(table.name);
         builder.append(" WHERE (");
         builder.append(columnName);
-        builder.append(" == ?)");
+        builder.append(" == ");
+        builder.append(marshall(params, columnValue));
+        builder.append(")");
         return new Statement(builder.toString(), params);
     }
 
     public static Statement prepareExistsBulk(TableSchema table, String columnName, Object[] columnValues) {
-        ParamList params = new ParamList(columnValues);
+        //ParamList params = new ParamList(columnValues); FIXME
+        ParamList params = new ParamList();
         StringBuilder builder = new StringBuilder();
         builder.append("SELECT spk, ");
         builder.append(columnName);
@@ -309,11 +419,10 @@ public class StatementBuilder {
         builder.append(" IN (");
         boolean first = true;
         for (Object value : columnValues) {
-            params.add(value.toString());
             if (!first) {
                 builder.append(", ");
             }
-            builder.append("?");
+            builder.append(marshall(params, value));
             first = false;
         }
         builder.append(")");
@@ -326,13 +435,12 @@ public class StatementBuilder {
         StringBuilder clause = new StringBuilder();
         boolean first = true;
         for (String key  : npk.keySet()) {
-            params.add(npk.get(key).toString());
-
             if (!first) {
                 clause.append(" && ");
             }
             clause.append(key);
-            clause.append(" == ?");
+            clause.append(" == ");
+            clause.append(marshall(params, npk.get(key)));
             first = false;
         }
 
@@ -345,5 +453,27 @@ public class StatementBuilder {
 
         return new Statement(builder.toString(), params);
 
+    }
+
+    /**
+     * Wrap an instance of an object in an interface at run time.
+     * @param obj      the object instance which impliments traits of an interface
+     * @param intface  the interface
+     * @param <T>      the class type of interface
+     *
+     * usage:
+     *
+     *    getWrapper(new MyObject(), MyInterface.class);
+     *
+     * @return an object implementing the given interface
+     */
+    public static <T> T getWrapper(final Object obj, final Class<T> intface) {
+        InvocationHandler invocationHandler = new InvocationHandler() {
+            @Override
+            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                return obj.getClass().getDeclaredMethod(method.getName(), method.getParameterTypes()).invoke(obj, args);
+            }
+        };
+        return (T) Proxy.newProxyInstance(obj.getClass().getClassLoader(), new Class[]{intface}, invocationHandler);
     }
 }

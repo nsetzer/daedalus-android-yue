@@ -4,15 +4,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.media.AudioAttributes;
-import android.media.MediaDescription;
-import android.media.MediaMetadata;
 import android.media.MediaPlayer;
-import android.media.session.MediaSession;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
-
-import com.github.nicksetzer.daedalus.AudioService;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -22,10 +17,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.io.StringWriter;
 
 /*

@@ -1,15 +1,9 @@
 package com.github.nicksetzer.daedalus.javascript;
 
-import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
-import android.os.Bundle;
 import android.webkit.JavascriptInterface;
-import android.webkit.WebView;
 
-import com.github.nicksetzer.daedalus.AudioService;
-import com.github.nicksetzer.daedalus.R;
+import com.github.nicksetzer.daedalus.audio.AudioService;
 import com.github.nicksetzer.daedalus.WebActivity;
 import com.github.nicksetzer.daedalus.audio.AudioActions;
 
@@ -132,4 +126,11 @@ public class NativeAudio {
         return false;
     }
 
+    @JavascriptInterface
+    public void beginFetch(String token) {
+        Intent intent = new Intent(m_activity, AudioService.class);
+        intent.setAction(AudioActions.ACTION_FETCH);
+        intent.putExtra("token", token);
+        m_activity.startForegroundService(intent);
+    }
 }

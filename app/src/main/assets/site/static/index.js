@@ -3957,6 +3957,12 @@ pages=(function(api,audio,components,daedalus,resources){
                     AndroidNativeAudio.skipToPrev();
                   };
                 }));
+            this.attrs.container.appendChild(new SettingsButtonItem("fetch",(item)=>{
+                
+                  if(daedalus.platform.isAndroid){
+                    AndroidNativeAudio.beginFetch(""+api.getAuthToken());
+                  };
+                }));
           };
         };
         return[SettingsPage];

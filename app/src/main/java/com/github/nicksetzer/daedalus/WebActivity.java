@@ -2,29 +2,25 @@ package com.github.nicksetzer.daedalus;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
-import android.net.http.SslError;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.view.KeyEvent;
-import android.webkit.ConsoleMessage;
-import android.webkit.SslErrorHandler;
 import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import com.github.nicksetzer.daedalus.api.YueApi;
 import com.github.nicksetzer.daedalus.audio.AudioActions;
+import com.github.nicksetzer.daedalus.audio.AudioService;
 import com.github.nicksetzer.daedalus.audio.AudioWebView;
 import com.github.nicksetzer.daedalus.javascript.AndroidClient;
 import com.github.nicksetzer.daedalus.javascript.LocalStorage;
@@ -32,13 +28,16 @@ import com.github.nicksetzer.daedalus.javascript.NativeAudio;
 import com.github.nicksetzer.daedalus.view.DaedalusWebChromeClient;
 import com.github.nicksetzer.daedalus.view.DaedalusWebViewClient;
 
-import androidx.core.content.ContextCompat;
+import org.json.JSONException;
+
+import java.io.IOException;
 
 public class WebActivity extends Activity {
 
     String profile = "prd";
 
     ServiceEventReceiver m_receiver;
+    public LocalStorage m_storage;
 
     private Handler m_timeHandler = new Handler();
 
@@ -59,7 +58,8 @@ public class WebActivity extends Activity {
 
         view.setWebChromeClient(new DaedalusWebChromeClient());
         view.setWebViewClient(new DaedalusWebViewClient(this, this.profile == "dev"));
-        view.addJavascriptInterface(new LocalStorage(this), "LocalStorage");
+        m_storage = new LocalStorage(this);
+        view.addJavascriptInterface(m_storage, "LocalStorage");
         view.addJavascriptInterface(new AndroidClient(this), "Client");
         view.addJavascriptInterface(new NativeAudio(this), "AndroidNativeAudio");
 

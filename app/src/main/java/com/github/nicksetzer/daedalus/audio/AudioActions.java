@@ -15,5 +15,7 @@ public class AudioActions {
     public static final String ACTION_SKIPTOPREV = "daeadalus.audio.skiptoprev";
     public static final String ACTION_SEEK = "daeadalus.audio.seek";
 
+    public static final String ACTION_FETCH = "daeadalus.library.fetch";
+
     public static final String ACTION_EVENT = "daeadalus.audio.event";
 }

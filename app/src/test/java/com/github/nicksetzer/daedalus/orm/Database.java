@@ -1,4 +1,4 @@
-package com.github.nicksetzer.daedalus.audio.orm;
+package com.github.nicksetzer.daedalus.orm;
 /**
  * run-as com.github.nicksetzer.daedalus
  * cd /data/data/com.github.nicksetzer.daedalus
@@ -13,9 +13,6 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-
 public class Database {
 
     TableSchema[] buildTestSchema() {
@@ -25,6 +22,7 @@ public class Database {
         table.addColumn("artist", "VARCHAR", true);
         table.addColumn("album", "VARCHAR");
         table.addColumn("title", "VARCHAR");
+        table.addColumn("playcount", "INTEGER");
 
         TableSchema[] schema = new TableSchema[]{table};
 
@@ -54,7 +52,7 @@ public class Database {
         JSONObject values = new JSONObject();
         try {
             values.put("artist", "test");
-            values.put("album", "test");
+            values.put("playcount", 0);
         } catch (JSONException e) {
             fail(e.getMessage());
         }
@@ -63,8 +61,8 @@ public class Database {
 
         System.out.print(statement.text);
 
-        assertEquals(statement.text, "INSERT INTO songs (artist, album, title) VALUES (?, ?, ?)");
-        assertEquals(3, statement.params.size());
+        assertEquals("INSERT INTO songs (artist, playcount) VALUES (?, 0)", statement.text);
+        assertEquals(1, statement.params.size());
 
 
     }
@@ -97,7 +95,7 @@ public class Database {
 
         System.out.print(statement.text);
 
-        assertEquals(statement.text, "INSERT INTO songs (artist, album, title) VALUES (?, ?, ?), (?, ?, ?)");
+        assertEquals("INSERT INTO songs (artist, album, title, playcount) VALUES (?, ?, ?, ?), (?, ?, ?, ?)", statement.text);
 
 
     }
@@ -126,7 +124,7 @@ public class Database {
 
         System.out.print(statement.text);
 
-        assertEquals(statement.text, "UPDATE songs SET (artist, album) = (?, ?) WHERE (songs.spk == ?)");
+        assertEquals("UPDATE songs SET (artist, album) = (?, ?) WHERE (songs.spk == 0)", statement.text);
 
 
     }
@@ -140,7 +138,7 @@ public class Database {
 
         System.out.print(statement.text);
 
-        assertEquals(statement.text, "DELETE FROM songs WHERE (spk == ?)");
+        assertEquals("DELETE FROM songs WHERE (spk == 1)", statement.text);
     }
 
     @Test
@@ -152,7 +150,37 @@ public class Database {
 
         System.out.print(statement.text);
 
-        assertEquals(statement.text, "DELETE FROM songs WHERE spk in (?, ?, ?)");
+        assertEquals("DELETE FROM songs WHERE spk in (1, 2, 3)", statement.text);
+    }
+
+    @Test
+    public void test_prepareSelect() {
+
+        TableSchema[] schema = buildTestSchema();
+
+        NaturalPrimaryKey npk = new NaturalPrimaryKey();
+        npk.put("artist", "abc");
+
+        Statement statement = StatementBuilder.prepareSelect(schema[0], npk, 10, 0);
+
+        System.out.print(statement.text);
+
+        assertEquals("SELECT * FROM songs WHERE (artist == ?) LIMIT 10 OFFSET 0", statement.text);
+    }
+
+    @Test
+    public void test_prepareSelectColumns() {
+
+        TableSchema[] schema = buildTestSchema();
+
+        NaturalPrimaryKey npk = new NaturalPrimaryKey();
+        npk.put("artist", "abc");
+
+        Statement statement = StatementBuilder.prepareSelect(schema[0], new String[]{"spk", "artist"}, npk, -1, -1);
+
+        System.out.print(statement.text);
+
+        assertEquals("SELECT spk, artist FROM songs WHERE (artist == ?)", statement.text);
     }
 
     @Test
@@ -164,7 +192,7 @@ public class Database {
 
         System.out.print(statement.text);
 
-        assertEquals(statement.text, "SELECT spk, artist FROM songs WHERE (artist == ?)");
+        assertEquals("SELECT spk, artist FROM songs WHERE (artist == ?)", statement.text);
     }
 
     @Test
@@ -176,7 +204,7 @@ public class Database {
 
         System.out.print(statement.text);
 
-        assertEquals(statement.text, "SELECT spk, artist FROM songs WHERE artist IN (?, ?)");
+        assertEquals("SELECT spk, artist FROM songs WHERE artist IN (?, ?)", statement.text);
     }
 
     @Test
@@ -191,7 +219,7 @@ public class Database {
 
         System.out.print(statement.text);
 
-        assertEquals(statement.text, "SELECT * FROM songs WHERE (artist == ?) LIMIT 1");
+        assertEquals("SELECT * FROM songs WHERE (artist == ?) LIMIT 1", statement.text);
     }
 
     @Test
@@ -207,6 +235,6 @@ public class Database {
 
         System.out.print(statement.text);
 
-        assertEquals(statement.text, "SELECT * FROM songs WHERE (artist == ? && album == ?) LIMIT 1");
+        assertEquals("SELECT * FROM songs WHERE (artist == ? && album == ?) LIMIT 1", statement.text);
     }
 }

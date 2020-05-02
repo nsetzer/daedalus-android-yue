@@ -1,7 +1,6 @@
-package com.github.nicksetzer.daedalus.audio.orm;
+package com.github.nicksetzer.daedalus.orm;
 
 import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -16,22 +15,22 @@ public class Table {
         this.m_schema = schema;
     }
 
-    public Cursor insert(JSONObject item) {
+    public void insert(JSONObject item) {
         Statement statement = StatementBuilder.prepareInsert(m_schema, item);
-        return m_db.query(statement);
+        m_db.execute(statement);
     }
 
-    public Cursor insertBulk(JSONArray items) {
+    public void insertBulk(JSONArray items) {
         Statement statement = StatementBuilder.prepareInsertBulk(m_schema, items);
-        return m_db.query(statement);
+        m_db.execute(statement);
     }
 
-    public Cursor update(long spk, JSONObject item) {
+    public void update(long spk, JSONObject item) {
         Statement statement = StatementBuilder.prepareUpdate(m_schema, spk, item);
-        return m_db.query(statement);
+        m_db.execute(statement);
     }
 
-    public Cursor upsert(INaturalPrimaryKey npk, JSONObject item) {
+    public void upsert(INaturalPrimaryKey npk, JSONObject item) {
         Statement statement = StatementBuilder.prepareUpsertSelect(m_schema, npk);
         Cursor cursor = m_db.query(statement);
 
@@ -41,25 +40,35 @@ public class Table {
                 long spk = cursor.getLong(index);
                 cursor.close();
                 statement = StatementBuilder.prepareUpdate(m_schema, spk, item);
-                return m_db.query(statement);
+                m_db.execute(statement);
             } else {
                 // query returned an empty set
                 cursor.close();
                 statement = StatementBuilder.prepareInsert(m_schema, item);
-                return m_db.query(statement);
+                m_db.execute(statement);
             }
         }
 
-        return null;
+        return;
     }
 
-    public Cursor delete(long spk) {
+    public void updateSet(Long[] spks, String columnName, Object columnValue) {
+        Statement statement = StatementBuilder.prepareUpdateSet1(m_schema, spks, columnName, columnValue);
+        m_db.execute(statement);
+    }
+
+    public void delete(long spk) {
         Statement statement = StatementBuilder.prepareDelete(m_schema, spk);
-        return m_db.query(statement);
+        m_db.execute(statement);
     }
 
-    public Cursor deleteBulk(long[] spks) {
+    public void deleteBulk(long[] spks) {
         Statement statement = StatementBuilder.prepareDeleteBulk(m_schema, spks);
+        m_db.execute(statement);
+    }
+
+    public Cursor select(INaturalPrimaryKey npk, long limit, long offset) {
+        Statement statement = StatementBuilder.prepareSelect(m_schema, npk, limit, offset);
         return m_db.query(statement);
     }
 

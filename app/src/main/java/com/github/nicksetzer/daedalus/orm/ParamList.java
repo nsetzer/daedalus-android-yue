@@ -1,4 +1,4 @@
-package com.github.nicksetzer.daedalus.audio.orm;
+package com.github.nicksetzer.daedalus.orm;
 
 import java.util.ArrayList;
 
@@ -8,17 +8,12 @@ public class ParamList extends ArrayList<String> {
         super();
     }
 
-    public ParamList(String[] seq) {
-        super();
-        for (String obj : seq) {
-            this.add(obj);
-        }
-    }
-
+    /*
     public ParamList(Object[] seq) {
         super();
         for (Object obj : seq) {
-            this.add(obj.toString());
+            this.add(obj);
         }
     }
+    */
 }

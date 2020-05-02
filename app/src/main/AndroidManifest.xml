@@ -31,7 +31,7 @@
         </activity>
 
         <service
-            android:name=".AudioService"
+            android:name=".audio.AudioService"
             android:enabled="true"
             android:exported="false"
             android:permission="android.permission.FOREGROUND_SERVICE">

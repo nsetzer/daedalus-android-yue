@@ -1,15 +1,25 @@
-package com.github.nicksetzer.daedalus;
+package com.github.nicksetzer.daedalus.audio;
 /*
 adb shell am broadcast -a android.intent.action.MEDIA_BUTTON
 adb shell input keyevent 126
+
+
+run a function on the main thread of a service
+Handler mainHandler = new Handler(context.getMainLooper());
+
+Runnable myRunnable = new Runnable() {
+    @Override
+    public void run() {....} // This is your code
+};
+mainHandler.post(myRunnable);
+
+
  */
-import android.app.IntentService;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.content.Context;
 
@@ -18,13 +28,20 @@ import android.graphics.Color;
 import android.net.Uri;
 
 import android.os.Binder;
-import android.os.Bundle;
 import android.os.IBinder;
+import android.os.Process;
 
 
-import com.github.nicksetzer.daedalus.audio.AudioActions;
-import com.github.nicksetzer.daedalus.audio.AudioManager;
-import com.github.nicksetzer.daedalus.audio.Database;
+import com.github.nicksetzer.daedalus.R;
+import com.github.nicksetzer.daedalus.audio.tasks.AudioFetchTask;
+
+import java.util.ArrayList;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executor;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import androidx.annotation.Nullable;
 
@@ -34,9 +51,30 @@ import androidx.media.session.MediaButtonReceiver;
 public class AudioService extends Service {
 
     AudioManager m_manager;
-    Database m_database;
+    public Database m_database;
+    Executor m_executor;
 
     private IBinder m_binder = new AudioBinder();
+
+    private static class BackgroundThreadFactory implements ThreadFactory {
+        private static int sTag = 1;
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setName("CustomThread" + sTag);
+            thread.setPriority(Process.THREAD_PRIORITY_BACKGROUND);
+
+            // A exception handler is created to log the exception from threads
+            thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+                @Override
+                public void uncaughtException(Thread thread, Throwable ex) {
+                    android.util.Log.e("daedalus-js", thread.getName() + " encountered an error: " + ex.getMessage());
+                }
+            });
+            return thread;
+        }
+    }
 
     public AudioService() {
 
@@ -47,6 +85,15 @@ public class AudioService extends Service {
 
     @Override
     public void onCreate() {
+
+        BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
+        m_executor = new ThreadPoolExecutor(
+                0,
+                2,
+                30,
+                TimeUnit.SECONDS,
+                queue,
+                new BackgroundThreadFactory());
 
         m_database = new Database(this);
 
@@ -159,6 +206,11 @@ public class AudioService extends Service {
                         long position = intent.getExtras().getLong("position");
                         m_manager.seek(position);
                         break;
+                    case AudioActions.ACTION_FETCH:
+                        android.util.Log.e("daedalus", "prev");
+                        String token = intent.getExtras().getString("token");
+                        launchFetchTask(token);
+                        break;
                     default:
                         android.util.Log.e("daedalus", "unknown action");
                         break;
@@ -200,7 +252,7 @@ public class AudioService extends Service {
     }
 
     public class AudioBinder extends Binder {
-        AudioService getService() {
+        public AudioService getService() {
             return AudioService.this;
         }
     }
@@ -225,4 +277,15 @@ public class AudioService extends Service {
         intent.putExtra( "payload",payload);
         sendBroadcast(intent);
     }
+
+    public void launchFetchTask(String token) {
+
+        m_executor.execute(new AudioFetchTask(this, token));
+    }
+
+    public void syncResults(ArrayList<Long> spks) {
+
+
+    }
+
 }

@@ -1,10 +1,15 @@
 package com.github.nicksetzer.daedalus.audio;
 
 import android.content.Context;
+import android.database.Cursor;
 
-import com.github.nicksetzer.daedalus.audio.orm.DatabaseConnection;
-import com.github.nicksetzer.daedalus.audio.orm.Table;
-import com.github.nicksetzer.daedalus.audio.orm.TableSchema;
+import com.github.nicksetzer.daedalus.orm.DatabaseConnection;
+import com.github.nicksetzer.daedalus.orm.NaturalPrimaryKey;
+import com.github.nicksetzer.daedalus.orm.Table;
+import com.github.nicksetzer.daedalus.orm.TableSchema;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class Database {
 
@@ -15,6 +20,7 @@ public class Database {
     private DatabaseConnection m_db;
     private TableSchema[] m_schema;
 
+    public Table m_testsTable;
     public Table m_songsTable;
     public Table m_usersTable;
     public Table m_filesTable;
@@ -23,19 +29,30 @@ public class Database {
     public Database(Context context) {
         m_context = context;
 
+        TableSchema tests = _initTestSchema();
         TableSchema users = _initUserSchema();
         TableSchema songs = _initSongsSchema();
         TableSchema files = _initFilesSchema();
         TableSchema history_records = _initHistoryRecordsSchema();
 
         m_path = m_context.getExternalFilesDir(null)+ "/app-v" + m_schema_version + ".sqlite";
-        m_schema = new TableSchema[]{users, songs, files, history_records};
+        m_schema = new TableSchema[]{tests, users, songs, files, history_records};
         m_db = new DatabaseConnection(m_path, m_schema);
 
+        m_testsTable = new Table(m_db, tests);
         m_usersTable = new Table(m_db, users);
         m_songsTable = new Table(m_db, songs);
         m_filesTable = new Table(m_db, files);
         m_recordsTable = new Table(m_db, history_records);
+    }
+
+    private TableSchema _initTestSchema() {
+        TableSchema tests = new TableSchema("tests");
+        tests.addColumn("spk", "INTEGER PRIMARY KEY AUTOINCREMENT");
+        tests.addColumn("vstr", "VARCHAR");
+        tests.addColumn("vint", "INTEGER");
+        tests.addColumn("vdbl", "DOUBLE");
+        return tests;
     }
 
     private TableSchema _initUserSchema() {
@@ -120,9 +137,115 @@ public class Database {
 
     public void connect() {
         m_db.connect();
+
+
+        test();
+    }
+
+    private boolean test() {
+        JSONObject test = new JSONObject();
+        try {
+            test.put("vstr", "abc");
+            test.put("vint", 123);
+            test.put("vdbl", 3.14);
+        } catch (JSONException e) {
+            android.util.Log.e("daedalus-js", "test failed");
+            return false;
+        }
+
+        // INSERT
+        {
+            m_db.beginTransaction();
+            try {
+                m_testsTable.insert(test);
+            } finally {
+                m_db.endTransaction(true);
+
+            }
+
+            long count = m_testsTable.count();
+            android.util.Log.d("daedalus-js", "count: " + count);
+
+            if (count != 1) {
+                android.util.Log.e("daedalus-js", "test failed");
+                return false;
+            }
+        }
+        // SELECT
+        long spk = -1;
+        {
+            NaturalPrimaryKey npk = new NaturalPrimaryKey();
+            npk.put("vstr", "abc");
+            Cursor cursor = m_testsTable.select(npk, 1, 0);
+            if (cursor != null) {
+                if (cursor.moveToFirst()) {
+                    while (!cursor.isAfterLast()) {
+                        int index = cursor.getColumnIndex("spk");
+                        spk = cursor.getLong(index);
+                        android.util.Log.d("daedalus-js", "value=> " + spk);
+                        cursor.moveToNext();
+                    }
+                }
+            }
+        }
+
+        if (spk < 0) {
+            return false;
+        }
+
+        // UPDATE
+        try {
+            test.put("vstr", "def");
+        } catch (JSONException e) {
+            android.util.Log.e("daedalus-js", "test failed");
+            return false;
+        }
+
+        {
+            m_testsTable.update(spk, test);
+            NaturalPrimaryKey npk = new NaturalPrimaryKey();
+            npk.put("vstr", "def");
+            Cursor cursor = m_testsTable.select(npk, 1, 0);
+            if (cursor != null) {
+                if (cursor.moveToFirst()) {
+                    while (!cursor.isAfterLast()) {
+                        int index = cursor.getColumnIndex("spk");
+                        spk = cursor.getLong(index);
+                        android.util.Log.d("daedalus-js", "value=> " + spk);
+                        cursor.moveToNext();
+                    }
+                }
+            }
+        }
+
+        {
+            m_testsTable.delete(spk);
+            long count = m_testsTable.count();
+
+            android.util.Log.d("daedalus-js", "count: " + count);
+            if (count > 0) {
+                android.util.Log.e("daedalus-js", "test failed");
+                return false;
+            }
+        }
+
+        android.util.Log.i("daedalus-js", "test passed");
+        return true;
     }
 
     public void close() {
         m_db.close();
+    }
+
+    public void beginTransaction() {
+        m_db.beginTransaction();
+    }
+
+    public void beginTransaction(boolean exclusive) {
+        m_db.beginTransaction(exclusive);
+    }
+
+    public void endTransaction(boolean success) {
+        m_db.endTransaction(success);
     }
 }
