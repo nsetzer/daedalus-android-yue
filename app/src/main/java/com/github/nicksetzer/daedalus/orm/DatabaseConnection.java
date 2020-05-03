@@ -13,7 +13,7 @@ import java.util.ArrayList;
 
         if (c.moveToFirst()) {
             while ( !c.isAfterLast() ) {
-                android.util.Log.e( "daedalus-js", "Table Name=> "+c.getString(0));
+                android.util.Log.e( "daedalus-js", "EntityTable Name=> "+c.getString(0));
                 c.moveToNext();
             }
         }
@@ -41,11 +41,14 @@ public class DatabaseConnection {
 
     public void connect() {
 
+
+/*
         File file = new File(m_path);
         if (file.exists()) {
             android.util.Log.e("daedalus-js", "removing database at: " + m_path);
             file.delete();
         }
+*/
 
         android.util.Log.e("daedalus-js", "opening database at: " + m_path);
         m_db = SQLiteDatabase.openOrCreateDatabase(m_path, null);
@@ -75,7 +78,7 @@ public class DatabaseConnection {
 
         if (c.moveToFirst()) {
             while ( !c.isAfterLast() ) {
-                android.util.Log.e( "daedalus-js", "Table Name: "+c.getString(0));
+                android.util.Log.e( "daedalus-js", "EntityTable Name: "+c.getString(0));
                 c.moveToNext();
             }
         }

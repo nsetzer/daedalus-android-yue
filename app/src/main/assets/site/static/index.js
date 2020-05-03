@@ -286,6 +286,13 @@ daedalus=(function(){
             if(!childElement||!childElement.type){
               throw"invalid child";
             };
+            if(index<0){
+              index+=this.children.length+1;
+            };
+            if(index<0||index>this.children.length){
+              console.error("invalid index: "+index);
+              return;
+            };
             if(typeof this.children==="string"){
               this.children=[this.children];
             }else if(typeof this.children==="undefined"){
@@ -1866,8 +1873,8 @@ components=(function(daedalus,resources){
         const style={treeView:'dcs-bbed1375-0',treeItem:'dcs-bbed1375-1',treeItemButton:'dcs-bbed1375-2',
                   treeItemButtonH:'dcs-bbed1375-3',treeItemButtonV:'dcs-bbed1375-4',treeItemObjectContainer:'dcs-bbed1375-5',
                   treeItemChildContainer:'dcs-bbed1375-6',treeItem0:'dcs-bbed1375-7',treeItemN:'dcs-bbed1375-8',
-                  listItemMid:'dcs-bbed1375-9',listItemEnd:'dcs-bbed1375-10',listItemSelected:'dcs-bbed1375-11',
-                  treeFooter:'dcs-bbed1375-12'};
+                  listItemMid:'dcs-bbed1375-9',listItemEnd:'dcs-bbed1375-10',listItemCheck:'dcs-bbed1375-11',
+                  listItemSelected:'dcs-bbed1375-12',treeFooter:'dcs-bbed1375-13'};
         ;
         class SvgMoreElement extends SvgElement {
           constructor(callback){
@@ -1877,6 +1884,30 @@ components=(function(daedalus,resources){
           };
           onClick(event){
             this.state.callback();
+          };
+        };
+        function getCheckResource(state){
+          if(state==2){
+            return resources.svg.sort;
+          }else if(state==1){
+            return resources.svg.download;
+          };
+          return resources.svg.select;
+        };
+        class CheckedElement extends SvgElement {
+          constructor(callback,initialCheckState){
+            let res=getCheckResource(initialCheckState);
+            super(res,{width:20,height:32,className:style.listItemCheck});
+            this.attrs={callback,checkState:initialCheckState,initialCheckState};
+            
+          };
+          setCheckState(checkState){
+            this.attrs.checkState=checkState;
+            this.props.src=getCheckResource(checkState);
+            this.update();
+          };
+          onClick(event){
+            this.attrs.callback();
           };
         };
         class TreeButton extends DomElement {
@@ -1892,9 +1923,10 @@ components=(function(daedalus,resources){
         const SELECTED=1;
         const PARTIAL=2;
         class TreeItem extends DomElement {
-          constructor(depth,title,obj){
+          constructor(parent,depth,title,obj,selectMode=1,selected=UNSELECTED){
             super("div",{className:[style.treeItem]},[]);
-            this.attrs={depth,title,obj,children:null,selected:false};
+            this.attrs={parent,depth,title,obj,children:null,selected:selected,selectMode,
+                          chk:null};
             this.attrs.container1=this.appendChild(new DomElement("div",{className:[
                                       style.treeItemObjectContainer]},[]));
             this.attrs.container2=this.appendChild(new DomElement("div",{className:[
@@ -1906,7 +1938,14 @@ components=(function(daedalus,resources){
             this.attrs.txt=this.attrs.container1.appendChild(new components.MiddleText(
                               title));
             this.attrs.txt.addClassName(style.listItemMid);
-            this.attrs.txt.props.onClick=this.handleToggleSelection.bind(this);
+            if(selectMode!=TreeItem.SELECTION_MODE_CHECK){
+              this.attrs.txt.props.onClick=this.handleToggleSelection.bind(this);
+              
+            };
+            if(selectMode==TreeItem.SELECTION_MODE_CHECK){
+              this.setCheckEnabled(this.handleToggleSelection.bind(this),selected);
+              
+            };
             if(depth===0){
               this.addClassName(style.treeItem0);
             }else{
@@ -1914,8 +1953,16 @@ components=(function(daedalus,resources){
             };
           };
           setMoreCallback(callback){
-            this.attrs.more=this.attrs.container1.appendChild(new SvgMoreElement(
-                              callback));
+            this.attrs.more=new SvgMoreElement(callback);
+            if(this.attrs.selectMode!=TreeItem.SELECTION_MODE_CHECK){
+              this.attrs.container1.appendChild(this.attrs.more);
+            }else{
+              this.attrs.container1.insertChild(-2,this.attrs.more);
+            };
+          };
+          setCheckEnabled(callback,state){
+            this.attrs.chk=this.attrs.container1.appendChild(new CheckedElement(callback,
+                              state));
           };
           handleToggleExpand(){
             if(!this.hasChildren()){
@@ -1923,9 +1970,9 @@ components=(function(daedalus,resources){
             };
             if(this.attrs.children===null){
               this.attrs.children=this.buildChildren(this.attrs.obj);
-              if(this.attrs.selected){
+              if(this.attrs.selected==SELECTED){
                 this.attrs.children.forEach(child=>{
-                    child.setSelected(true);
+                    child.setSelected(SELECTED);
                   });
               };
             };
@@ -1938,19 +1985,49 @@ components=(function(daedalus,resources){
             };
           };
           handleToggleSelection(){
-            this.setSelected(!this.attrs.selected);
+            let next=(this.attrs.selected!=UNSELECTED)?UNSELECTED:SELECTED;
+            this.setSelected(next);
+            if(this.attrs.depth>0&&this.attrs.parent!=null){
+              this.attrs.parent.handleFixSelection();
+            };
+          };
+          handleFixSelection(){
+            let every=this.attrs.children.every(child=>child.attrs.selected==SELECTED);
+            
+            let some=this.attrs.children.some(child=>child.attrs.selected!=UNSELECTED);
+            
+            let selected;
+            if(every){
+              selected=SELECTED;
+            }else if(some){
+              selected=PARTIAL;
+            }else{
+              selected=UNSELECTED;
+            };
+            this.setSelectedInternal(selected);
+            if(this.attrs.depth>0&&this.attrs.parent!=null){
+              this.attrs.parent.handleFixSelection();
+            };
           };
           setSelected(selected){
-            this.attrs.selected=selected;
             if(!!this.attrs.children){
               this.attrs.children.forEach(child=>{
                   child.setSelected(selected);
                 });
             };
-            if(this.attrs.selected){
-              this.attrs.container1.addClassName(style.listItemSelected);
-            }else{
-              this.attrs.container1.removeClassName(style.listItemSelected);
+            this.setSelectedInternal(selected);
+          };
+          setSelectedInternal(selected){
+            this.attrs.selected=selected;
+            if(this.attrs.selectMode!=TreeItem.SELECTION_MODE_CHECK){
+              if(this.attrs.selected){
+                this.attrs.container1.addClassName(style.listItemSelected);
+              }else{
+                this.attrs.container1.removeClassName(style.listItemSelected);
+              };
+            };
+            if(this.attrs.chk!=null){
+              this.attrs.chk.setCheckState(this.attrs.selected);
             };
           };
           countSelected(){
@@ -1975,6 +2052,11 @@ components=(function(daedalus,resources){
             return[];
           };
         };
+        TreeItem.SELECTION_MODE_HIGHLIGHT=1;
+        TreeItem.SELECTION_MODE_CHECK=2;
+        TreeItem.SELECTION_UNSELECTED=UNSELECTED;
+        TreeItem.SELECTION_SELECTED=SELECTED;
+        TreeItem.SELECTION_PARTIAL=PARTIAL;
         class TreeView extends DomElement {
           constructor(){
             super("div",{className:style.treeView},[]);
@@ -3967,7 +4049,7 @@ pages=(function(api,audio,components,daedalus,resources){
         };
         return[SettingsPage];
       })();
-    const[LibraryPage]=(function(){
+    const[LibraryPage,SyncPage]=(function(){
         const style={main:'dcs-f089c6c5-0',grow:'dcs-f089c6c5-1',viewPad:'dcs-f089c6c5-2'};
         
         function shuffle(a){
@@ -4018,27 +4100,30 @@ pages=(function(api,audio,components,daedalus,resources){
           };
         };
         class ArtistTreeItem extends components.TreeItem {
-          constructor(parent,obj){
-            super(0,obj.name,obj);
-            this.attrs.parent=parent;
+          constructor(parent,obj,selectMode=1){
+            super(parent,0,obj.name,obj,selectMode,obj.selected||0);
           };
           buildChildren(obj){
-            return obj.albums.map(album=>new AlbumTreeItem(this,album));
+            return obj.albums.map(album=>new AlbumTreeItem(this,album,this.attrs.selectMode));
+            
           };
         };
         class AlbumTreeItem extends components.TreeItem {
-          constructor(parent,obj){
-            super(1,obj.name,obj);
-            this.attrs.parent=parent;
+          constructor(parent,obj,selectMode=1){
+            super(parent,1,obj.name,obj,selectMode,obj.selected||0);
           };
           buildChildren(obj){
-            return obj.tracks.map(track=>new TrackTreeItem(this,track));
+            return obj.tracks.map(track=>new TrackTreeItem(this,track,this.attrs.selectMode));
+            
           };
         };
         class TrackTreeItem extends components.TreeItem {
-          constructor(parent,obj){
-            super(2,obj.title,obj);
-            this.attrs.parent=parent;
+          constructor(parent,obj,selectMode=1){
+            let selected=0;
+            if(selectMode==components.TreeItem.SELECTION_MODE_CHECK){
+              selected=obj.sync||0;
+            };
+            super(parent,2,obj.title,obj,selectMode,selected);
             this.setMoreCallback(this.handleMoreClicked.bind(this));
           };
           hasChildren(){
@@ -4053,9 +4138,18 @@ pages=(function(api,audio,components,daedalus,resources){
           };
         };
         class LibraryTreeView extends components.TreeView {
+          constructor(selectMode){
+            super();
+            this.attrs.selectMode=selectMode;
+          };
+          setForest(forest){
+            forest.forEach(tree=>{
+                this.addItem(new ArtistTreeItem(this,tree,this.attrs.selectMode));
+                
+              });
+          };
           getSelectedSongs(){
             const result=[];
-            console.log(this);
             this.attrs.container.children.forEach(child=>{
                 this._chkArtistSelection(result,child);
               });
@@ -4063,25 +4157,22 @@ pages=(function(api,audio,components,daedalus,resources){
           };
           _chkArtistSelection(result,node){
             if(!node.attrs.children){
-              if(node.isSelected()){
-                this._collectArtist(result,node.attrs.obj);
-              };
+              this._collectArtist(result,node.attrs.obj,node.isSelected());
               return;
             };
             node.attrs.children.forEach(child=>{
                 this._chkAlbumSelection(result,child,node.attrs.obj.name);
               });
           };
-          _collectArtist(result,obj){
+          _collectArtist(result,obj,selected){
             obj.albums.forEach(child=>{
-                this._collectAlbum(result,child,obj.name);
+                this._collectAlbum(result,child,obj.name,selected);
               });
           };
           _chkAlbumSelection(result,node,artist){
             if(!node.attrs.children){
-              if(node.isSelected()){
-                this._collectAlbum(result,node.attrs.obj,artist);
-              };
+              this._collectAlbum(result,node.attrs.obj,artist,node.isSelected());
+              
               return;
             };
             node.attrs.children.forEach(child=>{
@@ -4089,28 +4180,52 @@ pages=(function(api,audio,components,daedalus,resources){
                 
               });
           };
-          _collectAlbum(result,obj,artist){
+          _collectAlbum(result,obj,artist,selected){
             obj.tracks.forEach(child=>{
-                this._collectTrack(result,child,artist,obj.name);
+                this._collectTrack(result,child,artist,obj.name,selected);
               });
           };
           _chkTrackSelection(result,node,artist,album){
-            if(node.isSelected()){
-              const song={...node.attrs.obj,artist,album};
-              result.push(song);
+            if(this.attrs.selectMode==components.TreeItem.SELECTION_MODE_CHECK){
+              const item=node.attrs.obj;
+              if(item.sync==1&&node.attrs.selected==0){
+                const track={"spk":item.spk,sync:0};
+                result.push(track);
+              }else if(item.sync==0&&node.attrs.selected==1){
+                const track={"spk":item.spk,sync:1};
+                result.push(track);
+              };
+            }else{
+              if(node.isSelected()){
+                const song={...node.attrs.obj,artist,album};
+                result.push(song);
+              };
             };
           };
-          _collectTrack(result,obj,artist,album){
-            const song={...obj,artist,album};
-            result.push(song);
+          _collectTrack(result,obj,artist,album,selected){
+            if(this.attrs.selectMode==components.TreeItem.SELECTION_MODE_CHECK){
+              if(obj.sync==0&&selected==1){
+                const track={"uid":obj.id,"spk":obj.spk,sync:1};
+                result.push(track);
+              };
+              if(obj.sync==1&&selected==0){
+                const track={"uid":obj.id,"spk":obj.spk,sync:0};
+                result.push(track);
+              };
+            }else{
+              if(selected){
+                const song={...obj,artist,album};
+                result.push(song);
+              };
+            };
           };
         };
         class LibraryPage extends DomElement {
           constructor(){
             super("div",{className:style.main},[]);
-            this.attrs={header:new Header(this),view:new LibraryTreeView(),more:new components.MoreMenu(
-                              this.handleHideFileMore.bind(this)),more_context_item:null,firstMount:true};
-            
+            this.attrs={header:new Header(this),view:new LibraryTreeView(components.TreeItem.SELECTION_MODE_HIGHLIGHT),
+                          more:new components.MoreMenu(this.handleHideFileMore.bind(this)),more_context_item:null,
+                          firstMount:true};
             this.attrs.view.addClassName(style.viewPad);
             this.attrs.more.addAction("Add To Queue",this.handleAddToQueue.bind(this));
             
@@ -4147,7 +4262,132 @@ pages=(function(api,audio,components,daedalus,resources){
             
           };
         };
-        return[LibraryPage];
+        class SyncHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.attrs.status=new components.MiddleText("...");
+            this.addAction(resources.svg['menu'],()=>{
+                console.log("menu clicked");
+              });
+            this.addAction(resources.svg['media_error'],()=>{
+                if(daedalus.platform.isAndroid){
+                  AndroidNativeAudio.cancelTask();
+                };
+              });
+            this.addAction(resources.svg['sort'],()=>{
+                if(daedalus.platform.isAndroid){
+                  AndroidNativeAudio.beginFetch(""+api.getAuthToken());
+                };
+              });
+            this.addAction(resources.svg['search_generic'],()=>{
+                this.attrs.parent.search();
+              });
+            this.addAction(resources.svg['save'],()=>{
+                this.attrs.parent.handleSyncSave();
+              });
+            this.addAction(resources.svg['download'],()=>{
+                if(daedalus.platform.isAndroid){
+                  AndroidNativeAudio.beginSync(""+api.getAuthToken());
+                };
+              });
+            this.addRow(false);
+            this.addRowElement(0,this.attrs.status);
+          };
+          updateStatus(text){
+            this.attrs.status.setText(text);
+          };
+        };
+        class SyncPage extends DomElement {
+          constructor(){
+            super("div",{className:style.main},[]);
+            this.attrs={header:new SyncHeader(this),view:new LibraryTreeView(components.TreeItem.SELECTION_MODE_CHECK),
+                          more:new components.MoreMenu(this.handleHideFileMore.bind(this)),more_context_item:null,
+                          firstMount:true};
+            this.attrs.view.addClassName(style.viewPad);
+            this.attrs.more.addAction("Add To Queue",()=>{});
+            this.appendChild(this.attrs.more);
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.view);
+          };
+          elementMounted(){
+            console.log("mount sync view");
+            if(this.attrs.firstMount){
+              this.attrs.firstMount=false;
+              this.search("");
+            };
+            if(daedalus.platform.isAndroid){
+              registerAndroidEvent('onfetchprogress',this.handleFetchProgress.bind(
+                                  this));
+              registerAndroidEvent('onfetchcomplete',this.handleFetchComplete.bind(
+                                  this));
+              registerAndroidEvent('onsyncstatusupdated',this.handleSyncStatusUpdated.bind(
+                                  this));
+            };
+          };
+          elementUnmounted(){
+            console.log("unmount sync view");
+            if(daedalus.platform.isAndroid){
+              registerAndroidEvent('onfetchprogress',()=>{});
+              registerAndroidEvent('onfetchcomplete',()=>{});
+              registerAndroidEvent('onsyncstatusupdated',()=>{});
+            };
+          };
+          handleHideFileMore(){
+
+          };
+          search(text){
+            if(daedalus.platform.isAndroid){
+              let text=AndroidNativeAudio.buildForest();
+              let forest=JSON.parse(text);
+              this.attrs.view.reset();
+              this.attrs.view.setForest(forest);
+            }else{
+              api.librarySearchForest(text).then(result=>{
+                  this.attrs.view.reset();
+                  this.attrs.view.setForest(result.result);
+                }).catch(error=>{
+                  console.log(error);
+                });
+            };
+          };
+          handleSyncSave(){
+            let items=this.attrs.view.getSelectedSongs();
+            console.log(JSON.stringify(items));
+            console.log(`selected ${items.length} items`);
+            let data={};
+            for(let i=0;i<items.length;i++){
+              let item=items[i];
+              data[item.spk]=item.sync;
+            };
+            console.log(JSON.stringify(data));
+            console.log(`selected ${data.length} items`);
+            if(items.length>0){
+              if(daedalus.platform.isAndroid){
+                let payload=JSON.stringify(data);
+                AndroidNativeAudio.updateSyncStatus(payload);
+              }else{
+                console.log(data);
+              };
+            }else{
+              console.log("sync save: nothing to save");
+            };
+          };
+          handleFetchProgress(payload){
+            console.log("fetch progress: "+JSON.stringify(payload));
+            this.attrs.header.updateStatus(`${payload.count}/${payload.total}`);
+          };
+          handleFetchComplete(payload){
+            console.log("fetch complete: "+JSON.stringify(payload));
+          };
+          handleSyncStatusUpdated(payload){
+            this.search("");
+          };
+          showMore(item){
+            console.log("on show more clicked");
+          };
+        };
+        return[LibraryPage,SyncPage];
       })();
     const[UserRadioPage]=(function(){
         const style={main:'dcs-a4af2c4a-0',header:'dcs-a4af2c4a-1'};
@@ -4180,7 +4420,7 @@ pages=(function(api,audio,components,daedalus,resources){
         return[];
       })();
     return{FileSystemPage,LandingPage,LibraryPage,LoginPage,PlaylistPage,SettingsPage,
-          StoragePage,StoragePreviewPage,UserRadioPage};
+          StoragePage,StoragePreviewPage,SyncPage,UserRadioPage};
   })(api,audio,components,daedalus,resources);
 app=(function(api,components,daedalus,pages,resources){
     "use strict";
@@ -4219,7 +4459,9 @@ app=(function(api,components,daedalus,pages,resources){
                   '/login');
         router.addAuthRoute("/u/settings",(cbk)=>this.handleRoute(cbk,pages.SettingsPage),
                   '/login');
-        router.addAuthRoute("/u/library",(cbk)=>this.handleRoute(cbk,pages.LibraryPage),
+        router.addAuthRoute("/u/library/list",(cbk)=>this.handleRoute(cbk,pages.LibraryPage),
+                  '/login');
+        router.addAuthRoute("/u/library/sync",(cbk)=>this.handleRoute(cbk,pages.SyncPage),
                   '/login');
         router.addAuthRoute("/u/radio",(cbk)=>this.handleRoute(cbk,pages.UserRadioPage),
                   '/login');
@@ -4244,7 +4486,7 @@ app=(function(api,components,daedalus,pages,resources){
             this.attrs.nav.hide();
           });
         this.attrs.nav.addAction(resources.svg.music_note,"Library",()=>{
-            history.pushState({},"","/u/library");
+            history.pushState({},"","/u/library/list");
             this.attrs.nav.hide();
           });
         this.attrs.nav.addAction(resources.svg.externalmedia,"Radio",()=>{
@@ -4252,6 +4494,7 @@ app=(function(api,components,daedalus,pages,resources){
             this.attrs.nav.hide();
           });
         this.attrs.nav.addAction(resources.svg.download,"Sync",()=>{
+            history.pushState({},"","/u/library/sync");
             this.attrs.nav.hide();
           });
         this.attrs.nav.addAction(resources.svg.documents,"Storage",()=>{

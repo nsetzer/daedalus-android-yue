@@ -133,4 +133,34 @@ public class NativeAudio {
         intent.putExtra("token", token);
         m_activity.startForegroundService(intent);
     }
+
+    @JavascriptInterface
+    public String buildForest() {
+        String forest = m_activity.getBoundService().mediaBuildForest();
+        return forest;
+    }
+
+    @JavascriptInterface
+    public void updateSyncStatus(String payload) {
+        Intent intent = new Intent(m_activity, AudioService.class);
+        intent.setAction(AudioActions.ACTION_SYNC_UPDATE);
+        intent.putExtra("payload", payload);
+        m_activity.startForegroundService(intent);
+    }
+
+    @JavascriptInterface
+    public void beginSync(String token) {
+        Intent intent = new Intent(m_activity, AudioService.class);
+        intent.setAction(AudioActions.ACTION_SYNC);
+        intent.putExtra("token", token);
+        m_activity.startForegroundService(intent);
+    }
+
+    @JavascriptInterface
+    public void cancelTask() {
+        Intent intent = new Intent(m_activity, AudioService.class);
+        intent.setAction(AudioActions.ACTION_CANCEL_TASK);
+        m_activity.startForegroundService(intent);
+    }
+
 }

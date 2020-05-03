@@ -3,14 +3,25 @@ package com.github.nicksetzer.daedalus.orm;
 import android.database.Cursor;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
-public class Table {
+/**
+ * An EntityTable is a SQL Table where each row represents a unique entity
+ *
+ * An Entity has an spk "Surrogate Primary Key" which uniquely identifies each row
+ * and an npk "Natural Primary Key" which uniquely identifies the entity using data
+ * which comes from the source system of record.
+ *
+ * Helper methods are provided for INSERT/UPDATE/UPSERT/DELETE to manage
+ * the lifecycle of an entity correctly.
+ */
+public class EntityTable {
 
-    DatabaseConnection m_db;
-    TableSchema m_schema;
+    protected DatabaseConnection m_db;
+    protected TableSchema m_schema;
 
-    public Table(DatabaseConnection db, TableSchema schema) {
+    public EntityTable(DatabaseConnection db, TableSchema schema) {
         m_db = db;
         this.m_schema = schema;
     }
@@ -93,5 +104,34 @@ public class Table {
         return count;
     }
 
+
+    public JSONObject getObject(Cursor cursor) throws JSONException {
+
+        JSONObject obj = new JSONObject();
+        for (int i=0; i < cursor.getColumnCount(); i++) {
+
+            String key = cursor.getColumnName(i);
+            int type = cursor.getType(i);
+            switch (type) {
+                case Cursor.FIELD_TYPE_BLOB:
+                    throw new JSONException("unexpected blob");
+                case Cursor.FIELD_TYPE_FLOAT:
+                    obj.put(key, cursor.getDouble(i));
+                    break;
+                case Cursor.FIELD_TYPE_INTEGER:
+                    obj.put(key, cursor.getLong(i));
+                    break;
+                case Cursor.FIELD_TYPE_NULL:
+                    obj.put(key, JSONObject.NULL);
+                    break;
+                case Cursor.FIELD_TYPE_STRING:
+                    obj.put(key, cursor.getString(i));
+                    break;
+
+            }
+        }
+
+        return obj;
+    }
 
 }

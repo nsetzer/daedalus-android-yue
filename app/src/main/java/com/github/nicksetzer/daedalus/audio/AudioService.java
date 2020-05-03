@@ -42,6 +42,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import androidx.annotation.Nullable;
 
@@ -76,6 +78,10 @@ public class AudioService extends Service {
         }
     }
 
+    private boolean m_fetchRunning = false;
+    private boolean m_fetchAlive = false;
+    private Lock m_fetchLock;
+
     public AudioService() {
 
         super();
@@ -99,6 +105,9 @@ public class AudioService extends Service {
 
         m_database.connect();
         android.util.Log.e("daedalus-js", "" + m_database.m_songsTable.count());
+
+        m_fetchRunning = false;
+        m_fetchLock = new ReentrantLock();
         super.onCreate();
     }
 
@@ -207,9 +216,15 @@ public class AudioService extends Service {
                         m_manager.seek(position);
                         break;
                     case AudioActions.ACTION_FETCH:
-                        android.util.Log.e("daedalus", "prev");
+                        android.util.Log.e("daedalus", "fetch");
                         String token = intent.getExtras().getString("token");
                         launchFetchTask(token);
+                        break;
+                    case AudioActions.ACTION_SYNC_UPDATE:
+                        android.util.Log.e("daedalus", "sync_update");
+                        String payload = intent.getExtras().getString("payload");
+                        m_database.m_songsTable.updateSyncStatus(payload);
+                        sendEvent(AudioEvents.ONSYNCSTATUSUPDATED, "{}");
                         break;
                     default:
                         android.util.Log.e("daedalus", "unknown action");
@@ -280,12 +295,46 @@ public class AudioService extends Service {
 
     public void launchFetchTask(String token) {
 
-        m_executor.execute(new AudioFetchTask(this, token));
+        m_fetchLock.lock();
+        try {
+            if (!m_fetchRunning) {
+                m_fetchRunning = true;
+                m_fetchAlive = true;
+                m_executor.execute(new AudioFetchTask(this, token));
+
+            }
+        } finally {
+            m_fetchLock.unlock();
+        }
     }
 
-    public void syncResults(ArrayList<Long> spks) {
+    public void taskKill() {
+        m_fetchLock.lock();
+        try {
+            if (m_fetchRunning) {
+                m_fetchAlive = false;
+            }
+        } finally {
+            m_fetchLock.unlock();
+        }
+    }
 
+    public void fetchProgressUpdate(int count, int total) {
+        sendEvent(AudioEvents.ONFETCHPROGRESS, "{\"count\": " + count + ", \"total\": " + total + "}");
+    }
+    
+    public void fetchComplete() {
+        m_fetchLock.lock();
+        try {
+            m_fetchRunning = false;
+            sendEvent(AudioEvents.ONFETCHCOMPLETE, "{}");
+        } finally {
+            m_fetchLock.unlock();
+        }
+    }
 
+    public String mediaBuildForest() {
+        return m_database.m_songsTable.queryForest().toString();
     }
 
 }

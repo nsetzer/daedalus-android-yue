@@ -4,8 +4,8 @@ import android.content.Context;
 import android.database.Cursor;
 
 import com.github.nicksetzer.daedalus.orm.DatabaseConnection;
+import com.github.nicksetzer.daedalus.orm.EntityTable;
 import com.github.nicksetzer.daedalus.orm.NaturalPrimaryKey;
-import com.github.nicksetzer.daedalus.orm.Table;
 import com.github.nicksetzer.daedalus.orm.TableSchema;
 
 import org.json.JSONException;
@@ -20,11 +20,11 @@ public class Database {
     private DatabaseConnection m_db;
     private TableSchema[] m_schema;
 
-    public Table m_testsTable;
-    public Table m_songsTable;
-    public Table m_usersTable;
-    public Table m_filesTable;
-    public Table m_recordsTable;
+    public EntityTable m_testsTable;
+    public SongsTable m_songsTable;
+    public EntityTable m_usersTable;
+    public EntityTable m_filesTable;
+    public EntityTable m_recordsTable;
 
     public Database(Context context) {
         m_context = context;
@@ -39,14 +39,18 @@ public class Database {
         m_schema = new TableSchema[]{tests, users, songs, files, history_records};
         m_db = new DatabaseConnection(m_path, m_schema);
 
-        m_testsTable = new Table(m_db, tests);
-        m_usersTable = new Table(m_db, users);
-        m_songsTable = new Table(m_db, songs);
-        m_filesTable = new Table(m_db, files);
-        m_recordsTable = new Table(m_db, history_records);
+        m_testsTable = new EntityTable(m_db, tests);
+        m_usersTable = new EntityTable(m_db, users);
+        m_songsTable = new SongsTable(m_db, songs);
+        m_filesTable = new EntityTable(m_db, files);
+        m_recordsTable = new EntityTable(m_db, history_records);
     }
 
+    /**
+     * @return the schema for the Test table
+     */
     private TableSchema _initTestSchema() {
+
         TableSchema tests = new TableSchema("tests");
         tests.addColumn("spk", "INTEGER PRIMARY KEY AUTOINCREMENT");
         tests.addColumn("vstr", "VARCHAR");
@@ -64,6 +68,13 @@ public class Database {
         return users;
     }
 
+    /**
+     *
+     * @return The Schema for the Songs table
+     *
+     * the natural primary key is the uid received from the remote database
+     * remote tracks will have a "song_id" which is the uid
+     */
     private TableSchema _initSongsSchema() {
         TableSchema songs = new TableSchema("songs");
         songs.addColumn("spk", "INTEGER PRIMARY KEY AUTOINCREMENT");
@@ -71,6 +82,7 @@ public class Database {
         songs.addColumn("user_id", "VARCHAR NOT NULL"); // users.uid
 
         songs.addColumn("valid", "INTEGER DEFAULT 0");  // if 0, resource marked for deletion
+                                                                    // during fetch set 0 and mark as 1 when the record is updated
         songs.addColumn("sync", "INTEGER DEFAULT 0");   // download this resource
         songs.addColumn("synced", "INTEGER DEFAULT 0"); // resource has been downloaded
 
@@ -139,7 +151,7 @@ public class Database {
         m_db.connect();
 
 
-        test();
+        //test();
     }
 
     private boolean test() {

@@ -352,6 +352,41 @@ public class StatementBuilder {
         return new Statement(builder.toString(), params);
     }
 
+    public static Statement prepareSelectAll(TableSchema table, String[] columns, String where, long limit, long offset, String orderby) {
+
+        ParamList params = new ParamList();
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("SELECT ");
+        for (int i=0; i < columns.length; i ++) {
+            if (i > 0) {
+                builder.append(", ");
+            }
+            builder.append(columns[i]);
+        }
+        builder.append(" FROM ");
+        builder.append(table.name);
+        if (!where.isEmpty()) {
+            builder.append(" WHERE (");
+            builder.append(where);
+            builder.append(")");
+        }
+        if (limit >= 0) {
+            builder.append(" LIMIT ");
+            builder.append(limit);
+        }
+        if (offset >= 0) {
+            builder.append(" OFFSET ");
+            builder.append(offset);
+        }
+        if (!orderby.isEmpty()) {
+            builder.append(" ORDER BY ");
+            builder.append(orderby);
+        }
+
+        return new Statement(builder.toString(), params);
+    }
+
     public static Statement prepareSelect(TableSchema table, String[] columns, INaturalPrimaryKey npk, long limit, long offset) {
 
         ParamList params = new ParamList();

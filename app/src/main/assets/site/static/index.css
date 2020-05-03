@@ -197,10 +197,16 @@
   cursor: pointer;
 }
 .dcs-bbed1375-11 {
+  margin-left: 1em;
+  margin-right: 1em;
+  cursor: pointer;
+  border: solid 1px black;
+}
+.dcs-bbed1375-12 {
   background: #00FF0022;
   font-weight: bold;
 }
-.dcs-bbed1375-12 {
+.dcs-bbed1375-13 {
   height: 33vh;
   min-height: 64px;
 }

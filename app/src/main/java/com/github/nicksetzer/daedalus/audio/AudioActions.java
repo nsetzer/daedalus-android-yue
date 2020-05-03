@@ -16,6 +16,9 @@ public class AudioActions {
     public static final String ACTION_SEEK = "daeadalus.audio.seek";
 
     public static final String ACTION_FETCH = "daeadalus.library.fetch";
+    public static final String ACTION_SYNC_UPDATE = "daeadalus.library.sync_update";
+    public static final String ACTION_SYNC = "daeadalus.library.sync";
+    public static final String ACTION_CANCEL_TASK = "daeadalus.library.cancel_task";
 
     public static final String ACTION_EVENT = "daeadalus.audio.event";
 }

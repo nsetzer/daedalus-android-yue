@@ -3,6 +3,8 @@ package com.github.nicksetzer.daedalus.orm;
  * run-as com.github.nicksetzer.daedalus
  * cd /data/data/com.github.nicksetzer.daedalus
  * cd /storage/emulated/0/Android/data/com.github.nicksetzer.daedalus/files/app-v1.sqlite
+ *
+ * adb pull /storage/emulated/0/Android/data/com.github.nicksetzer.daedalus/files/app-v1.sqlite .
  */
 
 import org.json.JSONArray;
