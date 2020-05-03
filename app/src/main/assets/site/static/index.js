@@ -2303,7 +2303,8 @@ audio=(function(api){
         };
         function mapSongToObj(song){
           return{url:api.librarySongAudioUrl(song.id),artist:song.artist,album:song.album,
-                      title:song.title,length:song.length,id:song.id};
+                      title:song.title,length:song.length,file_path:song.file_path,spk:song.spk,
+                      id:song.id};
         };
         class NativeDeviceImpl{
           constructor(device){
@@ -3415,7 +3416,8 @@ pages=(function(api,audio,components,daedalus,resources){
                   songItemActive:'dcs-13113e22-6',fontBig:'dcs-13113e22-7',fontSmall:'dcs-13113e22-8',
                   songItemRow:'dcs-13113e22-9',songItemRhs:'dcs-13113e22-10',songItemRow2:'dcs-13113e22-11',
                   callbackLink2:'dcs-13113e22-12',grip:'dcs-13113e22-13',space5:'dcs-13113e22-14',
-                  center80:'dcs-13113e22-15',lockScreen:'dcs-13113e22-16'};
+                  center80:'dcs-13113e22-15',lockScreen:'dcs-13113e22-16',padding1:'dcs-13113e22-17',
+                  padding2:'dcs-13113e22-18'};
         ;
         function formatTime(secs){
           secs=secs===Infinity?0:secs;
@@ -3601,6 +3603,8 @@ pages=(function(api,audio,components,daedalus,resources){
             this.attrs.txt_SongTitle=new components.MiddleText("Select A Song");
             this.attrs.txt_SongTime=new TextElement("00:00:00/00:00:00");
             this.attrs.txt_SongStatus=new TextElement("");
+            this.attrs.txt_SongTitle.props.style={'max-width':'calc(100vw - 4em)'};
+            
             this.addRow(true);
             this.addRow(true);
             this.addRow(true);
@@ -3616,6 +3620,8 @@ pages=(function(api,audio,components,daedalus,resources){
           setSong(song){
             if(song===null){
               this.attrs.txt_SongTitle.setText("Select A Song");
+              this.attrs.txt_SongTitle.setText("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
+              
             }else{
               this.attrs.txt_SongTitle.setText(song.artist+" - "+song.title);
             };
@@ -3820,12 +3826,16 @@ pages=(function(api,audio,components,daedalus,resources){
           constructor(){
             super("div",{className:style.main},[]);
             this.attrs={device:audio.AudioDevice.instance(),header:new Header(this),
-                          container:new SongList()};
+                          container:new SongList(),padding1:new DomElement("div",{className:style.padding1},
+                              []),padding2:new DomElement("div",{className:style.padding2},[])};
+            
             this.attrs.container.setPlaceholderClassName(style.songItemPlaceholder);
             
             this.attrs.container.addClassName(style.songList);
             this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.padding1);
             this.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.padding2);
           };
           elementMounted(){
             console.log("mount playlist view");
@@ -4198,6 +4208,7 @@ pages=(function(api,audio,components,daedalus,resources){
             }else{
               if(node.isSelected()){
                 const song={...node.attrs.obj,artist,album};
+                console.log(JSON.stringify(song));
                 result.push(song);
               };
             };
@@ -4241,13 +4252,20 @@ pages=(function(api,audio,components,daedalus,resources){
             };
           };
           search(text){
-            api.librarySearchForest(text).then(result=>{
-                this.attrs.view.reset();
-                result.result.forEach(tree=>{
-                    this.attrs.view.addItem(new ArtistTreeItem(this,tree));
-                  });
-              }).catch(error=>{
-                console.log(error);
+            this.attrs.view.reset();
+            this.attrs.search_promise=new Promise((accept,reject)=>{
+                if(daedalus.platform.isAndroid){
+                  let text=AndroidNativeAudio.buildForest();
+                  let forest=JSON.parse(text);
+                  this.attrs.view.setForest(forest);
+                }else{
+                  api.librarySearchForest(text).then(result=>{
+                      this.attrs.view.setForest(result.result);
+                    }).catch(error=>{
+                      console.log(error);
+                    });
+                };
+                accept();
               });
           };
           showMore(item){
@@ -4323,6 +4341,10 @@ pages=(function(api,audio,components,daedalus,resources){
                                   this));
               registerAndroidEvent('onsyncstatusupdated',this.handleSyncStatusUpdated.bind(
                                   this));
+              registerAndroidEvent('onsyncprogress',this.handleSyncProgress.bind(
+                                  this));
+              registerAndroidEvent('onsynccomplete',this.handleSyncComplete.bind(
+                                  this));
             };
           };
           elementUnmounted(){
@@ -4337,19 +4359,21 @@ pages=(function(api,audio,components,daedalus,resources){
 
           };
           search(text){
-            if(daedalus.platform.isAndroid){
-              let text=AndroidNativeAudio.buildForest();
-              let forest=JSON.parse(text);
-              this.attrs.view.reset();
-              this.attrs.view.setForest(forest);
-            }else{
-              api.librarySearchForest(text).then(result=>{
-                  this.attrs.view.reset();
-                  this.attrs.view.setForest(result.result);
-                }).catch(error=>{
-                  console.log(error);
-                });
-            };
+            this.attrs.view.reset();
+            this.attrs.search_promise=new Promise((accept,reject)=>{
+                if(daedalus.platform.isAndroid){
+                  let text=AndroidNativeAudio.buildForest();
+                  let forest=JSON.parse(text);
+                  this.attrs.view.setForest(forest);
+                }else{
+                  api.librarySearchForest(text).then(result=>{
+                      this.attrs.view.setForest(result.result);
+                    }).catch(error=>{
+                      console.log(error);
+                    });
+                };
+                accept();
+              });
           };
           handleSyncSave(){
             let items=this.attrs.view.getSelectedSongs();
@@ -4374,11 +4398,18 @@ pages=(function(api,audio,components,daedalus,resources){
             };
           };
           handleFetchProgress(payload){
-            console.log("fetch progress: "+JSON.stringify(payload));
             this.attrs.header.updateStatus(`${payload.count}/${payload.total}`);
           };
           handleFetchComplete(payload){
             console.log("fetch complete: "+JSON.stringify(payload));
+          };
+          handleSyncProgress(payload){
+            this.attrs.header.updateStatus(`${payload.index}/${payload.total} ${payload.message}`);
+            
+          };
+          handleSyncComplete(payload){
+            console.log("fetch complete: "+JSON.stringify(payload));
+            this.attrs.header.updateStatus("sync complete");
           };
           handleSyncStatusUpdated(payload){
             this.search("");
@@ -4489,10 +4520,6 @@ app=(function(api,components,daedalus,pages,resources){
             history.pushState({},"","/u/library/list");
             this.attrs.nav.hide();
           });
-        this.attrs.nav.addAction(resources.svg.externalmedia,"Radio",()=>{
-            history.pushState({},"","/u/radio");
-            this.attrs.nav.hide();
-          });
         this.attrs.nav.addAction(resources.svg.download,"Sync",()=>{
             history.pushState({},"","/u/library/sync");
             this.attrs.nav.hide();
@@ -4501,10 +4528,12 @@ app=(function(api,components,daedalus,pages,resources){
             history.pushState({},"","/u/storage/list");
             this.attrs.nav.hide();
           });
-        this.attrs.nav.addAction(resources.svg.documents,"File System",()=>{
-            history.pushState({},"","/u/fs");
-            this.attrs.nav.hide();
-          });
+        if(daedalus.platform.isMobile){
+          this.attrs.nav.addAction(resources.svg.documents,"File System",()=>{
+              history.pushState({},"","/u/fs");
+              this.attrs.nav.hide();
+            });
+        };
         this.attrs.nav.addAction(resources.svg.note,"Notes",()=>{
             this.attrs.nav.hide();
           });
@@ -4516,15 +4545,6 @@ app=(function(api,components,daedalus,pages,resources){
             api.clearUserToken();
             history.pushState({},"","/");
           });
-        if(daedalus.platform.isAndroid){
-          this.attrs.nav.addAction(resources.svg['return'],"Reload",()=>{
-              try{
-                Client.reloadPage();
-              }catch(e){
-                console.error(e);
-              };
-            });
-        };
         this.toggleShowMenuFixed();
         this.appendChild(this.attrs.container);
         this.appendChild(this.attrs.nav);

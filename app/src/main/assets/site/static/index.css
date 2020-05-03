@@ -635,6 +635,14 @@
   width: 100%;
   position: fixed;
 }
+.dcs-13113e22-17 {
+  height: 1em;
+  min-height: 1em;
+}
+.dcs-13113e22-18 {
+  height: 33vh;
+  min-height: 64px;
+}
 .dcs-13113e22-4:hover {
   background: #0000FF22;
 }

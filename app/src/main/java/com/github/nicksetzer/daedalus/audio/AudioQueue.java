@@ -3,6 +3,8 @@ package com.github.nicksetzer.daedalus.audio;
 import android.media.MediaMetadata;
 import android.support.v4.media.MediaMetadataCompat;
 
+import com.github.nicksetzer.daedalus.Log;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -45,7 +47,16 @@ public class AudioQueue {
             return null;
         }
         try {
-            return m_queue.getJSONObject(index).getString("url");
+            JSONObject obj = m_queue.getJSONObject(index);
+            Log.info(obj.toString());
+            if (obj.has("file_path")) {
+                String file_path = obj.getString("file_path");
+                File file = new File(file_path);
+                if (file.exists()) {
+                    return file_path;
+                }
+            }
+            return obj.getString("url");
         } catch (JSONException e) {
             android.util.Log.e("daedalus-js", "unable to get index " + index);
         }

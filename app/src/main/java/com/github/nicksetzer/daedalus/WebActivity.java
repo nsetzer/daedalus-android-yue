@@ -9,7 +9,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -18,7 +17,6 @@ import android.webkit.ValueCallback;
 import android.webkit.WebView;
 import android.widget.Toast;
 
-import com.github.nicksetzer.daedalus.api.YueApi;
 import com.github.nicksetzer.daedalus.audio.AudioActions;
 import com.github.nicksetzer.daedalus.audio.AudioService;
 import com.github.nicksetzer.daedalus.audio.AudioWebView;
@@ -27,10 +25,6 @@ import com.github.nicksetzer.daedalus.javascript.LocalStorage;
 import com.github.nicksetzer.daedalus.javascript.NativeAudio;
 import com.github.nicksetzer.daedalus.view.DaedalusWebChromeClient;
 import com.github.nicksetzer.daedalus.view.DaedalusWebViewClient;
-
-import org.json.JSONException;
-
-import java.io.IOException;
 
 public class WebActivity extends Activity {
 
@@ -54,7 +48,6 @@ public class WebActivity extends Activity {
         view.getSettings().setJavaScriptEnabled(true);
 
         m_receiver = new ServiceEventReceiver();
-
 
         view.setWebChromeClient(new DaedalusWebChromeClient());
         view.setWebViewClient(new DaedalusWebViewClient(this, this.profile == "dev"));
@@ -90,6 +83,9 @@ public class WebActivity extends Activity {
                 m_timeHandler.postDelayed(this, 1000);
             }
         });
+
+        Log.info("successfully launch on create");
+        Log.error("successfully launch on create");
     }
 
     @Override

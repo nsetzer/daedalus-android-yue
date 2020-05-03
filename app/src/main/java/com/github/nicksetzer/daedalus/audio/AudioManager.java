@@ -197,7 +197,7 @@ public class AudioManager {
             }
             m_mediaPlayer.reset();
 
-            // note: logging the url may log the user token
+            // note: logging the url may Log the user token
             android.util.Log.i("daedalus-js", "url: " + url);
             m_mediaPlayer.setDataSource(url);
             m_mediaPlayer.prepareAsync();

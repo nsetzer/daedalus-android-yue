@@ -12,4 +12,6 @@ public class AudioEvents {
     public static final String ONFETCHPROGRESS = "onfetchprogress";
     public static final String ONFETCHCOMPLETE = "onfetchcomplete";
     public static final String ONSYNCSTATUSUPDATED = "onsyncstatusupdated";
+    public static final String ONSYNCPROGRESS = "onsyncprogress";
+    public static final String ONSYNCCOMPLETE = "onsynccomplete";
 }

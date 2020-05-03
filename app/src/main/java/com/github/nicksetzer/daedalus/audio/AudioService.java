@@ -32,8 +32,13 @@ import android.os.IBinder;
 import android.os.Process;
 
 
+import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.R;
 import com.github.nicksetzer.daedalus.audio.tasks.AudioFetchTask;
+import com.github.nicksetzer.daedalus.audio.tasks.AudioSyncTask;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.concurrent.BlockingQueue;
@@ -67,7 +72,7 @@ public class AudioService extends Service {
             thread.setName("CustomThread" + sTag);
             thread.setPriority(Process.THREAD_PRIORITY_BACKGROUND);
 
-            // A exception handler is created to log the exception from threads
+            // A exception handler is created to Log the exception from threads
             thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
                 @Override
                 public void uncaughtException(Thread thread, Throwable ex) {
@@ -163,8 +168,9 @@ public class AudioService extends Service {
 
         if (intent != null) {
             String action = intent.getAction();
-            android.util.Log.e("daedalus-js", "action intent: " + action);
+            Log.info("daedalus-js", "action intent: " + action);
 
+            String token;
             String data;
             int index;
             if (action != null) {
@@ -217,7 +223,7 @@ public class AudioService extends Service {
                         break;
                     case AudioActions.ACTION_FETCH:
                         android.util.Log.e("daedalus", "fetch");
-                        String token = intent.getExtras().getString("token");
+                        token = intent.getExtras().getString("token");
                         launchFetchTask(token);
                         break;
                     case AudioActions.ACTION_SYNC_UPDATE:
@@ -226,8 +232,13 @@ public class AudioService extends Service {
                         m_database.m_songsTable.updateSyncStatus(payload);
                         sendEvent(AudioEvents.ONSYNCSTATUSUPDATED, "{}");
                         break;
+                    case AudioActions.ACTION_SYNC:
+                        android.util.Log.e("daedalus", "sync");
+                        token = intent.getExtras().getString("token");
+                        launchSyncTask(token);
+                        break;
                     default:
-                        android.util.Log.e("daedalus", "unknown action");
+                        Log.error("daedalus", "unknown action");
                         break;
 
                 }
@@ -319,6 +330,17 @@ public class AudioService extends Service {
         }
     }
 
+    public boolean taskIsKill() {
+        boolean kill;
+        m_fetchLock.lock();
+        try {
+            kill = m_fetchAlive;
+        } finally {
+            m_fetchLock.unlock();
+        }
+        return kill;
+    }
+
     public void fetchProgressUpdate(int count, int total) {
         sendEvent(AudioEvents.ONFETCHPROGRESS, "{\"count\": " + count + ", \"total\": " + total + "}");
     }
@@ -333,6 +355,43 @@ public class AudioService extends Service {
         }
     }
 
+    public void launchSyncTask(String token) {
+
+        m_fetchLock.lock();
+        try {
+            if (!m_fetchRunning) {
+                m_fetchRunning = true;
+                m_fetchAlive = true;
+                m_executor.execute(new AudioSyncTask(this, token));
+            }
+        } finally {
+            m_fetchLock.unlock();
+        }
+    }
+
+    public void syncProgressUpdate(int index, int total, String message) {
+        JSONObject obj = new JSONObject();
+        try {
+            obj.put("index", index);
+            obj.put("total", total);
+            obj.put("message", message);
+
+            sendEvent(AudioEvents.ONSYNCPROGRESS, obj.toString());
+        } catch (JSONException e) {
+            Log.error("failed to update sync progress", e);
+        }
+
+    }
+
+    public void syncComplete() {
+        m_fetchLock.lock();
+        try {
+            m_fetchRunning = false;
+            sendEvent(AudioEvents.ONSYNCCOMPLETE, "{}");
+        } finally {
+            m_fetchLock.unlock();
+        }
+    }
     public String mediaBuildForest() {
         return m_database.m_songsTable.queryForest().toString();
     }

@@ -5,9 +5,14 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.StringWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
@@ -24,6 +29,10 @@ public class YueApi {
         public ApiException(String message) {
             super(message);
         }
+    }
+
+    public static interface Callback {
+        void callback(int count, int total);
     }
 
     //public static final String PROTOCOL = "http";
@@ -112,8 +121,6 @@ public class YueApi {
 
         android.util.Log.e("daedalus-js-api", "connected");
 
-        // TODO: support gzip
-
         int status = conn.getResponseCode();
         android.util.Log.e("daedalus-js-api", "status: " + status);
         if (status != HttpURLConnection.HTTP_OK) {
@@ -165,5 +172,67 @@ public class YueApi {
         }
 
         return arr;
+    }
+
+    public static void download(String token, String uid, String filepath, Callback callback) throws IOException {
+
+        URL url = new URL(PROTOCOL, DOMAIN,PORT, "/api/library/" + uid + "/audio");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("Authorization", token);
+        conn.setReadTimeout(10000);
+        conn.setConnectTimeout(10000);
+
+        android.util.Log.e("daedalus-js-api", "protocol: " + url.getProtocol());
+        android.util.Log.e("daedalus-js-api", "method: " + conn.getRequestMethod());
+        android.util.Log.e("daedalus-js-api", "file: " + url.getFile());
+        android.util.Log.e("daedalus-js-api", "query: " + url.getQuery());
+
+        try {
+            conn.connect();
+        } catch (Exception e) {
+            android.util.Log.e("daedalus-js-api", "failed to connect: " + e.toString());
+            return;
+        }
+
+        int status = conn.getResponseCode();
+        android.util.Log.e("daedalus-js-api", "status: " + status);
+        if (status != HttpURLConnection.HTTP_OK) {
+            String text = readResponseText(conn.getErrorStream());
+            android.util.Log.e("daedalus-js-api", "body:" + text);
+            return;
+        }
+
+        String contentLength = conn.getHeaderField("Content-Length");
+        int total_length = 0;
+        if (!contentLength.isEmpty()) {
+            total_length = Integer.parseInt(contentLength);
+        }
+
+        File file = new File(filepath);
+
+        file.getParentFile().mkdirs();
+
+        InputStream netStream = conn.getInputStream();
+        OutputStream fileStream = new FileOutputStream(file, false);
+
+        try {
+            byte[] bytes = new byte[2048];
+            int received = 0;
+            int length;
+            int notify = 0;
+
+            while ((length = netStream.read(bytes))!=-1) {
+                received += length;
+                // notify roughly every 50kb :: about 100 updates for a 5mb file
+                if ((notify++)%26 == 0) {
+                    callback.callback(received, total_length);
+                }
+                fileStream.write(bytes, 0, length);
+            }
+        } finally {
+            fileStream.close();
+        }
+
     }
 }

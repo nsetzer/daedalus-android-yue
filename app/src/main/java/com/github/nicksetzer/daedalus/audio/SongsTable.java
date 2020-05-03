@@ -2,6 +2,7 @@ package com.github.nicksetzer.daedalus.audio;
 
 import android.database.Cursor;
 
+import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.orm.DatabaseConnection;
 import com.github.nicksetzer.daedalus.orm.EntityTable;
 import com.github.nicksetzer.daedalus.orm.TableSchema;
@@ -10,6 +11,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -76,6 +78,9 @@ public class SongsTable extends EntityTable {
 
                         artist.getJSONArray("albums").put(album);
                     }
+
+                    //TODO: this is a bug, maybe in the new database
+                    track.put("id", track.get("uid"));
 
                     album.getJSONArray("tracks").put(track);
 
@@ -168,4 +173,47 @@ public class SongsTable extends EntityTable {
         }
     }
 
+    public ArrayList<JSONObject> getSyncDownloadTracks() {
+        String query = "SELECT spk, uid, artist, album, title FROM songs WHERE (valid == 1 AND sync != synced AND sync == 1)";
+
+        Cursor cursor = m_db.query(query, null);
+
+        ArrayList<JSONObject> array = new ArrayList<>();
+
+        if (cursor != null && cursor.moveToFirst()) {
+            while (!cursor.isAfterLast()) {
+                try {
+                    JSONObject track = getObject(cursor);
+                    array.add(track);
+                } catch (JSONException e) {
+                    Log.error("error parsing object", e);
+                }
+                cursor.moveToNext();
+            }
+        }
+
+        return array;
+    }
+
+    public ArrayList<JSONObject> getSyncDeleteTracks() {
+        String query = "SELECT spk, file_path, art_path FROM songs WHERE ((valid == 0 OR sync == 0) AND synced == 1)";
+
+        Cursor cursor = m_db.query(query, null);
+
+        ArrayList<JSONObject> array = new ArrayList<>();
+
+        if (cursor != null && cursor.moveToFirst()) {
+            while (!cursor.isAfterLast()) {
+                try {
+                    JSONObject track = getObject(cursor);
+                    array.add(track);
+                } catch (JSONException e) {
+                    Log.error("error parsing object", e);
+                }
+                cursor.moveToNext();
+            }
+        }
+
+        return array;
+    }
 }
