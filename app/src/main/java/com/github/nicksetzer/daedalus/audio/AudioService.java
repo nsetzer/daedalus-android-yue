@@ -197,46 +197,49 @@ public class AudioService extends Service {
                         }
                         break;
                     case AudioActions.ACTION_PLAY:
-                        android.util.Log.e("daedalus", "play");
+                        Log.info("play");
                         m_manager.play();
                         break;
                     case AudioActions.ACTION_PAUSE:
-                        android.util.Log.e("daedalus", "pause");
+                        Log.info("pause");
                         m_manager.pause();
                         break;
                     case AudioActions.ACTION_STOP:
-                        android.util.Log.e("daedalus", "stop");
+                        Log.info("stop");
                         m_manager.stop();
                         break;
                     case AudioActions.ACTION_SKIPTONEXT:
-                        android.util.Log.e("daedalus", "next");
+                        Log.info("next");
                         m_manager.skipToNext();
                         break;
                     case AudioActions.ACTION_SKIPTOPREV:
-                        android.util.Log.e("daedalus", "prev");
+                        Log.info( "prev");
                         m_manager.skipToPrev();
                         break;
                     case AudioActions.ACTION_SEEK:
-                        android.util.Log.e("daedalus", "prev");
+                        Log.info( "prev");
                         long position = intent.getExtras().getLong("position");
                         m_manager.seek(position);
                         break;
                     case AudioActions.ACTION_FETCH:
-                        android.util.Log.e("daedalus", "fetch");
+                        Log.info( "fetch");
                         token = intent.getExtras().getString("token");
                         launchFetchTask(token);
                         break;
                     case AudioActions.ACTION_SYNC_UPDATE:
-                        android.util.Log.e("daedalus", "sync_update");
+                        Log.info("sync_update");
                         String payload = intent.getExtras().getString("payload");
                         m_database.m_songsTable.updateSyncStatus(payload);
                         sendEvent(AudioEvents.ONSYNCSTATUSUPDATED, "{}");
                         break;
                     case AudioActions.ACTION_SYNC:
-                        android.util.Log.e("daedalus", "sync");
+                        Log.info( "sync");
                         token = intent.getExtras().getString("token");
                         launchSyncTask(token);
                         break;
+                    case AudioActions.ACTION_CANCEL_TASK:
+                        Log.info("cancel task");
+                        taskKill();
                     default:
                         Log.error("daedalus", "unknown action");
                         break;
@@ -334,7 +337,7 @@ public class AudioService extends Service {
         boolean kill;
         m_fetchLock.lock();
         try {
-            kill = m_fetchAlive;
+            kill = !m_fetchAlive;
         } finally {
             m_fetchLock.unlock();
         }
@@ -392,8 +395,8 @@ public class AudioService extends Service {
             m_fetchLock.unlock();
         }
     }
-    public String mediaBuildForest() {
-        return m_database.m_songsTable.queryForest().toString();
+    public String mediaBuildForest(String query, boolean syncedOnly) {
+        return m_database.m_songsTable.queryForest(query, syncedOnly).toString();
     }
 
 }

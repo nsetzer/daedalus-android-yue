@@ -32,10 +32,42 @@ public class SongsTable extends EntityTable {
         m_db.execute(query, new String[]{});
     }
 
-    public JSONArray queryForest() {
+    public JSONArray queryForest(String query, boolean syncedOnly) {
 
-        String query = "SELECT spk, uid, artist, album, title, length, sync, synced, file_path, rating FROM songs ORDER BY artist, album, title";
-        Cursor cursor = m_db.query(query, null);
+        StringBuilder sb = new StringBuilder();
+        sb.append("SELECT spk, uid, artist, artist_key, album, title, length, sync, synced, file_path, rating FROM songs");
+
+        ArrayList<String> params = new ArrayList<>();
+
+        if (!query.isEmpty() || syncedOnly) {
+            sb.append(" WHERE (");
+            if (syncedOnly) {
+                sb.append("(synced ==");
+                sb.append(1);
+                sb.append(") AND ");
+            }
+            String[] parts = query.split("\\s+");
+            boolean first = true;
+            for (String part : parts) {
+                if (!first) {
+                    sb.append(" AND ");
+                }
+
+                sb.append("(");
+                sb.append("artist LIKE ? OR album LIKE ? OR title LIKE ?");
+                params.add("%" + part + "%");
+                params.add("%" + part + "%");
+                params.add("%" + part + "%");
+                sb.append(")");
+            }
+
+            sb.append(")");
+        }
+
+        sb.append(" ORDER BY artist_key COLLATE NOCASE, album COLLATE NOCASE, title COLLATE NOCASE");
+
+        String sql = sb.toString();
+        Cursor cursor = m_db.query(sql, params.toArray(new String[]{}));
 
         JSONArray forest = new JSONArray();
         JSONObject artist = null;

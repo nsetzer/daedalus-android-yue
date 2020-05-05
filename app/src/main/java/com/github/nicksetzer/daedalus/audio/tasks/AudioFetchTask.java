@@ -40,9 +40,17 @@ public class AudioFetchTask implements Runnable {
 
             while (true) {
 
+                if (m_service.taskIsKill()) {
+                    break;
+                }
+
                 JSONArray array = _fetch(page_index, page_size);
 
                 if (array == null || array.length() == 0) {
+                    break;
+                }
+
+                if (m_service.taskIsKill()) {
                     break;
                 }
 

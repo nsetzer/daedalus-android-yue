@@ -225,11 +225,16 @@ public class YueApi {
             while ((length = netStream.read(bytes))!=-1) {
                 received += length;
                 // notify roughly every 50kb :: about 100 updates for a 5mb file
-                if ((notify++)%26 == 0) {
+                if (callback != null && (notify++)%26 == 0) {
                     callback.callback(received, total_length);
                 }
                 fileStream.write(bytes, 0, length);
             }
+
+            if (callback != null) {
+                callback.callback(received, total_length);
+            }
+
         } finally {
             fileStream.close();
         }

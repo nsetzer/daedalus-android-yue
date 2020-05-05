@@ -34,7 +34,7 @@ public class Log {
         return elements[index];
     }
 
-    private static String _formatStackTraceElement(StackTraceElement element, String[] messages) {
+    private static String _formatStackTraceElement(StackTraceElement element, Object[] messages) {
 
         StringBuilder sb = new StringBuilder();
 
@@ -50,7 +50,7 @@ public class Log {
             if (i > 0) {
                 sb.append(" ");
             }
-            sb.append(messages[i]);
+            sb.append(messages[i].toString());
         }
 
         return sb.toString();
@@ -60,7 +60,7 @@ public class Log {
         Log.level = level;
     }
 
-    public static void trace(String... messages) {
+    public static void trace(Object... messages) {
         if (Log.level < Log.TRACE) {
             return;
         }
@@ -68,7 +68,7 @@ public class Log {
         android.util.Log.d(TAG, _formatStackTraceElement(element, messages));
     }
 
-    public static void debug(String... messages) {
+    public static void debug(Object... messages) {
         if (Log.level < Log.DEBUG) {
             return;
         }
@@ -76,7 +76,7 @@ public class Log {
         android.util.Log.d(TAG, _formatStackTraceElement(element, messages));
     }
 
-    public static void info(String... messages) {
+    public static void info(Object... messages) {
         if (Log.level < Log.INFO) {
             return;
         }
@@ -84,7 +84,7 @@ public class Log {
         android.util.Log.i(TAG, _formatStackTraceElement(element, messages));
     }
 
-    public static void warn(String... messages) {
+    public static void warn(Object... messages) {
         if (Log.level < Log.WARNING) {
             return;
         }
@@ -92,7 +92,7 @@ public class Log {
         android.util.Log.w(TAG, _formatStackTraceElement(element, messages));
     }
 
-    public static void error(String... messages) {
+    public static void error(Object... messages) {
         if (Log.level < Log.ERROR) {
             return;
         }
@@ -100,12 +100,12 @@ public class Log {
         android.util.Log.e(TAG, _formatStackTraceElement(element, messages));
     }
 
-    public static void error(String message, Exception e) {
+    public static void error(Object message, Exception e) {
         if (Log.level < Log.ERROR) {
             return;
         }
         StackTraceElement element = _getStackTraceElement();
 
-        android.util.Log.e(TAG, _formatStackTraceElement(element, new String[]{message, e.toString(), e.getMessage()}));
+        android.util.Log.e(TAG, _formatStackTraceElement(element, new Object[]{message, e.toString(), e.getMessage()}));
     }
 }

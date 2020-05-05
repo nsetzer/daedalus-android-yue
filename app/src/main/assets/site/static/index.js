@@ -4060,8 +4060,8 @@ pages=(function(api,audio,components,daedalus,resources){
         return[SettingsPage];
       })();
     const[LibraryPage,SyncPage]=(function(){
-        const style={main:'dcs-f089c6c5-0',grow:'dcs-f089c6c5-1',viewPad:'dcs-f089c6c5-2'};
-        
+        const style={main:'dcs-f089c6c5-0',grow:'dcs-f089c6c5-1',viewPad:'dcs-f089c6c5-2',
+                  listItemCheck:'dcs-f089c6c5-3'};
         function shuffle(a){
           for(let i=a.length-1;i>0;i--){
             const j=Math.floor(Math.random()*(i+1));
@@ -4091,6 +4091,10 @@ pages=(function(api,audio,components,daedalus,resources){
             this.addRow(false);
             this.addRowElement(0,this.attrs.txtInput);
             this.attrs.txtInput.addClassName(style.grow);
+            if(daedalus.platform.isAndroid){
+              this.attrs.chk=new CheckedElement(this.handleCheck.bind(this),1);
+              this.addRowElement(0,this.attrs.chk);
+            };
             this.addRowAction(0,resources.svg['search'],()=>{
                 this.attrs.parent.search(this.attrs.txtInput.props.value);
               });
@@ -4108,10 +4112,45 @@ pages=(function(api,audio,components,daedalus,resources){
                 this.attrs.parent.attrs.view.selectAll(count==0);
               });
           };
+          handleCheck(){
+            this.attrs.chk.setCheckState((this.attrs.chk.attrs.checkState==0)?1:0);
+            
+          };
+          isChecked(){
+            return this.attrs.chk.attrs.checkState!=0;
+          };
+        };
+        function getCheckResource(state){
+          if(state==2){
+            return resources.svg.sort;
+          }else if(state==1){
+            return resources.svg.download;
+          };
+          return resources.svg.select;
+        };
+        class CheckedElement extends components.SvgElement {
+          constructor(callback,initialCheckState){
+            let res=getCheckResource(initialCheckState);
+            super(res,{width:20,height:32,className:style.listItemCheck});
+            this.attrs={callback,checkState:initialCheckState,initialCheckState};
+            
+          };
+          setCheckState(checkState){
+            this.attrs.checkState=checkState;
+            this.props.src=getCheckResource(checkState);
+            this.update();
+          };
+          onClick(event){
+            this.attrs.callback();
+          };
         };
         class ArtistTreeItem extends components.TreeItem {
           constructor(parent,obj,selectMode=1){
-            super(parent,0,obj.name,obj,selectMode,obj.selected||0);
+            let selected=0;
+            if(selectMode==components.TreeItem.SELECTION_MODE_CHECK){
+              selected=obj.selected||0;
+            };
+            super(parent,0,obj.name,obj,selectMode,selected);
           };
           buildChildren(obj){
             return obj.albums.map(album=>new AlbumTreeItem(this,album,this.attrs.selectMode));
@@ -4120,7 +4159,11 @@ pages=(function(api,audio,components,daedalus,resources){
         };
         class AlbumTreeItem extends components.TreeItem {
           constructor(parent,obj,selectMode=1){
-            super(parent,1,obj.name,obj,selectMode,obj.selected||0);
+            let selected=0;
+            if(selectMode==components.TreeItem.SELECTION_MODE_CHECK){
+              selected=obj.selected||0;
+            };
+            super(parent,1,obj.name,obj,selectMode,selected);
           };
           buildChildren(obj){
             return obj.tracks.map(track=>new TrackTreeItem(this,track,this.attrs.selectMode));
@@ -4255,8 +4298,9 @@ pages=(function(api,audio,components,daedalus,resources){
             this.attrs.view.reset();
             this.attrs.search_promise=new Promise((accept,reject)=>{
                 if(daedalus.platform.isAndroid){
-                  let text=AndroidNativeAudio.buildForest();
-                  let forest=JSON.parse(text);
+                  let syncedOnly=this.attrs.header.isChecked();
+                  let payload=AndroidNativeAudio.buildForest(text,syncedOnly);
+                  let forest=JSON.parse(payload);
                   this.attrs.view.setForest(forest);
                 }else{
                   api.librarySearchForest(text).then(result=>{
@@ -4362,8 +4406,8 @@ pages=(function(api,audio,components,daedalus,resources){
             this.attrs.view.reset();
             this.attrs.search_promise=new Promise((accept,reject)=>{
                 if(daedalus.platform.isAndroid){
-                  let text=AndroidNativeAudio.buildForest();
-                  let forest=JSON.parse(text);
+                  let payload=AndroidNativeAudio.buildForest(text,false);
+                  let forest=JSON.parse(payload);
                   this.attrs.view.setForest(forest);
                 }else{
                   api.librarySearchForest(text).then(result=>{

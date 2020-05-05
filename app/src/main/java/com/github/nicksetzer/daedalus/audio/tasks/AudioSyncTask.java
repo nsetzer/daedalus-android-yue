@@ -26,9 +26,15 @@ public class AudioSyncTask implements Runnable {
 
         try {
             ArrayList<JSONObject> array = m_service.m_database.m_songsTable.getSyncDownloadTracks();
+            Log.info("found " + array.size() + " tracks to download");
 
             int index = 0;
             for (JSONObject obj : array) {
+
+                if (m_service.taskIsKill()) {
+                    break;
+                }
+
                 try {
                     _syncOne(index, array.size(), obj);
                 } catch (JSONException e) {
@@ -38,6 +44,10 @@ public class AudioSyncTask implements Runnable {
                 }
                 index += 1;
             }
+
+            array = m_service.m_database.m_songsTable.getSyncDeleteTracks();
+            Log.info("found " + array.size() + " tracks to remove");
+
         } finally {
             m_service.syncComplete();
         }

@@ -3,6 +3,9 @@ package com.github.nicksetzer.daedalus.audio;
 import android.content.Intent;
 import android.support.v4.media.RatingCompat;
 import android.support.v4.media.session.MediaSessionCompat;
+import android.view.KeyEvent;
+
+import com.github.nicksetzer.daedalus.Log;
 
 public class BTCallback extends MediaSessionCompat.Callback {
 
@@ -11,18 +14,37 @@ public class BTCallback extends MediaSessionCompat.Callback {
         m_manager = manager;
     }
 
-    /*
+
     @Override
     public boolean onMediaButtonEvent(Intent mediaButtonIntent) {
-        android.util.Log.e("daedalus-js","received media button event");
-        return false; // true when handled
+
+        if (mediaButtonIntent.getAction().equals(Intent.ACTION_MEDIA_BUTTON)) {
+            KeyEvent event = mediaButtonIntent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
+            if (event.getAction() == KeyEvent.ACTION_UP) {
+                switch (event.getKeyCode()) {
+                    case KeyEvent.KEYCODE_MEDIA_NEXT:
+                        m_manager.skipToNext();
+                        return true;
+                    default:
+                        break;
+                }
+            }
+            /*
+            Log.info("received media button event: " + action);
+            for (String key : mediaButtonIntent.getExtras().keySet()) {
+                Log.info(key, mediaButtonIntent.getExtras().get(key).toString());
+            }
+            */
+        }
+
+        return super.onMediaButtonEvent(mediaButtonIntent);
     }
-    */
+
 
     @Override
     public void onPlay() {
 
-        android.util.Log.e("daedalus-js", "onplay");
+        Log.info( "onplay");
         // some bluetooth devices only send play events
         if (m_manager.isPlaying()) {
             m_manager.pause();
@@ -35,54 +57,54 @@ public class BTCallback extends MediaSessionCompat.Callback {
     @Override
     public void onPause() {
 
-        android.util.Log.e("daedalus-js","onpause");
+        Log.info("onpause");
         m_manager.pause();
     }
 
     @Override
     public void onStop() {
 
-        android.util.Log.e("daedalus-js","onstop");
+        Log.info("onstop");
         m_manager.stop();
     }
 
     @Override
     public void onSkipToNext() {
 
-        android.util.Log.e("daedalus-js","onskiptonext");
+        Log.info("onskiptonext");
         m_manager.skipToNext();
     }
 
     @Override
     public void onSkipToPrevious() {
 
-        android.util.Log.e("daedalus-js","onskiptoprev");
+        Log.info("onskiptoprev");
         m_manager.skipToPrev();
     }
 
     @Override
     public void onSeekTo(long pos) {
 
-        android.util.Log.e("daedalus-js","onseek");
+        Log.info("onseek");
         m_manager.seek(pos);
     }
 
     @Override
     public void onFastForward() {
 
-        android.util.Log.e("daedalus-js","onfastforward");
+        Log.info("onfastforward");
     }
 
     @Override
     public void onRewind() {
 
-        android.util.Log.e("daedalus-js","onwind");
+        Log.info("onwind");
     }
 
     @Override
     public void onSetRating(RatingCompat rating) {
 
-        android.util.Log.e("daedalus-js","onsetrating");
+        Log.info("onsetrating");
     }
 
 }

@@ -675,6 +675,12 @@
   padding-left: 1em;
   padding-right: 1em;
 }
+.dcs-f089c6c5-3 {
+  padding-left: .5em;
+  padding-right: .5em;
+  cursor: pointer;
+  border: solid 1px black;
+}
 .dcs-a4af2c4a-0 {
   width: 100%;
 }
