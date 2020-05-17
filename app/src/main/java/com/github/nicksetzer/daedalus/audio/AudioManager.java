@@ -107,6 +107,7 @@ public class AudioManager {
                 // do stuff here
                 if (m_autoPlay) {
                     m_mediaPlayer.start();
+                    m_service.updateNotification();
                 }
 
                 m_service.sendEvent("onprepared", "{}");
@@ -225,15 +226,19 @@ public class AudioManager {
 
         m_session.setMetadata(data);
 
+        m_service.updateNotification();
+
         m_service.sendEvent("onindexchanged", "{\"index\": " + m_queue.getCurrentIndex() + "}");
     }
 
     public void play() {
         m_mediaPlayer.start();
+        m_service.updateNotification();
     }
 
     public void pause() {
         m_mediaPlayer.pause();
+        m_service.updateNotification();
     }
 
     public void stop() {

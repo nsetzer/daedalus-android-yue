@@ -1,9 +1,12 @@
 package com.github.nicksetzer.daedalus.audio;
 
+import android.content.Intent;
 import android.media.MediaMetadata;
+import android.net.Uri;
 import android.support.v4.media.MediaMetadataCompat;
 
 import com.github.nicksetzer.daedalus.Log;
+import com.github.nicksetzer.daedalus.R;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -11,6 +14,8 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.OutputStreamWriter;
+
+import androidx.core.app.NotificationCompat;
 
 public class AudioQueue {
 
@@ -91,6 +96,7 @@ public class AudioQueue {
                 .build();
 
     }
+
     public void setCurrentIndex(int index) {
         m_currentIndex = index;
     }
@@ -117,5 +123,36 @@ public class AudioQueue {
             return true;
         }
         return false;
+    }
+
+    public void updateNotification(NotificationCompat.Builder builder) {
+
+        if (m_queue == null || m_currentIndex < 0 || m_currentIndex >= m_queue.length()) {
+
+            builder.setContentTitle("App is running in background");
+            return;
+        }
+        try {
+            JSONObject obj = m_queue.getJSONObject(m_currentIndex);
+
+            if (obj.has("artist")) {
+                String artist = obj.getString("artist");
+                builder.setContentText(artist);
+            }
+            if (obj.has("album")) {
+                String album = obj.getString("album");
+                builder.setSubText(album);
+            }
+            if (obj.has("title")) {
+                String title = obj.getString("title");
+                builder.setContentTitle(title);
+            }
+
+
+        } catch (JSONException e) {
+            Log.error("unable to format notification", e);
+        }
+        return;
+
     }
 }

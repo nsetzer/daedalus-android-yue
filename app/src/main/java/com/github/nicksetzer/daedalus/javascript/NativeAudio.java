@@ -135,8 +135,8 @@ public class NativeAudio {
     }
 
     @JavascriptInterface
-    public String buildForest(String query, boolean syncedOnly) {
-        String forest = m_activity.getBoundService().mediaBuildForest(query, syncedOnly);
+    public String buildForest(String query, int syncState) {
+        String forest = m_activity.getBoundService().mediaBuildForest(query, syncState);
         return forest;
     }
 

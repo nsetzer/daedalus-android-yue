@@ -32,17 +32,21 @@ public class SongsTable extends EntityTable {
         m_db.execute(query, new String[]{});
     }
 
-    public JSONArray queryForest(String query, boolean syncedOnly) {
+    public JSONArray queryForest(String query, int syncState) {
 
         StringBuilder sb = new StringBuilder();
         sb.append("SELECT spk, uid, artist, artist_key, album, title, length, sync, synced, file_path, rating FROM songs");
 
         ArrayList<String> params = new ArrayList<>();
 
-        if (!query.isEmpty() || syncedOnly) {
+        if (!query.isEmpty() || syncState > 0) {
             sb.append(" WHERE (");
-            if (syncedOnly) {
+            if (syncState == 1) {
                 sb.append("(synced ==");
+                sb.append(1);
+                sb.append(") AND ");
+            } else if (syncState == 2) {
+                sb.append("(synced !=");
                 sb.append(1);
                 sb.append(") AND ");
             }

@@ -30,6 +30,7 @@ import android.net.Uri;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.Process;
+import android.support.v4.media.session.PlaybackStateCompat;
 
 
 import com.github.nicksetzer.daedalus.Log;
@@ -87,6 +88,9 @@ public class AudioService extends Service {
     private boolean m_fetchAlive = false;
     private Lock m_fetchLock;
 
+    static final String NOTIFICATION_CHANNEL_ID = "com.github.nicksetzer.daedalus";
+    NotificationManager m_notificationManager;
+
     public AudioService() {
 
         super();
@@ -123,6 +127,30 @@ public class AudioService extends Service {
     }
 
     private void startForeground() {
+
+
+        String channelName = "My Background Service";
+        NotificationChannel chan = new NotificationChannel(NOTIFICATION_CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_NONE);
+        chan.setLightColor(Color.BLUE);
+        chan.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+        m_notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        assert m_notificationManager != null;
+        m_notificationManager.createNotificationChannel(chan);
+
+        updateNotification();
+
+    }
+
+    public void updateNotification() {
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
+
+        if (m_manager != null && m_manager.m_queue != null) {
+            m_manager.m_queue.updateNotification(builder);
+        } else {
+            builder.setContentTitle("App is running in background");
+        }
+
         Context context = getApplicationContext();
         String packageName = context.getPackageName();
         Intent openApp = context.getPackageManager().getLaunchIntentForPackage(packageName);
@@ -133,26 +161,59 @@ public class AudioService extends Service {
         openApp.setAction(Intent.ACTION_VIEW);
         openApp.setData(Uri.parse("daedalus://notification.click"));
 
-        String NOTIFICATION_CHANNEL_ID = "com.github.nicksetzer.daedalus";
-        String channelName = "My Background Service";
-        NotificationChannel chan = new NotificationChannel(NOTIFICATION_CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_NONE);
-        chan.setLightColor(Color.BLUE);
-        chan.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
-        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        assert manager != null;
-        manager.createNotificationChannel(chan);
+        if (m_manager != null && m_manager.m_queue != null) {
 
-        NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
-        Notification notification = notificationBuilder.setOngoing(true)
+
+            {
+                //Intent mediaIntent = new Intent(context, AudioService.class);
+                //Intent mediaIntent = new Intent();
+                //mediaIntent.setAction(AudioActions.ACTION_SKIPTOPREV);
+                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
+                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS);
+                builder.addAction(R.drawable.previous, "previous", intent);
+            }
+
+            if (mediaIsPlaying()){
+                //Intent mediaIntent = new Intent(context, AudioService.class);
+                //Intent mediaIntent = new Intent();
+                //mediaIntent.setAction(AudioActions.ACTION_PAUSE);
+                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
+                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PAUSE);
+
+                builder.addAction(R.drawable.pause, "pause", intent);
+            } else {
+                //Intent mediaIntent = new Intent(context, AudioService.class);
+                //Intent mediaIntent = new Intent();
+                //mediaIntent.setAction(AudioActions.ACTION_PLAY);
+                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
+                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PLAY);
+                builder.addAction(R.drawable.play, "play", intent);
+            }
+
+            {
+                //Intent mediaIntent = new Intent(context, AudioService.class);
+                //Intent mediaIntent = new Intent();
+                //mediaIntent.setAction(AudioActions.ACTION_SKIPTONEXT);
+                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
+
+                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_NEXT);
+                builder.addAction(R.drawable.forward, "forward", intent);
+            }
+        }
+
+
+        Notification notification = builder.setOngoing(true)
                 .setSmallIcon(R.drawable.play)
-                .setContentTitle("App is running in background")
                 .setPriority(NotificationManager.IMPORTANCE_MIN)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
                 .build();
 
         startForeground(1, notification);
+
     }
+
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         android.util.Log.e("daedalus-js", "onStartCommand");
@@ -241,7 +302,7 @@ public class AudioService extends Service {
                         Log.info("cancel task");
                         taskKill();
                     default:
-                        Log.error("daedalus", "unknown action");
+                        Log.error("unknown action", action, intent.getExtras().toString());
                         break;
 
                 }
@@ -395,8 +456,8 @@ public class AudioService extends Service {
             m_fetchLock.unlock();
         }
     }
-    public String mediaBuildForest(String query, boolean syncedOnly) {
-        return m_database.m_songsTable.queryForest(query, syncedOnly).toString();
+    public String mediaBuildForest(String query, int syncState) {
+        return m_database.m_songsTable.queryForest(query, syncState).toString();
     }
 
 }
