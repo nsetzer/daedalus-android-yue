@@ -1,3 +1,6 @@
 [submodule "daedalus"]
 	path = daedalus
 	url = https://github.com/nsetzer/daedalus.git
+[submodule "metallurgy"]
+	path = metallurgy
+	url = https://github.com/nsetzer/daedalus-android-metallurgy

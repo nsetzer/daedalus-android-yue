@@ -3,7 +3,7 @@ package com.github.nicksetzer.daedalus.audio.tasks;
 import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.api.YueApi;
 import com.github.nicksetzer.daedalus.audio.AudioService;
-import com.github.nicksetzer.daedalus.orm.NaturalPrimaryKey;
+import com.github.nicksetzer.metallurgy.orm.NaturalPrimaryKey;
 
 import org.json.JSONException;
 import org.json.JSONObject;

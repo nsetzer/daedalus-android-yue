@@ -736,6 +736,29 @@
 .dcs-f089c6c5-3 {
   cursor: pointer;
 }
+.dcs-f089c6c5-4 {
+  width: 100%;
+}
+.dcs-f089c6c5-5 {
+  padding-left: 1em;
+  padding-right: 1em;
+}
+.dcs-f089c6c5-6 {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: .25em;
+  border-style: solid;
+  border-width: 1px;
+  width: calc(100% - 2px);
+}
+.dcs-f089c6c5-7 {
+  height: 1em;
+  min-height: 1em;
+}
+.dcs-f089c6c5-8 {
+  height: 33vh;
+  min-height: 64px;
+}
 .dcs-a4af2c4a-0 {
   width: 100%;
 }

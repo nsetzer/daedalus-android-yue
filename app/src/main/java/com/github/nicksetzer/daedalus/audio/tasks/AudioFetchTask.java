@@ -1,10 +1,8 @@
 package com.github.nicksetzer.daedalus.audio.tasks;
 
-import android.os.AsyncTask;
-
 import com.github.nicksetzer.daedalus.api.YueApi;
 import com.github.nicksetzer.daedalus.audio.AudioService;
-import com.github.nicksetzer.daedalus.orm.NaturalPrimaryKey;
+import com.github.nicksetzer.metallurgy.orm.NaturalPrimaryKey;
 
 import org.json.JSONArray;
 import org.json.JSONException;

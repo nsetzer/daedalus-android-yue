@@ -3,6 +3,7 @@ package com.github.nicksetzer.daedalus.javascript;
 import android.content.Intent;
 import android.webkit.JavascriptInterface;
 
+import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.audio.AudioService;
 import com.github.nicksetzer.daedalus.WebActivity;
 import com.github.nicksetzer.daedalus.audio.AudioActions;
@@ -136,6 +137,7 @@ public class NativeAudio {
 
     @JavascriptInterface
     public String buildForest(String query, int syncState) {
+        Log.error(query);
         String forest = m_activity.getBoundService().mediaBuildForest(query, syncState);
         return forest;
     }

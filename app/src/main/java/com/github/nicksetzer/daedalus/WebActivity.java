@@ -2,16 +2,22 @@ package com.github.nicksetzer.daedalus;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.provider.Settings;
 import android.view.KeyEvent;
 import android.webkit.ValueCallback;
 import android.webkit.WebView;
@@ -35,19 +41,22 @@ public class WebActivity extends Activity {
 
     private Handler m_timeHandler = new Handler();
 
+
+
+    
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_web);
 
+        m_receiver = new ServiceEventReceiver();
+
         AudioWebView view = findViewById(R.id.DaedalusView);
 
         view.setWebContentsDebuggingEnabled(true);
 
         view.getSettings().setJavaScriptEnabled(true);
-
-        m_receiver = new ServiceEventReceiver();
 
         view.setWebChromeClient(new DaedalusWebChromeClient());
         view.setWebViewClient(new DaedalusWebViewClient(this, this.profile == "dev"));
@@ -85,7 +94,9 @@ public class WebActivity extends Activity {
         });
 
         Log.info("successfully launch on create");
+        Log.warn("successfully launch on create");
         Log.error("successfully launch on create");
+
     }
 
     @Override
@@ -133,7 +144,8 @@ public class WebActivity extends Activity {
         android.util.Log.e("daedalus-js", "launching audio service");
     }
 
-    private int STORAGE_PERMISSION_CODE = 23;
+    private int STORAGE_PERMISSION_CODE = 1000; // application specific request code
+
 
     private void requestStoragePermission(){
 
@@ -164,6 +176,8 @@ public class WebActivity extends Activity {
                 Toast.makeText(this,"Oops you just denied the permission",Toast.LENGTH_LONG).show();
             }
         }
+
+
     }
 
     private AudioService m_audioService;
@@ -239,5 +253,9 @@ public class WebActivity extends Activity {
         }
 
     }
+
+
+
+
 
 }

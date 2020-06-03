@@ -3,10 +3,10 @@ package com.github.nicksetzer.daedalus.audio;
 import android.content.Context;
 import android.database.Cursor;
 
-import com.github.nicksetzer.daedalus.orm.DatabaseConnection;
-import com.github.nicksetzer.daedalus.orm.EntityTable;
-import com.github.nicksetzer.daedalus.orm.NaturalPrimaryKey;
-import com.github.nicksetzer.daedalus.orm.TableSchema;
+import com.github.nicksetzer.metallurgy.orm.DatabaseConnection;
+import com.github.nicksetzer.metallurgy.orm.EntityTable;
+import com.github.nicksetzer.metallurgy.orm.NaturalPrimaryKey;
+import com.github.nicksetzer.metallurgy.orm.TableSchema;
 
 import org.json.JSONException;
 import org.json.JSONObject;

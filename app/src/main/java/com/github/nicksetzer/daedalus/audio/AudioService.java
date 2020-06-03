@@ -302,7 +302,8 @@ public class AudioService extends Service {
                         Log.info("cancel task");
                         taskKill();
                     default:
-                        Log.error("unknown action", action, intent.getExtras().toString());
+
+                        Log.error("unknown action", action);
                         break;
 
                 }
@@ -318,7 +319,7 @@ public class AudioService extends Service {
             m_database.close();
         }
         android.util.Log.e("daedalus", "destroy service");
-        if (m_manager.isPlaying()) {
+        if (m_manager != null && m_manager.isPlaying()) {
             m_manager.stop();
         }
         super.onDestroy();

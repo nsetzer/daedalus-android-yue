@@ -3,9 +3,9 @@ package com.github.nicksetzer.daedalus.audio;
 import android.database.Cursor;
 
 import com.github.nicksetzer.daedalus.Log;
-import com.github.nicksetzer.daedalus.orm.DatabaseConnection;
-import com.github.nicksetzer.daedalus.orm.EntityTable;
-import com.github.nicksetzer.daedalus.orm.TableSchema;
+import com.github.nicksetzer.metallurgy.orm.DatabaseConnection;
+import com.github.nicksetzer.metallurgy.orm.EntityTable;
+import com.github.nicksetzer.metallurgy.orm.TableSchema;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -14,6 +14,7 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
 public class SongsTable extends EntityTable {
@@ -34,22 +35,40 @@ public class SongsTable extends EntityTable {
 
     public JSONArray queryForest(String query, int syncState) {
 
+        Log.error(query);
+
         StringBuilder sb = new StringBuilder();
         sb.append("SELECT spk, uid, artist, artist_key, album, title, length, sync, synced, file_path, rating FROM songs");
 
-        ArrayList<String> params = new ArrayList<>();
+        List<String> params = new ArrayList<>();
+        List<String> qparams = new ArrayList<>();
+
+        String where = Search.parse(query, qparams);
 
         if (!query.isEmpty() || syncState > 0) {
             sb.append(" WHERE (");
             if (syncState == 1) {
-                sb.append("(synced ==");
+                sb.append("(synced == ");
                 sb.append(1);
-                sb.append(") AND ");
+                sb.append(")");
+                if (!where.isEmpty()) {
+                    sb.append(" AND ");
+                }
             } else if (syncState == 2) {
-                sb.append("(synced !=");
+                sb.append("(synced != ");
                 sb.append(1);
-                sb.append(") AND ");
+                sb.append(")");
+                if (!where.isEmpty()) {
+                    sb.append(" AND ");
+                }
             }
+            Log.error(query);
+
+            params.addAll(qparams);
+            sb.append(where);
+            sb.append(")");
+            Log.error(String.join(", ", params));
+            /*
             String[] parts = query.split("\\s+");
             boolean first = true;
             for (String part : parts) {
@@ -66,11 +85,13 @@ public class SongsTable extends EntityTable {
             }
 
             sb.append(")");
+            */
         }
 
         sb.append(" ORDER BY artist_key COLLATE NOCASE, album COLLATE NOCASE, title COLLATE NOCASE");
 
         String sql = sb.toString();
+        Log.error(sql);
         Cursor cursor = m_db.query(sql, params.toArray(new String[]{}));
 
         JSONArray forest = new JSONArray();

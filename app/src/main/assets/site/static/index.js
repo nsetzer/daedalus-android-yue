@@ -785,6 +785,7 @@ daedalus=(function(){
                 this.container.update();
               };
               if(this.current_location!==location){
+                this.setMatch(match);
                 element.updateState({match:match});
               };
               this.current_index=index;
@@ -801,6 +802,9 @@ daedalus=(function(){
           };
           setDefaultRoute(callback){
             this.default_callback=callback;
+          };
+          setMatch(match){
+
           };
         };
         class AuthenticatedRouter extends Router {
@@ -1866,8 +1870,8 @@ components=(function(daedalus,resources){
                           []);
             this.attrs={menu:this.appendChild(new NavMenuImpl(this)),fixed:false};
             
-            this.appendChild(new DomElement("div",{className:style.alignRight},[]));
-            
+            this.appendChild(new DomElement("div",{className:style.alignRight,onClick:(
+                                      event)=>event.stopPropagation()},[]));
             this.attrs.swipe=new SwipeHandler(document,(pt,direction)=>{
                 if(direction==SwipeHandler.RIGHT&&pt.x<20){
                   this.show();
@@ -2282,10 +2286,17 @@ router=(function(api,daedalus){
     "use strict";
     const AuthenticatedRouter=daedalus.AuthenticatedRouter;
     const patternCompile=daedalus.patternCompile;
+    let current_match=null;
     class AppRouter extends AuthenticatedRouter {
       isAuthenticated(){
         return api.getUsertoken()!==null;
       };
+      setMatch(match){
+        current_match=match;
+      };
+    };
+    AppRouter.match=()=>{
+      return current_match;
     };
     function navigate(location){
       history.pushState({},"",location);
@@ -2293,8 +2304,8 @@ router=(function(api,daedalus){
     const route_urls={userStoragePreview:"/u/storage/preview/:path*",userStorageList:"/u/storage/list/:path*",
           userStorage:"/u/storage/:mode/:path*",userFs:"/u/fs/:path*",userPlaylist:"/u/playlist",
           userSettings:"/u/settings",userLibraryList:"/u/library/list",userLibrarySync:"/u/library/sync",
-          userRadio:"/u/radio",userWildCard:"/u/:path*",login:"/login",publicFile:"/p/:uid/:filename",
-          wildCard:"/:path*"};
+          userLibrarySavedSearch:"/u/library/saved",userRadio:"/u/radio",userWildCard:"/u/:path*",
+          login:"/login",publicFile:"/p/:uid/:filename",wildCard:"/:path*"};
     const routes={};
     Object.keys(route_urls).map(key=>{
         routes[key]=patternCompile(route_urls[key]);
@@ -2807,6 +2818,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
     const TextInputElement=daedalus.TextInputElement;
     const Router=daedalus.Router;
     const LinkElement=daedalus.LinkElement;
+    const routes=router.routes;
     const[LandingPage]=(function(){
         const styles={main:'dcs-0efdbccc-0',btn_center:'dcs-0efdbccc-1'};
         class LandingPage extends DomElement {
@@ -2856,7 +2868,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 if(data.token){
                   api.setUsertoken(data.token);
                   this.attrs.warning.addClassName(style.hide);
-                  history.pushState({},"","/u/storage/list");
+                  history.pushState({},"",routes.userLibraryList());
                 }else{
                   this.attrs.warning.removeClassName(style.hide);
                   console.error(data.error);
@@ -4404,7 +4416,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         };
         return[SettingsPage];
       })();
-    const[LibraryPage,SyncPage]=(function(){
+    const[LibraryPage,SavedSearchPage,SyncPage]=(function(){
         class SearchModeCheckBox extends components.CheckBoxElement {
           onClick(event){
             this.attrs.callback();
@@ -4424,7 +4436,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           };
         };
         const style={main:'dcs-f089c6c5-0',grow:'dcs-f089c6c5-1',viewPad:'dcs-f089c6c5-2',
-                  listItemCheck:'dcs-f089c6c5-3'};
+                  listItemCheck:'dcs-f089c6c5-3',savedSearchPage:'dcs-f089c6c5-4',savedSearchList:'dcs-f089c6c5-5',
+                  savedSearchItem:'dcs-f089c6c5-6',padding1:'dcs-f089c6c5-7',padding2:'dcs-f089c6c5-8'};
+        
         function shuffle(a){
           for(let i=a.length-1;i>0;i--){
             const j=Math.floor(Math.random()*(i+1));
@@ -4439,6 +4453,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.txtInput=new TextInputElement("",null,()=>{
                 this.attrs.parent.search(this.attrs.txtInput.props.value);
               });
+            this.attrs.txtInput.updateProps({"autocapitalize":"off"});
             this.addAction(resources.svg['menu'],()=>{
                 store.globals.showMenu();
               });
@@ -4464,6 +4479,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.addRowAction(0,resources.svg['search'],()=>{
                 this.attrs.parent.search(this.attrs.txtInput.props.value);
               });
+          };
+          setQuery(query){
+            this.attrs.txtInput.setText(query);
           };
           handleCheck(){
             this.attrs.chk.setCheckState((this.attrs.chk.attrs.checkState+1)%3);
@@ -4638,8 +4656,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             super("div",{className:style.main},[]);
             this.attrs={header:new Header(this),footer:new Footer(this),view:new LibraryTreeView(
                               this,components.TreeItem.SELECTION_MODE_HIGHLIGHT),more:new components.MoreMenu(
-                              this.handleHideFileMore.bind(this)),more_context_item:null,firstMount:true};
-            
+                              this.handleHideFileMore.bind(this)),more_context_item:null,firstMount:true,
+                          currentSearch:null};
             this.attrs.view.addClassName(style.viewPad);
             this.attrs.more.addAction("Add To Queue",this.handleAddToQueue.bind(this));
             
@@ -4650,15 +4668,26 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           };
           elementMounted(){
             console.log("mount library view");
-            if(this.attrs.firstMount){
+            console.error("query1 "+daedalus.util.parseParameters()['query']);
+            let query=daedalus.util.parseParameters()['query'];
+            if(query===null||query===undefined){
+              query="";
+            }else{
+              query=""+query;
+            };
+            if(this.attrs.firstMount||(this.attrs.currentSearch!==query)){
               this.attrs.firstMount=false;
-              this.search("");
+              this.attrs.header.setQuery(query);
+              this.search(query);
             };
           };
           search(text){
             this.attrs.view.reset();
+            this.attrs.currentSearch=text;
+            router.navigate(router.routes.userLibraryList({},{query:text}));
             this.attrs.search_promise=new Promise((accept,reject)=>{
                 if(daedalus.platform.isAndroid){
+                  console.error("query2 "+text);
                   let syncState=this.attrs.header.syncState();
                   let payload=AndroidNativeAudio.buildForest(text,syncState);
                   let forest=JSON.parse(payload);
@@ -4692,6 +4721,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.txtInput=new TextInputElement("",null,()=>{
                 this.attrs.parent.search(this.attrs.txtInput.props.value);
               });
+            this.attrs.txtInput.updateProps({"autocapitalize":"off"});
             this.attrs.status=new components.MiddleText("...");
             this.addAction(resources.svg['menu'],()=>{
                 store.globals.showMenu();
@@ -4850,7 +4880,55 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             console.log("on show more clicked");
           };
         };
-        return[LibraryPage,SyncPage];
+        class SavedSearchHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+          };
+        };
+        class SavedSearchItem extends DomElement {
+          constructor(name,query){
+            super("div",{className:style.savedSearchItem},[]);
+            this.attrs={name,query};
+            this.appendChild(new DomElement("div",{},[new TextElement(name)]));
+            this.appendChild(new DomElement("div",{},[new TextElement(query)]));
+          };
+          onClick(event){
+            router.navigate(router.routes.userLibraryList({},{query:this.attrs.query}));
+            
+          };
+        };
+        const savedSearches=[{name:"stoner best",query:"stoner rating >= 5"},{name:"grunge best",
+                      query:"grunge rating >= 5"},{name:"visual best",query:"\"visual kei\" rating >= 5"},
+                  {name:"english best",query:"language = english rating >= 5"},{name:"stone temple pilots",
+                      query:"\"stone temple pilots\""},{name:"soundwitch",query:"soundwitch"},
+                  {name:"Gothic Emily",query:"\"gothic emily\""}];
+        class SavedSearchList extends DomElement {
+          constructor(parent,index,song){
+            super("div",{className:style.savedSearchList},[]);
+            for(let i=0;i<savedSearches.length;i++){
+              let s=savedSearches[i];
+              this.appendChild(new SavedSearchItem(s.name,s.query));
+            };
+          };
+        };
+        class SavedSearchPage extends DomElement {
+          constructor(){
+            super("div",{className:style.SavedSearchPage},[]);
+            this.attrs={device:audio.AudioDevice.instance(),header:new SavedSearchHeader(
+                              this),container:new SavedSearchList(),padding1:new DomElement("div",
+                              {className:style.padding1},[]),padding2:new DomElement("div",{className:style.padding2},
+                              [])};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.padding1);
+            this.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.padding2);
+          };
+        };
+        return[LibraryPage,SavedSearchPage,SyncPage];
       })();
     const[UserRadioPage]=(function(){
         const style={main:'dcs-a4af2c4a-0',header:'dcs-a4af2c4a-1'};
@@ -4883,7 +4961,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[];
       })();
     return{FileSystemPage,LandingPage,LibraryPage,LoginPage,PlaylistPage,PublicFilePage,
-          SettingsPage,StoragePage,StoragePreviewPage,SyncPage,UserRadioPage};
+          SavedSearchPage,SettingsPage,StoragePage,StoragePreviewPage,SyncPage,UserRadioPage};
+    
   })(api,audio,components,daedalus,resources,router,store);
 app=(function(api,components,daedalus,pages,resources,router,store){
     "use strict";
@@ -4913,12 +4992,14 @@ app=(function(api,components,daedalus,pages,resources,router,store){
               '/login');
       rt.addAuthRoute(u.userLibrarySync,(cbk)=>parent.handleRoute(cbk,pages.SyncPage),
               '/login');
+      rt.addAuthRoute(u.userLibrarySavedSearch,(cbk)=>parent.handleRoute(cbk,pages.SavedSearchPage),
+              '/login');
       rt.addAuthRoute(u.userRadio,(cbk)=>parent.handleRoute(cbk,pages.UserRadioPage),
               '/login');
       rt.addAuthRoute(u.userWildCard,(cbk)=>{
           history.pushState({},"","/u/storage/list");
         },'/login');
-      rt.addNoAuthRoute(u.login,(cbk)=>parent.handleRoute(cbk,pages.LoginPage),"/u/storage/list");
+      rt.addNoAuthRoute(u.login,(cbk)=>parent.handleRoute(cbk,pages.LoginPage),"/u/library/list");
       
       rt.addRoute(u.publicFile,(cbk)=>{
           parent.handleRoute(cbk,pages.PublicFilePage);
@@ -4955,13 +5036,15 @@ app=(function(api,components,daedalus,pages,resources,router,store){
             this.attrs.nav.hide();
           });
         this.attrs.nav.addSubAction(resources.svg.bolt,"Dynamic Playlist",()=>{
-            history.pushState({},"","/u/library/list");
+            history.pushState({},"","/u/library/saved");
             this.attrs.nav.hide();
           });
-        this.attrs.nav.addSubAction(resources.svg.download,"Sync",()=>{
-            history.pushState({},"","/u/library/sync");
-            this.attrs.nav.hide();
-          });
+        if(daedalus.platform.isAndroid){
+          this.attrs.nav.addSubAction(resources.svg.download,"Sync",()=>{
+              history.pushState({},"","/u/library/sync");
+              this.attrs.nav.hide();
+            });
+        };
         this.attrs.nav.addAction(resources.svg.documents,"Storage",()=>{
             history.pushState({},"","/u/storage/list");
             this.attrs.nav.hide();
@@ -4969,7 +5052,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         this.attrs.nav.addSubAction(resources.svg.note,"Notes",()=>{
             this.attrs.nav.hide();
           });
-        if(daedalus.platform.isMobile){
+        if(daedalus.platform.isAndroid){
           this.attrs.nav.addAction(resources.svg.documents,"File System",()=>{
               history.pushState({},"","/u/fs");
               this.attrs.nav.hide();
