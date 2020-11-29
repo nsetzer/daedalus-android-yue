@@ -33,7 +33,53 @@ public class SongsTable extends EntityTable {
         m_db.execute(query, new String[]{});
     }
 
-    public JSONArray queryForest(String query, int syncState) {
+    public ArrayList<Pair<Long, String>> getInvalid() {
+        String query = "SELECT spk, file_path FROM songs WHERE valid == 0 AND synced == 1";
+        Cursor cursor = m_db.query(query, null);
+
+        ArrayList<Pair<Long, String>> array = new ArrayList<>();
+
+        if (cursor != null && cursor.moveToFirst()) {
+            while (!cursor.isAfterLast()) {
+                Long spk = cursor.getLong(0);
+                String path = cursor.getString(1);
+                array.add(new Pair<>(spk, path));
+                cursor.moveToNext();
+            }
+        }
+
+        cursor.close();
+
+        return array;
+    }
+
+    public long getSyncedCount() {
+        String query = "SELECT COUNT(*) FROM songs where synced == 1";
+        Cursor cursor  = m_db.query(query, new String[]{});
+        long count = 0;
+        if (cursor != null) {
+            try {
+                if (cursor.moveToFirst()) {
+                    count = cursor.getLong(0);
+                }
+            } finally {
+                cursor.close();
+            }
+        }
+
+        return count;
+    }
+
+    public int removeInvalid() {
+
+        String query = "DELETE FROM songs WHERE valid == 0";
+        Cursor cursor  = m_db.query(query, new String[]{});
+        int count = cursor.getCount();
+        cursor.close();
+        return count;
+    }
+
+    public JSONArray queryForest(String query, int syncState, int showBannished) {
 
         Log.error(query);
 
@@ -45,6 +91,7 @@ public class SongsTable extends EntityTable {
 
         String where = Search.parse(query, qparams);
 
+        // || showBannished == 0
         if (!query.isEmpty() || syncState > 0) {
             sb.append(" WHERE (");
             if (syncState == 1) {
@@ -62,6 +109,11 @@ public class SongsTable extends EntityTable {
                     sb.append(" AND ");
                 }
             }
+
+            //if (showBannished == 0) {
+            //    sb.append("(ban == 0");
+            //}
+
             Log.error(query);
 
             params.addAll(qparams);
@@ -93,6 +145,8 @@ public class SongsTable extends EntityTable {
         String sql = sb.toString();
         Log.error(sql);
         Cursor cursor = m_db.query(sql, params.toArray(new String[]{}));
+
+        Log.info("query returned " + cursor.getCount() + " rows");
 
         JSONArray forest = new JSONArray();
         JSONObject artist = null;

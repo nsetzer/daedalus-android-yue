@@ -20,6 +20,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringWriter;
 
+import androidx.media.MediaBrowserServiceCompat;
+
 /*
 TODO: update the media session queue.
     every time a new song is loaded update the queue with the next few tracks.
@@ -96,6 +98,8 @@ public class AudioManager {
                 //MediaPlayer.MEDIA_ERROR_UNSUPPORTED
                 //MediaPlayer.MEDIA_ERROR_TIMED_OUT
                 //MEDIA_ERROR_SYSTEM
+                m_service.sendEvent(AudioEvents.ONERROR,
+                        "{\"what\": " + what + ", \"extra\": " + extra + "}");
 
                 return true; // true when error is handled
             }
@@ -108,6 +112,7 @@ public class AudioManager {
                 if (m_autoPlay) {
                     m_mediaPlayer.start();
                     m_service.updateNotification();
+                    m_service.sendEvent(AudioEvents.ONPLAY, "{}");
                 }
 
                 m_service.sendEvent("onprepared", "{}");
@@ -155,6 +160,8 @@ public class AudioManager {
     public MediaSessionCompat getSession() {
         return m_session;
     }
+
+    public MediaPlayer getPlayer() { return m_mediaPlayer; }
 
     public void setQueueData(final String data) {
 
@@ -234,11 +241,17 @@ public class AudioManager {
     public void play() {
         m_mediaPlayer.start();
         m_service.updateNotification();
+
+        String event = (m_mediaPlayer.isPlaying()?AudioEvents.ONPLAY:AudioEvents.ONERROR);
+        m_service.sendEvent(event, "{}");
     }
 
     public void pause() {
         m_mediaPlayer.pause();
         m_service.updateNotification();
+
+        String event = (m_mediaPlayer.isPlaying()?AudioEvents.ONERROR:AudioEvents.ONPAUSE);
+        m_service.sendEvent(event, "{}");
     }
 
     public void stop() {

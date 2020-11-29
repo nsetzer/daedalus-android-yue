@@ -24,6 +24,7 @@ import android.webkit.WebView;
 import android.widget.Toast;
 
 import com.github.nicksetzer.daedalus.audio.AudioActions;
+import com.github.nicksetzer.daedalus.audio.AudioEvents;
 import com.github.nicksetzer.daedalus.audio.AudioService;
 import com.github.nicksetzer.daedalus.audio.AudioWebView;
 import com.github.nicksetzer.daedalus.javascript.AndroidClient;
@@ -37,6 +38,7 @@ public class WebActivity extends Activity {
     String profile = "prd";
 
     ServiceEventReceiver m_receiver;
+    ScreenEventReceiver m_screen_receiver;
     public LocalStorage m_storage;
 
     private Handler m_timeHandler = new Handler();
@@ -97,6 +99,25 @@ public class WebActivity extends Activity {
         Log.warn("successfully launch on create");
         Log.error("successfully launch on create");
 
+        IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_ON);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        filter.addAction(Intent.ACTION_USER_PRESENT);
+
+        m_screen_receiver = new ScreenEventReceiver();
+        registerReceiver(m_screen_receiver, filter);
+
+
+        /*
+        // use reflection to get a stack trace whenever a resource is not closed.
+
+        try {
+            Class.forName("dalvik.system.CloseGuard")
+                    .getMethod("setEnabled", boolean.class)
+                    .invoke(null, true);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+        */
     }
 
     @Override
@@ -122,6 +143,15 @@ public class WebActivity extends Activity {
             }
         });
 
+    }
+
+    @Override
+    public void onPostResume() {
+        super.onPostResume();
+        // called when the app comes into focus, the user is present
+        Log.info("on app resume.");
+
+        invokeJavascriptCallback(AudioEvents.ONRESUME, "{}");
     }
 
     public void onBackPressedResult(boolean result) {
@@ -252,6 +282,24 @@ public class WebActivity extends Activity {
             }
         }
 
+    }
+
+    class ScreenEventReceiver extends BroadcastReceiver {
+
+        public boolean wasScreenOn = true;
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent.getAction().equals(Intent.ACTION_SCREEN_OFF)) {
+                wasScreenOn = false;
+                Log.info("screen is off");
+            } else if (intent.getAction().equals(Intent.ACTION_SCREEN_ON)) {
+                wasScreenOn = true;
+                Log.info("screen is on");
+            } else if (intent.getAction().equals(Intent.ACTION_USER_PRESENT)) {
+                Log.info("user now present");
+            }
+        }
     }
 
 

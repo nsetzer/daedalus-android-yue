@@ -14,4 +14,5 @@ public class AudioEvents {
     public static final String ONSYNCSTATUSUPDATED = "onsyncstatusupdated";
     public static final String ONSYNCPROGRESS = "onsyncprogress";
     public static final String ONSYNCCOMPLETE = "onsynccomplete";
+    public static final String ONRESUME = "onresume";
 }

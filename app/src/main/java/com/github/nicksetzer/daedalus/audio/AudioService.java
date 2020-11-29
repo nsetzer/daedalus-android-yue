@@ -25,12 +25,22 @@ import android.content.Context;
 
 import android.graphics.Color;
 
+import android.media.browse.MediaBrowser;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.net.Uri;
 
 import android.os.Binder;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Process;
+import android.support.v4.media.MediaBrowserCompat;
+import android.support.v4.media.MediaDescriptionCompat;
+import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
+import android.text.TextUtils;
+import android.view.KeyEvent;
 
 
 import com.github.nicksetzer.daedalus.Log;
@@ -42,6 +52,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -54,9 +65,18 @@ import java.util.concurrent.locks.ReentrantLock;
 import androidx.annotation.Nullable;
 
 import androidx.core.app.NotificationCompat;
+import androidx.media.MediaBrowserServiceCompat;
 import androidx.media.session.MediaButtonReceiver;
 
-public class AudioService extends Service {
+/**
+ * Android 11 turned this from a default `Service` into a MediaBrowserServiceCompat
+ * this was to support bluetooth again, under a new uniformed media api
+ */
+public class AudioService extends MediaBrowserServiceCompat {
+
+    private static final String MY_MEDIA_ROOT_ID = "media_root_id";
+    private static final String MY_EMPTY_MEDIA_ROOT_ID = "empty_root_id";
+
 
     AudioManager m_manager;
     public Database m_database;
@@ -100,6 +120,7 @@ public class AudioService extends Service {
 
     @Override
     public void onCreate() {
+        super.onCreate();
 
         BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
         m_executor = new ThreadPoolExecutor(
@@ -117,13 +138,54 @@ public class AudioService extends Service {
 
         m_fetchRunning = false;
         m_fetchLock = new ReentrantLock();
-        super.onCreate();
+        //super.onCreate();
+
     }
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         super.onTaskRemoved(rootIntent);
         stopSelf();
+    }
+
+    @Override
+    public BrowserRoot onGetRoot(String clientPackageName, int clientUid,
+                                 Bundle rootHints) {
+
+        // (Optional) Control the level of access for the specified package name.
+        // You'll need to write your own logic to do this.
+        /*
+        if (allowBrowsing(clientPackageName, clientUid)) {
+            // Returns a root ID that clients can use with onLoadChildren() to retrieve
+            // the content hierarchy.
+            return new BrowserRoot(MY_MEDIA_ROOT_ID, null);
+        } else {
+            // Clients can connect, but this BrowserRoot is an empty hierachy
+            // so onLoadChildren returns nothing. This disables the ability to browse for content.
+            return new BrowserRoot(MY_EMPTY_MEDIA_ROOT_ID, null);
+        }
+        */
+
+        return new BrowserRoot(MY_EMPTY_MEDIA_ROOT_ID, null);
+    }
+
+    @Override
+    public void onLoadChildren(final String parentMediaId,
+                               final Result<List<MediaBrowserCompat.MediaItem>> result) {
+
+        //  Browsing not allowed
+        if (MY_EMPTY_MEDIA_ROOT_ID.equals(parentMediaId)) {
+            result.sendResult(null);
+            return;
+        }
+
+        // Check if this is the root menu:
+        if (MY_MEDIA_ROOT_ID.equals(parentMediaId)) {
+            result.sendResult(m_manager.m_queue.getMediaItems());
+        } else {
+            result.sendResult(null);
+        }
+
     }
 
     private void startForeground() {
@@ -151,6 +213,31 @@ public class AudioService extends Service {
             builder.setContentTitle("App is running in background");
         }
 
+        builder.setDeleteIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(this,
+                PlaybackStateCompat.ACTION_STOP));
+
+        builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+
+        MediaSessionCompat session = null;
+
+        if (m_manager != null) {
+            session = m_manager.getSession();
+        }
+
+        if (session != null) {
+
+            builder.setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
+                    .setMediaSession(m_manager.getSession().getSessionToken())
+                    .setShowActionsInCompactView(0)
+
+                    // Add a cancel button
+                    .setShowCancelButton(true)
+                    .setCancelButtonIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(this,
+                            PlaybackStateCompat.ACTION_STOP)));
+
+
+        }
+
         Context context = getApplicationContext();
         String packageName = context.getPackageName();
         Intent openApp = context.getPackageManager().getLaunchIntentForPackage(packageName);
@@ -162,6 +249,17 @@ public class AudioService extends Service {
         openApp.setData(Uri.parse("daedalus://notification.click"));
 
         if (m_manager != null && m_manager.m_queue != null) {
+
+            if (session != null) {
+                session.setMetadata(m_manager.m_queue.getMetadata(m_manager.m_queue.getCurrentIndex()));
+                session.setPlaybackState(new PlaybackStateCompat.Builder()
+                        .setState(
+                                mediaIsPlaying()?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
+                                m_manager.getPlayer().getCurrentPosition(),
+                                1.0F)
+                        .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
+                        .build());
+            }
 
 
             {
@@ -178,9 +276,15 @@ public class AudioService extends Service {
                 //Intent mediaIntent = new Intent();
                 //mediaIntent.setAction(AudioActions.ACTION_PAUSE);
                 //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
-                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PAUSE);
 
+                // OLD:
+                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PAUSE);
                 builder.addAction(R.drawable.pause, "pause", intent);
+
+                // NEW:
+                //PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PLAY_PAUSE))
+                //builder.addAction(new NotificationCompat.Action(R.drawable.pause, "pause", intent);
+
             } else {
                 //Intent mediaIntent = new Intent(context, AudioService.class);
                 //Intent mediaIntent = new Intent();
@@ -188,6 +292,7 @@ public class AudioService extends Service {
                 //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
                 PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PLAY);
                 builder.addAction(R.drawable.play, "play", intent);
+
             }
 
             {
@@ -197,14 +302,21 @@ public class AudioService extends Service {
                 //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
 
                 PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_NEXT);
-                builder.addAction(R.drawable.forward, "forward", intent);
+                builder.addAction(R.drawable.next, "forward", intent);
+
             }
+
+            /*{
+                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SEEK_TO);
+                builder.addAction(R.drawable.next, "forward", intent);
+            }*/
         }
+
 
 
         Notification notification = builder.setOngoing(true)
                 .setSmallIcon(R.drawable.play)
-                .setPriority(NotificationManager.IMPORTANCE_MIN)
+                .setPriority(NotificationManager.IMPORTANCE_HIGH)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
                 .build();
@@ -225,6 +337,7 @@ public class AudioService extends Service {
 
         if (m_manager == null) {
             m_manager = new AudioManager(this);
+
         }
 
         if (intent != null) {
@@ -293,6 +406,11 @@ public class AudioService extends Service {
                         m_database.m_songsTable.updateSyncStatus(payload);
                         sendEvent(AudioEvents.ONSYNCSTATUSUPDATED, "{}");
                         break;
+
+                    case AudioActions.ACTION_SYNC_QUERY:
+                        Log.info("received sync query");
+                        this.syncQuery();
+                        break;
                     case AudioActions.ACTION_SYNC:
                         Log.info( "sync");
                         token = intent.getExtras().getString("token");
@@ -301,9 +419,20 @@ public class AudioService extends Service {
                     case AudioActions.ACTION_CANCEL_TASK:
                         Log.info("cancel task");
                         taskKill();
-                    default:
 
-                        Log.error("unknown action", action);
+                    default:
+                        if (action.equals("android.intent.action.MEDIA_BUTTON")) {
+                            Log.info("weird action", action);
+                            if (mediaIsPlaying()) {
+                                m_manager.pause();
+                            } else {
+                                m_manager.play();
+                            }
+                        } else {
+                            Log.error("unknown action", action);
+                        }
+
+
                         break;
 
                 }
@@ -311,6 +440,8 @@ public class AudioService extends Service {
         }
         return START_NOT_STICKY;
     }
+
+
 
     @Override
     public void onDestroy() {
@@ -378,6 +509,17 @@ public class AudioService extends Service {
                 m_fetchAlive = true;
                 m_executor.execute(new AudioFetchTask(this, token));
 
+            }
+        } finally {
+            m_fetchLock.unlock();
+        }
+    }
+
+    public void syncQuery() {
+        m_fetchLock.lock();
+        try {
+            if (!m_fetchRunning) {
+                sendEvent(AudioEvents.ONSYNCCOMPLETE, "{}");
             }
         } finally {
             m_fetchLock.unlock();
@@ -457,8 +599,28 @@ public class AudioService extends Service {
             m_fetchLock.unlock();
         }
     }
-    public String mediaBuildForest(String query, int syncState) {
-        return m_database.m_songsTable.queryForest(query, syncState).toString();
+
+    public String mediaBuildForest(String query, int syncState, int showBannished) {
+        return m_database.m_songsTable.queryForest(query, syncState, showBannished).toString();
     }
+
+    public String getSyncInfo() {
+
+        JSONObject obj = new JSONObject();
+
+        long synced = m_database.m_songsTable.getSyncedCount();
+        long count = m_database.m_songsTable.count();
+
+        try {
+            obj.put("record_count", count);
+            obj.put("synced_tracks", synced);
+        } catch (JSONException e) {
+            Log.error("format error", e);
+        }
+
+        return obj.toString();
+    }
+
+
 
 }

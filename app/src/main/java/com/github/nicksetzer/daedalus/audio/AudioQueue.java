@@ -3,6 +3,9 @@ package com.github.nicksetzer.daedalus.audio;
 import android.content.Intent;
 import android.media.MediaMetadata;
 import android.net.Uri;
+import android.os.Bundle;
+import android.support.v4.media.MediaBrowserCompat;
+import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 
 import com.github.nicksetzer.daedalus.Log;
@@ -14,6 +17,8 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.OutputStreamWriter;
+import java.util.ArrayList;
+import java.util.List;
 
 import androidx.core.app.NotificationCompat;
 
@@ -89,12 +94,75 @@ public class AudioQueue {
             return null;
         }
 
+        //Log.info("duration: " + obj.optLong("length", 0));
         return new MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, obj.optString("artist", "Unknown Artist"))
                 .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, obj.optString("album", "Unknown Album"))
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, obj.optString("title", "Unknown Title"))
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, obj.optLong("length", 0) * 1000)
                 .build();
 
+    }
+
+    /**
+     * this is a half baked implementation
+     * @param index
+     * @return
+     */
+    public MediaBrowserCompat.MediaItem getMediaItem(int index) {
+
+        if (m_queue == null) {
+            return null;
+        }
+
+        if (index < 0 || index >= m_queue.length()) {
+            return null;
+        }
+
+        JSONObject obj = null;
+        try {
+            obj =  m_queue.getJSONObject(index);
+        } catch (JSONException e) {
+            android.util.Log.e("daedalus-js", "unable to get index " + index);
+        }
+
+        if (obj == null) {
+            return null;
+        }
+
+        Bundle duration = new Bundle();
+        duration.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, obj.optLong("length", 0));
+
+        MediaDescriptionCompat desc = new MediaDescriptionCompat.Builder()
+                .setMediaId(obj.optString("uid", "null") + "-" + index)
+                .setTitle(obj.optString("title", "Unknown Album"))
+                .setSubtitle(obj.optString("artist", "Unknown Album"))
+                .setExtras(duration)
+                .build();
+
+        MediaBrowserCompat.MediaItem item = new MediaBrowserCompat.MediaItem(desc,
+                MediaBrowserCompat.MediaItem.FLAG_PLAYABLE);
+
+        return item;
+    }
+
+    public List<MediaBrowserCompat.MediaItem> getMediaItems() {
+
+        if (m_queue == null) {
+            return null;
+        }
+
+        if (m_queue.length()==0) {
+            return null;
+        }
+
+        List<MediaBrowserCompat.MediaItem> mediaItems = new ArrayList<>();
+
+        for (int i=0; i < m_queue.length(); i++) {
+            mediaItems.add(this.getMediaItem(i));
+        }
+
+        return mediaItems;
     }
 
     public void setCurrentIndex(int index) {

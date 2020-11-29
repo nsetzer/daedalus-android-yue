@@ -7,6 +7,10 @@ import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.audio.AudioService;
 import com.github.nicksetzer.daedalus.WebActivity;
 import com.github.nicksetzer.daedalus.audio.AudioActions;
+import com.github.nicksetzer.daedalus.audio.Pair;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 
 public class NativeAudio {
@@ -136,9 +140,9 @@ public class NativeAudio {
     }
 
     @JavascriptInterface
-    public String buildForest(String query, int syncState) {
+    public String buildForest(String query, int syncState, int showBannished) {
         Log.error(query);
-        String forest = m_activity.getBoundService().mediaBuildForest(query, syncState);
+        String forest = m_activity.getBoundService().mediaBuildForest(query, syncState, showBannished);
         return forest;
     }
 
@@ -147,6 +151,13 @@ public class NativeAudio {
         Intent intent = new Intent(m_activity, AudioService.class);
         intent.setAction(AudioActions.ACTION_SYNC_UPDATE);
         intent.putExtra("payload", payload);
+        m_activity.startForegroundService(intent);
+    }
+
+    @JavascriptInterface
+    public void syncQueryStatus() {
+        Intent intent = new Intent(m_activity, AudioService.class);
+        intent.setAction(AudioActions.ACTION_SYNC_QUERY);
         m_activity.startForegroundService(intent);
     }
 
@@ -165,4 +176,13 @@ public class NativeAudio {
         m_activity.startForegroundService(intent);
     }
 
+    @JavascriptInterface
+    public String getSyncInfo() {
+        // # fetched track records
+        // # number synced songs
+
+        String info = m_activity.getBoundService().getSyncInfo();
+        return info;
+
+    }
 }

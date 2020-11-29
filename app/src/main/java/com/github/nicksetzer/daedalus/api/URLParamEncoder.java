@@ -36,23 +36,7 @@ public class URLParamEncoder {
             m_first = true;
         }
 
-        public void add(String key, String val) {
-
-            if (m_first) {
-                m_sb.append("?");
-            } else {
-                m_sb.append("&");
-            }
-
-            m_first = false;
-
-            m_sb.append(encode(key));
-            m_sb.append("=%22");
-            m_sb.append(encode(val));
-            m_sb.append("%22");
-        }
-
-        public void add(String key, int val) {
+        public void add(String key, String val, boolean quote) {
 
             if (m_first) {
                 m_sb.append("?");
@@ -64,37 +48,28 @@ public class URLParamEncoder {
 
             m_sb.append(encode(key));
             m_sb.append("=");
-            m_sb.append(val);
+            if (quote) {
+                m_sb.append("%22");
+            }
+            m_sb.append(encode(val));
+            if (quote) {
+                m_sb.append("%22");
+            }
+        }
+
+        public void add(String key, String val) {
+            add(key, val, true);
+        }
+        public void add(String key, int val) {
+            add(key, Integer.toString(val), false);
         }
 
         public void add(String key, long val) {
-
-            if (m_first) {
-                m_sb.append("?");
-            } else {
-                m_sb.append("&");
-            }
-
-            m_first = false;
-
-            m_sb.append(encode(key));
-            m_sb.append("=");
-            m_sb.append(val);
+            add(key, Long.toString(val), false);
         }
 
         public void add(String key, boolean val) {
-
-            if (m_first) {
-                m_sb.append("?");
-            } else {
-                m_sb.append("&");
-            }
-
-            m_first = false;
-
-            m_sb.append(encode(key));
-            m_sb.append("=");
-            m_sb.append((val)?"true":"false");
+            add(key, (val)?"true":"false", false);
         }
 
         public String build() {

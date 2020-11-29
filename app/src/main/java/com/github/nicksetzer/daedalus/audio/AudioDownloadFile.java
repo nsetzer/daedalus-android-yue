@@ -40,7 +40,7 @@ public class AudioDownloadFile extends AsyncTask<String,Integer,Long> {
             URLConnection connection = url.openConnection();
             connection.connect();
 
-            int lenghtOfFile = connection.getContentLength();
+            int lengthOfFile = connection.getContentLength();
 
             File folder = new File(destinationDirectory);
             if(!folder.exists()){
@@ -57,7 +57,7 @@ public class AudioDownloadFile extends AsyncTask<String,Integer,Long> {
             long total = 0;
             while ((count = input.read(data)) != -1) {
                 total += count;
-                publishProgress ((int)(total*100/lenghtOfFile));
+                publishProgress ((int)(total*100/lengthOfFile));
                 output.write(data, 0, count);
             }
             output.flush();

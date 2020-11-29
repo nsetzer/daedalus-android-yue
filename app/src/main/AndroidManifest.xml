@@ -34,9 +34,12 @@
             android:name=".audio.AudioService"
             android:enabled="true"
             android:exported="false"
-            android:permission="android.permission.FOREGROUND_SERVICE">
+            android:permission="android.permission.FOREGROUND_SERVICE"
+            android:canRequestFilterKeyEvents="true">
             <intent-filter android:priority="1000000">
+                <action android:name="android.media.browse.MediaBrowserService" />
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
+                <action android:name="android.media.AUDIO_BECOMING_NOISY" />
             </intent-filter>
         </service>
 

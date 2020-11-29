@@ -1,5 +1,7 @@
 package com.github.nicksetzer.daedalus.api;
 
+import com.github.nicksetzer.daedalus.Log;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -97,6 +99,7 @@ public class YueApi {
         String query_string = builder.build();
 
         URL url = new URL(PROTOCOL, DOMAIN,PORT, "/api/library" + query_string);
+        Log.info(url);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         http://localhost:4200/api/user/login
         conn.setRequestMethod("GET");

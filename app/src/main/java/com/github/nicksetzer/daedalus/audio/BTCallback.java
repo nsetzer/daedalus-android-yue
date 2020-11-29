@@ -24,12 +24,31 @@ public class BTCallback extends MediaSessionCompat.Callback {
             // somethings send down and up, others only down
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 switch (event.getKeyCode()) {
+                    case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+                        m_manager.skipToPrev();
+                        return true;
                     case KeyEvent.KEYCODE_MEDIA_NEXT:
                         m_manager.skipToNext();
                         return true;
+                    case KeyEvent.KEYCODE_MEDIA_PLAY:
+                        m_manager.play();
+                        return true;
+                    case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                        m_manager.pause();
+                        return true;
+                    case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                        if (m_manager.isPlaying()) {
+                            m_manager.pause();
+                        } else {
+                            m_manager.play();
+                        }
+                        return true;
+
                     default:
                         break;
                 }
+            } else {
+                Log.info("intent received", mediaButtonIntent.toString(), "action:", event.getAction());
             }
             /*
             Log.info("received media button event: " + action);
@@ -41,6 +60,37 @@ public class BTCallback extends MediaSessionCompat.Callback {
 
         return super.onMediaButtonEvent(mediaButtonIntent);
     }
+    /*
+    @Override
+    protected boolean onKeyEvent(KeyEvent event) {
+
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            switch (event.getKeyCode())
+            {
+                case KeyEvent.KEYCODE_MEDIA_PLAY:
+                    m_manager.play();
+                    return true;
+                break;
+                case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                    m_manager.pause();
+                    return true;
+                break;
+                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                    if (mediaIsPlaying()) {
+                        m_manager.pause();
+                    } else {
+                        m_manager.play();
+                    }
+                    return true;
+                break;
+                default:
+                    break;
+            }
+        }
+
+        return false;
+    }
+    */
 
 
     @Override

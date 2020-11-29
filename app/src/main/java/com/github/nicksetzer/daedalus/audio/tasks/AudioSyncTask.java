@@ -9,6 +9,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 
 public class AudioSyncTask implements Runnable {
@@ -69,10 +70,17 @@ public class AudioSyncTask implements Runnable {
         file_path =  m_service.getExternalFilesDir(null) + file_path.replaceAll("[\\s]", "_");
 
         Log.info(file_path);
-        YueApi.download(m_token, uid, file_path, (a, b) -> {
-            String message = (a/1024) + "/" + (b/1024) + " kb";
-            m_service.syncProgressUpdate(index+1, length, message);
-        });
+        try {
+            YueApi.download(m_token, uid, file_path, (a, b) -> {
+                String message = (a / 1024) + "/" + (b / 1024) + " kb";
+                m_service.syncProgressUpdate(index + 1, length, message);
+            });
+        } catch (SocketTimeoutException e) {
+            Log.info("failed to download song: " + uid);
+            Log.info("download path: " + file_path);
+
+            return;
+        }
 
         JSONObject newObject = new JSONObject();
         newObject.put("synced", 1);

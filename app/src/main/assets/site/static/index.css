@@ -296,17 +296,21 @@
   width: calc(100%-2em);
 }
 .dcs-b0bc04f9-9 {
+  height: 32px;
+  line-height: 32px;
+}
+.dcs-b0bc04f9-10 {
   justify-content: flex-start;
   align-items: center;
 }
-.dcs-b0bc04f9-10 {
+.dcs-b0bc04f9-11 {
   justify-content: center;
   align-items: center;
 }
-.dcs-b0bc04f9-11 {
+.dcs-b0bc04f9-12 {
   flex-grow: 1;
 }
-.dcs-b0bc04f9-12 {
+.dcs-b0bc04f9-13 {
   width: 1em;
 }
 .dcs-0efdbccc-0 {
@@ -567,6 +571,29 @@
 .dcs-8547c91b-4:hover {
   background: #0000FF22;
 }
+.dcs-f1fbc9ce-0 {
+  width: 100%;
+}
+.dcs-f1fbc9ce-1 {
+  padding-left: 1em;
+  padding-right: 1em;
+}
+.dcs-f1fbc9ce-2 {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: .25em;
+  border-style: solid;
+  border-width: 1px;
+  width: calc(100% - 2px);
+}
+.dcs-f1fbc9ce-3 {
+  height: 1em;
+  min-height: 1em;
+}
+.dcs-f1fbc9ce-4 {
+  height: 33vh;
+  min-height: 64px;
+}
 .dcs-13113e22-0 {
   width: 100%;
 }
@@ -769,6 +796,9 @@
   padding-left: 2em;
   padding-right: 2em;
   top: 0;
+}
+.dcs-71d9fd06-0 {
+
 }
 .dcs-1e053eca-0 {
   margin: 0;
