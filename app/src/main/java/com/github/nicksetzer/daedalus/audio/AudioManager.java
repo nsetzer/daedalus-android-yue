@@ -125,8 +125,7 @@ public class AudioManager {
         m_mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mp) {
-                // do stuff here
-                skipToNext();
+                onSongEnd();
             }
         });
 
@@ -256,6 +255,16 @@ public class AudioManager {
 
     public void stop() {
         m_mediaPlayer.stop();
+    }
+
+    public void onSongEnd() {
+        try {
+            long spk = m_queue.getSpk(m_queue.getCurrentIndex());
+            m_service.m_database.m_songsTable.updatePlayTime(spk);
+        } catch (JSONException e) {
+            android.util.Log.e("daedalus-js", "unable update song playtime");
+        }
+        skipToNext();
     }
 
     public void skipToNext() {

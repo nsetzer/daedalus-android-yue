@@ -6,6 +6,9 @@ import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.metallurgy.orm.DatabaseConnection;
 import com.github.nicksetzer.metallurgy.orm.EntityTable;
 import com.github.nicksetzer.metallurgy.orm.TableSchema;
+import com.github.nicksetzer.metallurgy.orm.dsl.DslException;
+import com.github.nicksetzer.metallurgy.orm.dsl.Pair;
+import com.github.nicksetzer.metallurgy.orm.dsl.Token;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -23,6 +26,22 @@ public class SongsTable extends EntityTable {
         super(db, schema);
     }
 
+    public void updatePlayTime(long spk) {
+
+        long epoch_time = System.currentTimeMillis()/1000;
+
+        JSONObject obj;
+        try {
+            obj = new JSONObject();
+            obj.put("last_played", epoch_time);
+        } catch (JSONException e) {
+            return;
+        }
+
+        Log.info("updating playtime for " + spk + " to " + epoch_time);
+
+        update(spk, obj);
+    }
     /**
      * prior to running the fetch process, invalidate all records
      * after fetch is run, delete files which are still invalid
@@ -84,8 +103,47 @@ public class SongsTable extends EntityTable {
         Log.error(query);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("SELECT spk, uid, artist, artist_key, album, title, length, sync, synced, file_path, rating FROM songs");
+        sb.append("SELECT spk, uid, artist, artist_key, album, album_index, year, title, length, sync, synced, file_path, rating FROM songs");
 
+        Token token = null;
+        Pair<String, List<String>> result;
+        List<String> params = new ArrayList<>();
+
+        if (!query.isEmpty() || syncState > 0) {
+
+            sb.append(" WHERE (");
+
+            if (!query.isEmpty()) {
+                try {
+                    token = SongTableDsl.parse(query);
+                } catch (DslException ex) {
+                    Log.error("error parsing", query);
+                    return new JSONArray();
+                }
+            }
+
+            if (syncState == 1) {
+                Token tok = SongTableDsl.compare("synced", "==", SongTableDsl.number(1));
+                token = SongTableDsl.and_(tok, token);
+            } else if (syncState == 2) {
+                Token tok = SongTableDsl.compare("synced", "!=", SongTableDsl.number(1));
+                token = SongTableDsl.and_(tok, token);
+            }
+
+            try {
+                result = SongTableDsl.transform(token);
+            } catch (DslException ex) {
+                return new JSONArray();
+            }
+
+            sb.append(result.first);
+            sb.append(")");
+
+            params = result.second;
+        }
+
+
+        /*
         List<String> params = new ArrayList<>();
         List<String> qparams = new ArrayList<>();
 
@@ -120,30 +178,32 @@ public class SongsTable extends EntityTable {
             sb.append(where);
             sb.append(")");
             Log.error(String.join(", ", params));
-            /*
-            String[] parts = query.split("\\s+");
-            boolean first = true;
-            for (String part : parts) {
-                if (!first) {
-                    sb.append(" AND ");
-                }
 
-                sb.append("(");
-                sb.append("artist LIKE ? OR album LIKE ? OR title LIKE ?");
-                params.add("%" + part + "%");
-                params.add("%" + part + "%");
-                params.add("%" + part + "%");
-                sb.append(")");
-            }
-
-            sb.append(")");
-            */
+            //String[] parts = query.split("\\s+");
+            //boolean first = true;
+            //for (String part : parts) {
+            //    if (!first) {
+            //        sb.append(" AND ");
+            //    }
+            //    sb.append("(");
+            //    sb.append("artist LIKE ? OR album LIKE ? OR title LIKE ?");
+            //    params.add("%" + part + "%");
+            //    params.add("%" + part + "%");
+            //    params.add("%" + part + "%");
+            //    sb.append(")");
+            //}
+            //sb.append(")");
+            //
         }
+
+        */
 
         sb.append(" ORDER BY artist_key COLLATE NOCASE, album COLLATE NOCASE, title COLLATE NOCASE");
 
         String sql = sb.toString();
         Log.error(sql);
+        Log.error(String.join(", ", params));
+
         Cursor cursor = m_db.query(sql, params.toArray(new String[]{}));
 
         Log.info("query returned " + cursor.getCount() + " rows");

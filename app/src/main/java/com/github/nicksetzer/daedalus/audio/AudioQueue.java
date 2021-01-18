@@ -49,6 +49,12 @@ public class AudioQueue {
         return m_queue.length();
     }
 
+    public long getSpk(int index) throws JSONException {
+        JSONObject obj = m_queue.getJSONObject(index);
+        return obj.getLong("spk");
+
+    }
+
     public String getUrl(int index) {
         if (m_queue == null) {
             return null;

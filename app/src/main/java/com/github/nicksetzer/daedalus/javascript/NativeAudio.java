@@ -7,7 +7,6 @@ import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.audio.AudioService;
 import com.github.nicksetzer.daedalus.WebActivity;
 import com.github.nicksetzer.daedalus.audio.AudioActions;
-import com.github.nicksetzer.daedalus.audio.Pair;
 
 import org.json.JSONArray;
 import org.json.JSONObject;

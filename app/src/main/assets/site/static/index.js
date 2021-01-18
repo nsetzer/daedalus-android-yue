@@ -5,8 +5,6 @@ daedalus=(function(){
     const build_platform="android";
     const[StyleSheet,getStyleSheet,parseParameters,util]=(function(){
         function array_move(arr,p1,p2){
-          let s1=p1;
-          let s2=p2;
           if(p1<0){
             p1=0;
           }
@@ -57,10 +55,10 @@ daedalus=(function(){
 
               }else if(Array.isArray(obj[k])){
                 for(let i=0;i<obj[k].length;i++)
-                  {
-                    a.push(encodeURIComponent(k)+'='+encodeURIComponent(obj[k][i]));
-                    
-                  }
+                {
+                  a.push(encodeURIComponent(k)+'='+encodeURIComponent(obj[k][i]));
+                  
+                }
               }else{
                 a.push(encodeURIComponent(k)+'='+encodeURIComponent(obj[k]));
               }
@@ -90,12 +88,12 @@ daedalus=(function(){
         function joinpath(...parts){
           let str="";
           for(let i=0;i<parts.length;i++)
-            {
-              if(!str.endsWith("/")&&!parts[i].startsWith("/")){
-                str+="/";
-              }
-              str+=parts[i];
+          {
+            if(!str.endsWith("/")&&!parts[i].startsWith("/")){
+              str+="/";
             }
+            str+=parts[i];
+          }
           return str;
         }
         function splitpath(path){
@@ -128,10 +126,10 @@ daedalus=(function(){
           do {
             name="css-";
             for(let i=0;i<6;i++)
-              {
-                let c=chars[randomInt(0,chars.length-1)];
-                name+=c;
-              }
+            {
+              let c=chars[randomInt(0,chars.length-1)];
+              name+=c;
+            }
           } while (selector_names[name]!==undefined)
           return name;
         }
@@ -185,9 +183,9 @@ daedalus=(function(){
                   perf_timer};
         return[StyleSheet,getStyleSheet,parseParameters,util];
       })();
-    const[ButtonElement,DomElement,DraggableList,HeaderElement,LinkElement,ListElement,
-          ListItemElement,NumberInputElement,Signal,TextElement,TextInputElement]=(function(
-            ){
+    const[ButtonElement,DomElement,DraggableList,DraggableListItem,HeaderElement,
+          LinkElement,ListElement,ListItemElement,NumberInputElement,Signal,TextElement,
+          TextInputElement]=(function(){
         let sigal_counter=0;
         function Signal(element,name){
           const event_name="onSignal_"+(sigal_counter++)+"_"+name;
@@ -213,10 +211,10 @@ daedalus=(function(){
           let name;
           name="-";
           for(let i=0;i<6;i++)
-            {
-              let c=chars[util.randomInt(0,chars.length-1)];
-              name+=c;
-            }
+          {
+            let c=chars[util.randomInt(0,chars.length-1)];
+            name+=c;
+          }
           return name+"-"+(element_uid++);
         }
         class DomElement{
@@ -636,9 +634,9 @@ daedalus=(function(){
             
           }
         }
-        return[ButtonElement,DomElement,DraggableList,HeaderElement,LinkElement,ListElement,
-                  ListItemElement,NumberInputElement,Signal,TextElement,TextInputElement];
-        
+        return[ButtonElement,DomElement,DraggableList,DraggableListItem,HeaderElement,
+                  LinkElement,ListElement,ListItemElement,NumberInputElement,Signal,TextElement,
+                  TextInputElement];
       })();
     const[]=(function(){
         history.locationChanged=Signal(null,"locationChanged");
@@ -673,33 +671,33 @@ daedalus=(function(){
           const arr=pattern.split('/');
           let tokens=[];
           for(let i=1;i<arr.length;i++)
-            {
-              let part=arr[i];
-              if(part.startsWith(':')){
-                if(part.endsWith('?')){
-                  tokens.push({param:true,name:part.substr(1,part.length-2)});
-                }else if(part.endsWith('+')){
-                  tokens.push({param:true,name:part.substr(1,part.length-2)});
-                }else if(part.endsWith('*')){
-                  tokens.push({param:true,name:part.substr(1,part.length-2)});
-                }else{
-                  tokens.push({param:true,name:part.substr(1)});
-                }
+          {
+            let part=arr[i];
+            if(part.startsWith(':')){
+              if(part.endsWith('?')){
+                tokens.push({param:true,name:part.substr(1,part.length-2)});
+              }else if(part.endsWith('+')){
+                tokens.push({param:true,name:part.substr(1,part.length-2)});
+              }else if(part.endsWith('*')){
+                tokens.push({param:true,name:part.substr(1,part.length-2)});
               }else{
-                tokens.push({param:false,value:part});
+                tokens.push({param:true,name:part.substr(1)});
               }
+            }else{
+              tokens.push({param:false,value:part});
             }
+          }
           return(items,query_items)=>{
             let location='';
             for(let i=0;i<tokens.length;i++)
-              {
-                location+='/';
-                if(tokens[i].param){
-                  location+=items[tokens[i].name];
-                }else{
-                  location+=tokens[i].value;
-                }
+            {
+              location+='/';
+              if(tokens[i].param){
+                location+=items[tokens[i].name];
+              }else{
+                location+=tokens[i].value;
               }
+            }
             if(!!query_items){
               location+=util.serializeParameters(query_items);
             }
@@ -711,31 +709,31 @@ daedalus=(function(){
           let re="^";
           let tokens=[];
           for(let i=exact?1:0;i<arr.length;i++)
-            {
-              let part=arr[i];
-              if(i==0&&exact===false){
+          {
+            let part=arr[i];
+            if(i==0&&exact===false){
 
-              }else{
-                re+="\\/";
-              }
-              if(part.startsWith(':')){
-                if(part.endsWith('?')){
-                  tokens.push(part.substr(1,part.length-2));
-                  re+="([^\\/]*)";
-                }else if(part.endsWith('+')){
-                  tokens.push(part.substr(1,part.length-2));
-                  re+="?(.+)";
-                }else if(part.endsWith('*')){
-                  tokens.push(part.substr(1,part.length-2));
-                  re+="?(.*)";
-                }else{
-                  tokens.push(part.substr(1));
-                  re+="([^\\/]+)";
-                }
-              }else{
-                re+=part;
-              }
+            }else{
+              re+="\\/";
             }
+            if(part.startsWith(':')){
+              if(part.endsWith('?')){
+                tokens.push(part.substr(1,part.length-2));
+                re+="([^\\/]*)";
+              }else if(part.endsWith('+')){
+                tokens.push(part.substr(1,part.length-2));
+                re+="?(.+)";
+              }else if(part.endsWith('*')){
+                tokens.push(part.substr(1,part.length-2));
+                re+="?(.*)";
+              }else{
+                tokens.push(part.substr(1));
+                re+="([^\\/]+)";
+              }
+            }else{
+              re+=part;
+            }
+          }
           if(re!=="^\\/"){
             re+="\\/?";
           }
@@ -750,9 +748,9 @@ daedalus=(function(){
           }
           let result={};
           for(let i=1;i<arr.length;i++)
-            {
-              result[obj.tokens[i-1]]=arr[i];
-            }
+          {
+            result[obj.tokens[i-1]]=arr[i];
+          }
           return result;
         }
         function patternMatch(pattern,location){
@@ -927,62 +925,62 @@ daedalus=(function(){
           let queryString=util.serializeParameters(params);
           let arrayLength=elem.files.length;
           for(let i=0;i<arrayLength;i++)
-            {
-              let file=elem.files[i];
-              let bytesTransfered=0;
-              let url;
-              if(urlbase.endsWith('/')){
-                url=urlbase+file.name;
-              }else{
-                url=urlbase+'/'+file.name;
-              }
-              url+=queryString;
-              let xhr=new XMLHttpRequest();
-              xhr.open('POST',url,true);
-              for(let key in headers){
-                xhr.setRequestHeader(key,headers[key]);
-              }
-              xhr.upload.onprogress=function(event){
-                if(event.lengthComputable){
-                  if(progress!==null){
-                    bytesTransfered=event.loaded;
-                    progress({bytesTransfered,fileSize:file.size,fileName:file.name,
-                                              finished:false});
-                  }
-                }
-              };
-              xhr.onreadystatechange=function(){
-                if(xhr.readyState==4&&xhr.status==200){
-                  if(success!==null){
-                    let params={fileName:file.name,url,lastModified:file.lastModified,
-                                          size:file.size,type:file.type};
-                    success(params);
-                    if(progress!==null){
-                      progress({bytesTransfered:file.size,fileSize:file.size,fileName:file.name,
-                                                  finished:true});
-                    }
-                  }
-                }else if(xhr.status>=400){
-                  if(failure!==null){
-                    let params={fileName:file.name,url,status:xhr.status};
-                    failure(params);
-                    if(progress!==null){
-                      progress({bytesTransfered,fileSize:file.size,fileName:file.name,
-                                                  finished:true});
-                    }
-                  }
-                }else{
-                  console.log("xhr status changed: "+xhr.status);
-                }
-              };
-              if(progress!==null){
-                progress({bytesTransfered,fileSize:file.size,fileName:file.name,finished:false,
-                                      first:true});
-              }
-              let fd=new FormData();
-              fd.append('upload',file);
-              xhr.send(fd);
+          {
+            let file=elem.files[i];
+            let bytesTransfered=0;
+            let url;
+            if(urlbase.endsWith('/')){
+              url=urlbase+file.name;
+            }else{
+              url=urlbase+'/'+file.name;
             }
+            url+=queryString;
+            let xhr=new XMLHttpRequest();
+            xhr.open('POST',url,true);
+            for(let key in headers){
+              xhr.setRequestHeader(key,headers[key]);
+            }
+            xhr.upload.onprogress=function(event){
+              if(event.lengthComputable){
+                if(progress!==null){
+                  bytesTransfered=event.loaded;
+                  progress({bytesTransfered,fileSize:file.size,fileName:file.name,
+                                          finished:false});
+                }
+              }
+            };
+            xhr.onreadystatechange=function(){
+              if(xhr.readyState==4&&xhr.status==200){
+                if(success!==null){
+                  let params={fileName:file.name,url,lastModified:file.lastModified,
+                                      size:file.size,type:file.type};
+                  success(params);
+                  if(progress!==null){
+                    progress({bytesTransfered:file.size,fileSize:file.size,fileName:file.name,
+                                              finished:true});
+                  }
+                }
+              }else if(xhr.status>=400){
+                if(failure!==null){
+                  let params={fileName:file.name,url,status:xhr.status};
+                  failure(params);
+                  if(progress!==null){
+                    progress({bytesTransfered,fileSize:file.size,fileName:file.name,
+                                              finished:true});
+                  }
+                }
+              }else{
+                console.log("xhr status changed: "+xhr.status);
+              }
+            };
+            if(progress!==null){
+              progress({bytesTransfered,fileSize:file.size,fileName:file.name,finished:false,
+                                  first:true});
+            }
+            let fd=new FormData();
+            fd.append('upload',file);
+            xhr.send(fd);
+          }
         }
         function uploadFile(urlbase,headers={},params={},success=null,failure=null,
                   progress=null){
@@ -1374,11 +1372,11 @@ daedalus=(function(){
         }
         return[render,render_update];
       })();
-    return{AuthenticatedRouter,ButtonElement,DomElement,DraggableList,HeaderElement,
-          LinkElement,ListElement,ListItemElement,NumberInputElement,OSName,Router,Signal,
-          StyleSheet,TextElement,TextInputElement,build_platform,downloadFile,env,getStyleSheet,
-          locationMatch,parseParameters,patternCompile,patternToRegexp,platform,render,
-          render_update,uploadFile,util};
+    return{AuthenticatedRouter,ButtonElement,DomElement,DraggableList,DraggableListItem,
+          HeaderElement,LinkElement,ListElement,ListItemElement,NumberInputElement,OSName,
+          Router,Signal,StyleSheet,TextElement,TextInputElement,build_platform,downloadFile,
+          env,getStyleSheet,locationMatch,parseParameters,patternCompile,patternToRegexp,
+          platform,render,render_update,uploadFile,util};
   })();
 api.requests=(function(){
     "use strict";
@@ -1581,11 +1579,12 @@ Object.assign(api,(function(api,daedalus){
             cfg.headers['X-YUE-PASSWORD']=password;
             return api.requests.get_text(url,cfg);
           }
-          function fsNoteSetContent(root,base,note_id,crypt,password){
+          function fsNoteSetContent(root,base,note_id,content,crypt,password){
             const params=daedalus.util.serializeParameters({root,base,crypt});
             const url=env.baseUrl+'/api/fs/notes/'+note_id+params;
             const cfg=getAuthConfig();
             cfg.headers['X-YUE-PASSWORD']=password;
+            cfg.headers['Content-Type']='text/plain';
             return api.requests.post(url,content,cfg);
           }
           function queueGetQueue(){
@@ -1627,7 +1626,7 @@ Object.assign(api,(function(api,daedalus){
             const cfg=getAuthConfig();
             return api.requests.get_json(url,cfg);
           }
-          function libraryDomainInfo(songId){
+          function libraryDomainInfo(){
             const url=env.baseUrl+'/api/library/info';
             const cfg=getAuthConfig();
             return api.requests.get_json(url,cfg);
@@ -2385,10 +2384,11 @@ router=(function(api,daedalus){
     }
     const route_urls={userStoragePreview:"/u/storage/preview/:path*",userStorageList:"/u/storage/list/:path*",
           userStorage:"/u/storage/:mode/:path*",userFs:"/u/fs/:path*",userPlaylist:"/u/playlist",
-          userSettings:"/u/settings",userNotesContent:"/u/notes/:noteId",userNotesList:"/u/notes",
-          userLibraryList:"/u/library/list",userLibrarySync:"/u/library/sync",userLibrarySavedSearch:"/u/library/saved",
-          userRadio:"/u/radio",userWildCard:"/u/:path*",login:"/login",apiDoc:"/doc",
-          publicFile:"/p/:uid/:filename",wildCard:"/:path*"};
+          userSettings:"/u/settings",userNotesEdit:"/u/notes/:noteId/edit",userNotesContent:"/u/notes/:noteId",
+          userNotesList:"/u/notes",userLibraryList:"/u/library/list",userLibrarySync:"/u/library/sync",
+          userLibrarySavedSearch:"/u/library/saved",userRadio:"/u/radio",userWildCard:"/u/:path*",
+          login:"/login",apiDoc:"/doc",publicFile:"/p/:uid/:filename",wildCard:"/:path*"};
+    
     const routes={};
     Object.keys(route_urls).map(key=>{
         routes[key]=patternCompile(route_urls[key]);
@@ -2400,8 +2400,11 @@ store=(function(){
     const globals={};
     return{globals};
   })();
-audio=(function(api){
+audio=(function(api,daedalus){
     "use strict";
+    const StyleSheet=daedalus.StyleSheet;
+    const DomElement=daedalus.DomElement;
+    const TextElement=daedalus.TextElement;
     const[AudioDevice]=(function(){
         let device_instance=null;
         class RemoteDeviceImpl{
@@ -2900,11 +2903,181 @@ audio=(function(api){
         };
         return[AudioDevice];
       })();
+    const[BrownNoiseContext,NoiseContext,OceanNoiseContext,PinkNoiseContext,WhiteNoiseContext]=(
+          function(){
+        const EasingFunctions={linear:t=>t,easeInQuad:t=>t*t,easeOutQuad:t=>t*(2-t),
+                  easeInOutQuad:t=>t<.5?2*t*t:-1+(4-2*t)*t,easeInCubic:t=>t*t*t,easeOutCubic:t=>(
+                      --t)*t*t+1,easeInOutCubic:t=>t<.5?4*t*t*t:(t-1)*(2*t-2)*(2*t-2)+1,easeInQuart:t=>t*t*t*t,
+                  easeOutQuart:t=>1-(--t)*t*t*t,easeInOutQuart:t=>t<.5?8*t*t*t*t:1-8*(--t)*t*t*t,
+                  easeInQuint:t=>t*t*t*t*t,easeOutQuint:t=>1+(--t)*t*t*t*t,easeInOutQuint:t=>t<.5?16*t*t*t*t*t:1+16*(
+                      --t)*t*t*t*t};
+        function mirror(f){
+          return t=>{
+            return t<.5?f(t*2.0):f(1.0-(t-.5)*2.0);
+          };
+        }
+        class NoiseContext{
+          constructor(color){
+            this.ctxt=new(window.AudioContext||window.webkitAudioContext)();
+            this.channels=2;
+            this.duration=5;
+            this.frameCount=this.duration*this.ctxt.sampleRate;
+            this.color=color;
+            this.buffer=this.ctxt.createBuffer(this.channels,this.frameCount,this.ctxt.sampleRate);
+            
+            this.fillBuffer(this.buffer);
+            this.source=this.ctxt.createBufferSource();
+            this.source.buffer=this.buffer;
+            this.source.loop=true;
+            this.gain=this.ctxt.createGain();
+            this.source.connect(this.gain);
+            this.gain.connect(this.ctxt.destination);
+            this.gain.gain.value=.5;
+            this.state="ready";
+          }
+          fillBuffer(buffer){
+            if(mode=="white"){
+              for(let chan_idx=0;chan_idx<buffer.numberOfChannels;chan_idx++)
+              {
+                let chan_data=buffer.getChannelData(chan_idx);
+                for(let idx=0;idx<this.frameCount;idx++)
+                {
+                  chan_data[idx]=(Math.random()*2-1);
+                }
+              }
+            }
+          }
+          play(){
+            if(this.state==="ready"){
+              this.source.start();
+              this.state="playing";
+            }else if(this.state==="paused"){
+              this.ctxt.resume();
+              this.state="playing";
+            }
+          }
+          pause(){
+            if(this.state==="playing"){
+              this.ctxt.suspend();
+              this.state="paused";
+            }
+          }
+          stop(){
+            if(this.state!=="stopped"){
+              this.source.stop();
+              this.state="stopped";
+            }
+          }
+          setVolume(volume){
+            this.gain.gain.value=volume;
+          }
+          getVolume(){
+            return this.gain.gain.value;
+          }
+          isPlaying(){
+            return this.state==="playing";
+          }
+        }
+        class WhiteNoiseContext extends NoiseContext {
+          constructor(){
+            super("white");
+          }
+          fillBuffer(buffer){
+            for(let chan_idx=0;chan_idx<buffer.numberOfChannels;chan_idx++)
+            {
+              let chan_data=buffer.getChannelData(chan_idx);
+              for(let idx=0;idx<this.frameCount;idx++)
+              {
+                chan_data[idx]=(Math.random()*2-1);
+              }
+            }
+          }
+        }
+        class PinkNoiseContext extends NoiseContext {
+          constructor(){
+            super("pink");
+          }
+          fillBuffer(buffer){
+            for(let chan_idx=0;chan_idx<buffer.numberOfChannels;chan_idx++)
+            {
+              let chan_data=buffer.getChannelData(chan_idx);
+              let b0=0.0,b1=0.0,b2=0.0,b3=0.0,b4=0.0,b5=0.0,b6=0.0;
+              for(let idx=0;idx<this.frameCount;idx++)
+              {
+                let w=Math.random()*2-1;
+                b0=0.99886*b0+w*0.0555179;
+                b1=0.99332*b1+w*0.0750759;
+                b2=0.96900*b2+w*0.1538520;
+                b3=0.86650*b3+w*0.3104856;
+                b4=0.55000*b4+w*0.5329522;
+                b5=-0.7616*b5-w*0.0168980;
+                chan_data[idx]=(b0+b1+b2+b3+b4+b5+b6+w*0.5362)/8.0;
+                b6=w*0.115926;
+              }
+            }
+          }
+        }
+        class BrownNoiseContext extends NoiseContext {
+          constructor(){
+            super("brown");
+          }
+          fillBuffer(buffer){
+            const b=.01;
+            const Fs=this.ctxt.sampleRate,Fc=1000;
+            const a=Fs/(Fs+2*Math.PI*Fc);
+            let f=mirror(EasingFunctions.easeInOutQuad);
+            for(let chan_idx=0;chan_idx<buffer.numberOfChannels;chan_idx++)
+            {
+              let chan_data=buffer.getChannelData(chan_idx);
+              let v=0;
+              let p=0;
+              for(let idx=0;idx<this.frameCount;idx++)
+              {
+                let w=(Math.random()*2-1);
+                v=(v+(b*w))/(1+b);
+                p=a*p+(1-a)*v;
+                chan_data[idx]=p;
+              }
+              console.log(chan_data);
+            }
+          }
+        }
+        class OceanNoiseContext extends NoiseContext {
+          constructor(){
+            super("ocean");
+          }
+          fillBuffer(buffer){
+            const b=.01;
+            const Fs=this.ctxt.sampleRate,Fc=1000;
+            const a=Fs/(Fs+2*Math.PI*Fc);
+            let f=mirror(EasingFunctions.easeInOutQuad);
+            for(let chan_idx=0;chan_idx<buffer.numberOfChannels;chan_idx++)
+            {
+              let chan_data=buffer.getChannelData(chan_idx);
+              let v=0;
+              let p=0;
+              for(let idx=0;idx<this.frameCount;idx++)
+              {
+                let w=(Math.random()*2-1);
+                v=(v+(b*w))/(1+b);
+                let t=idx/this.frameCount;
+                v=v*f(t);
+                p=a*p+(1-a)*v;
+                chan_data[idx]=p;
+              }
+              console.log(chan_data);
+            }
+          }
+        }
+        return[BrownNoiseContext,NoiseContext,OceanNoiseContext,PinkNoiseContext,
+                  WhiteNoiseContext];
+      })();
     const[]=(function(){
         return[];
       })();
-    return{AudioDevice};
-  })(api);
+    return{AudioDevice,BrownNoiseContext,NoiseContext,OceanNoiseContext,PinkNoiseContext,
+          WhiteNoiseContext};
+  })(api,daedalus);
 pages=(function(api,audio,components,daedalus,resources,router,store){
     "use strict";
     const StyleSheet=daedalus.StyleSheet;
@@ -3543,6 +3716,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.attrs.lst.insertChild(0,elem);
             }else{
               const elem=filemap[fileInfo.name];
+              this.attrs.lst.insertChild(0,elem);
             }
           }
           deleteElement(elem,fileInfo){
@@ -3560,9 +3734,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.children[0].setText(text);
           }
         }
-        const preview_formats={'.mp4':'video','.webm':'video','.jpg':'image','.jpeg':'image',
-                  '.gif':'image','.png':'image','.bmp':'image','.wav':'audio','.mp3':'audio',
-                  '.pdf':'pdf'};
+        const preview_formats={'.mp4':'video','.webm':'video','.mkv':'video','.jpg':'image',
+                  '.jpeg':'image','.gif':'image','.png':'image','.bmp':'image','.wav':'audio',
+                  '.mp3':'audio','.ogg':'audio','.pdf':'pdf'};
         class StoragePreviewPage extends DomElement {
           constructor(){
             super("div",{},[]);
@@ -3589,6 +3763,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           handleRouteChange(root,path){
             const[_,ext]=daedalus.util.splitext(path.toLocaleLowerCase());
             const format=preview_formats[ext];
+            console.log(`display content ext: ${ext} format: ${format}`);
             if(format===undefined){
               api.fsGetPathContent(root,path).then(res=>{
                   this.appendChild(new FormattedText(res));
@@ -3606,6 +3781,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }else if(format==='video'){
               const url=api.fsPathUrl(root,path,0);
               this.appendChild(new DomElement("video",{src:url,controls:1},[]));
+            }else if(format==='audio'){
+              const url=api.fsPathUrl(root,path,0);
+              this.appendChild(new DomElement("audio",{src:url,controls:1},[]));
             }else if(format==='pdf'){
               const url=api.fsPathUrl(root,path,0);
               console.warn(url);
@@ -3745,39 +3923,61 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         }
         return[FileSystemPage,PublicFilePage,StoragePage,StoragePreviewPage];
       })();
-    const[NoteContext,NotesPage]=(function(){
+    const[NoteContentPage,NoteContext,NoteEditPage,NotesPage]=(function(){
         const styles={page:'dcs-f1fbc9ce-0',list:'dcs-f1fbc9ce-1',item:'dcs-f1fbc9ce-2',
-                  padding1:'dcs-f1fbc9ce-3',padding2:'dcs-f1fbc9ce-4'};
+                  padding1:'dcs-f1fbc9ce-3',padding2:'dcs-f1fbc9ce-4',contentDiv:'dcs-f1fbc9ce-5',
+                  contentPre:'dcs-f1fbc9ce-6',contentText:'dcs-f1fbc9ce-7'};
         class NoteContext{
           constructor(root,base){
             this.root=root;
             this.base=base;
+            this.cache={};
           }
           getList(){
             return api.fsNoteList(this.root,this.base);
           }
-          getContent(note_id){
-            return api.fsNoteGetContent(this.root,this.base,note_id,null,null);
+          getContent(noteId){
+            if(this.cache[noteId]!==undefined){
+              return new Promise((resolve,reject)=>{
+                  resolve(this.cache[noteId]);
+                });
+            }else{
+              return new Promise((resolve,reject)=>{
+                  api.fsNoteGetContent(this.root,this.base,noteId,null,null).then(
+                                      result=>{
+                      this.cache[noteId]=result;
+                      resolve(result);
+                    }).catch(error=>{
+                      reject(error);
+                    });
+                });
+            }
+          }
+          setContent(noteId,content){
+            this.cache[noteId]=content;
+            return api.fsNoteSetContent(this.root,this.base,noteId,content,null,null);
+            
           }
         }
-        class Header extends components.NavHeader {
+        function initContext(){
+          if(store.globals.note_ctxt===undefined){
+            store.globals.note_ctxt=new NoteContext("default","public/notes");
+          }
+          return store.globals.note_ctxt;
+        }
+        class ListHeader extends components.NavHeader {
           constructor(parent){
             super();
             this.attrs.parent=parent;
             this.addAction(resources.svg['menu'],()=>{
                 store.globals.showMenu();
               });
-            this.addAction(resources.svg['media_prev'],()=>{
-                audio.AudioDevice.instance().prev();
-              });
           }
         }
-        class Footer extends components.NavFooter {
+        class ListFooter extends components.NavFooter {
           constructor(parent){
             super();
             this.attrs.parent=parent;
-            this.addAction(resources.svg['select'],()=>{});
-            this.addAction(resources.svg['media_shuffle'],()=>{});
           }
         }
         class NotesItem extends DomElement {
@@ -3791,12 +3991,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             
           }
           onClick(event){
-            console.log("click");
-            this.attrs.ctxt.getContent(this.attrs.note_id).then(result=>{
-                console.log(result);
-              }).catch(error=>{
-                console.log(error);
-              });
+            router.navigate(router.routes.userNotesContent({noteId:this.attrs.note_id},
+                              {}));
           }
         }
         class NotesList extends DomElement {
@@ -3817,7 +4013,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         class NotesPage extends DomElement {
           constructor(){
             super("div",{className:styles.page},[]);
-            this.attrs={header:new Header(this),footer:new Footer(this),container:new NotesList(
+            this.attrs={header:new ListHeader(this),footer:new ListFooter(this),container:new NotesList(
                             ),padding1:new DomElement("div",{className:styles.padding1},[]),padding2:new DomElement(
                               "div",{className:styles.padding2},[])};
             this.appendChild(this.attrs.header);
@@ -3825,7 +4021,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.appendChild(this.attrs.container);
             this.appendChild(this.attrs.padding2);
             this.appendChild(this.attrs.footer);
-            this.attrs.ctxt=new NoteContext("default","public/notes");
+            this.attrs.ctxt=initContext();
           }
           elementMounted(){
             console.log("mount library view");
@@ -3837,7 +4033,120 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
           }
         }
-        return[NoteContext,NotesPage];
+        class ContentHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.addAction(resources.svg['return'],()=>{
+                router.navigate(router.routes.userNotesList({},{}));
+              });
+            this.addAction(resources.svg['edit'],()=>{
+                router.navigate(router.routes.userNotesEdit({noteId:this.attrs.parent.state.match.noteId},
+                                      {}));
+              });
+          }
+        }
+        class ContentFooter extends components.NavFooter {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+          }
+        }
+        class NoteContentPage extends DomElement {
+          constructor(){
+            super("div",{className:styles.page},[]);
+            this.attrs={header:new ContentHeader(this),footer:new ContentFooter(this),
+                          container:new DomElement("div",{className:styles.contentDiv},[]),padding1:new DomElement(
+                              "div",{className:styles.padding1},[]),padding2:new DomElement("div",
+                              {className:styles.padding2},[])};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.padding1);
+            this.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.attrs.ctxt=initContext();
+          }
+          elementMounted(){
+            this.showContent();
+          }
+          showContent(){
+            this.attrs.container.removeChildren();
+            this.attrs.ctxt.getContent(this.state.match.noteId).then(result=>{
+                this.attrs.container.appendChild(new DomElement("pre",{className:styles.contentPre},
+                                      [new TextElement(result+"\n\n\n")]));
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+          beginEdit(){
+            this.attrs.container.removeChildren();
+            this.attrs.ctxt.getContent(this.state.match.noteId).then(result=>{
+                this.attrs.container.appendChild(new DomElement("textarea",{className:styles.contentText},
+                                      [new TextElement(result)]));
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+        }
+        class EditHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.addAction(resources.svg['discard'],()=>{
+                router.navigate(router.routes.userNotesContent({noteId:this.attrs.parent.state.match.noteId},
+                                      {}));
+              });
+            this.addAction(resources.svg['save'],()=>{
+                const noteId=this.attrs.parent.state.match.noteId;
+                const nd=this.attrs.parent.attrs.textarea.getDomNode();
+                console.log(nd.value);
+                this.attrs.parent.attrs.ctxt.setContent(this.attrs.parent.state.match.noteId,
+                                  nd.value).then((result)=>{
+                    router.navigate(router.routes.userNotesContent({noteId},{}));
+                    
+                  }).catch((error)=>{});
+              });
+          }
+        }
+        class EditFooter extends components.NavFooter {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+          }
+        }
+        class NoteEditPage extends DomElement {
+          constructor(){
+            super("div",{className:styles.page},[]);
+            this.attrs={header:new EditHeader(this),footer:new EditFooter(this),container:new DomElement(
+                              "div",{className:styles.contentDiv},[]),textarea:new DomElement("textarea",
+                              {className:styles.contentText},[]),padding1:new DomElement("div",
+                              {className:styles.padding1},[])};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.padding1);
+            this.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.footer);
+            this.attrs.container.appendChild(this.attrs.textarea);
+            this.attrs.ctxt=initContext();
+          }
+          elementMounted(){
+            this.showContent();
+          }
+          showContent(){
+            this.attrs.textarea.removeChildren();
+            this.attrs.ctxt.getContent(this.state.match.noteId).then(result=>{
+                this.attrs.textarea.appendChild(new TextElement(result));
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+        }
+        return[NoteContentPage,NoteContext,NoteEditPage,NotesPage];
       })();
     const[PlaylistPage]=(function(){
         const style={main:'dcs-13113e22-0',toolbar:'dcs-13113e22-1',info:'dcs-13113e22-2',
@@ -3849,6 +4158,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   padding1:'dcs-13113e22-18',padding2:'dcs-13113e22-19',progressBar:'dcs-13113e22-20',
                   progressBar_bar:'dcs-13113e22-21',progressBar_button:'dcs-13113e22-22'};
         
+        ;
+        ;
+        ;
         ;
         function formatTime(secs){
           secs=secs===Infinity?0:secs;
@@ -4485,23 +4797,23 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             const N=containerList.length<songList.length?containerList.length:songList.length;
             
             for(;index<containerList.length&&index<songList.length;index++)
-              {
-                if(containerList[index].attrs.song.id==songList[index].id){
-                  item=containerList[index];
-                  item.setIndex(index);
-                }else if(index<(containerList.length-1)&&containerList[index+1].attrs.song.id==songList[
-                                    index].id){
-                  containerList.splice(index,1);
-                  item=containerList[index];
-                  item.setIndex(index);
-                  del+=1;
-                }else{
-                  miss+=1;
-                  item=new SongItem(this.attrs.container,index,songList[index]);
-                  containerList[index]=item;
-                }
-                item.updateActive(index===current_index);
+            {
+              if(containerList[index].attrs.song.id==songList[index].id){
+                item=containerList[index];
+                item.setIndex(index);
+              }else if(index<(containerList.length-1)&&containerList[index+1].attrs.song.id==songList[
+                                index].id){
+                containerList.splice(index,1);
+                item=containerList[index];
+                item.setIndex(index);
+                del+=1;
+              }else{
+                miss+=1;
+                item=new SongItem(this.attrs.container,index,songList[index]);
+                containerList[index]=item;
               }
+              item.updateActive(index===current_index);
+            }
             const removeCount=containerList.length-index;
             console.log("update",containerList.length,songList.length,removeCount,
                           index);
@@ -4510,12 +4822,12 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               del+=removeCount;
             }
             for(;index<songList.length;index++)
-              {
-                item=new SongItem(this.attrs.container,index,songList[index]);
-                containerList.push(item);
-                item.updateActive(index===current_index);
-                miss+=1;
-              }
+            {
+              item=new SongItem(this.attrs.container,index,songList[index]);
+              containerList.push(item);
+              item.updateActive(index===current_index);
+              miss+=1;
+            }
             if(miss>0||del>0){
               this.attrs.container.update();
             }
@@ -4543,6 +4855,20 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.appendChild(new ButtonElement(title,()=>{
                   action(this);
                 }));
+          }
+          setText(text){
+
+          }
+        }
+        class SettingsToggleRangeItem extends DomElement {
+          constructor(title,action,action2){
+            super("div",{className:style.settingsRowItem},[]);
+            this.attrs.count=0;
+            this.appendChild(new ButtonElement(title,()=>{
+                  action(this);
+                }));
+            this.appendChild(new DomElement("input",{min:0,max:100,value:50,type:"range",
+                                  onchange:action2}));
           }
           setText(text){
 
@@ -4643,6 +4969,24 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                     AndroidNativeAudio.beginFetch(""+api.getAuthToken());
                   }
                 }));
+            this.attrs.noise=[new audio.WhiteNoiseContext(),new audio.PinkNoiseContext(
+                            ),new audio.BrownNoiseContext(),new audio.OceanNoiseContext()];
+            for(let i=0;i<this.attrs.noise.length;i++)
+            {
+              let noise=this.attrs.noise[i];
+              this.attrs.container.appendChild(new SettingsToggleRangeItem(noise.color+" noise",
+                                  (item)=>{
+                    if(noise.isPlaying()){
+                      console.log("pause "+noise.color);
+                      noise.pause();
+                    }else{
+                      console.log("play "+noise.color);
+                      noise.play();
+                    }
+                  },(event)=>{
+                    noise.setVolume(event.target.value/100);
+                  }));
+            }
           }
         }
         return[SettingsPage];
@@ -4681,11 +5025,22 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         
         function shuffle(a){
           for(let i=a.length-1;i>0;i--)
-            {
-              const j=Math.floor(Math.random()*(i+1));
-              [a[i],a[j]]=[a[j],a[i]];
-            }
+          {
+            const j=Math.floor(Math.random()*(i+1));
+            [a[i],a[j]]=[a[j],a[i]];
+          }
           return a;
+        }
+        const sort_order=['year','album','album_index'];
+        function sortTracks(tracks,order=sort_order){
+          tracks.sort((a,b)=>{
+              return order.map((k)=>{
+                  const av=a[k];
+                  const bv=b[k];
+                  return(av==bv)?0:(av<bv)?-1:1;
+                }).reduce((p,n)=>p?p:n,0);
+            });
+          return tracks;
         }
         class Header extends components.NavHeader {
           constructor(parent){
@@ -4750,6 +5105,14 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.addAction(resources.svg['select'],()=>{
                 const count=this.attrs.parent.attrs.view.countSelected();
                 this.attrs.parent.attrs.view.selectAll(count==0);
+              });
+            this.addAction(resources.svg['sort'],()=>{
+                const songList=this.attrs.parent.attrs.view.getSelectedSongs();
+                console.log("creating playlist",songList.length);
+                audio.AudioDevice.instance().queueSet(sortTracks(songList).splice(
+                                      0,100));
+                audio.AudioDevice.instance().next();
+                this.attrs.parent.attrs.view.selectAll(false);
               });
             this.addAction(resources.svg['media_shuffle'],()=>{
                 const songList=this.attrs.parent.attrs.view.getSelectedSongs();
@@ -4881,7 +5244,6 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }else{
               if(node.isSelected()){
                 const song={...node.attrs.obj,artist,album};
-                console.log(JSON.stringify(song));
                 result.push(song);
               }
             }
@@ -5113,10 +5475,10 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             console.log(`selected ${items.length} items`);
             let data={};
             for(let i=0;i<items.length;i++)
-              {
-                let item=items[i];
-                data[item.spk]=item.sync;
-              }
+            {
+              let item=items[i];
+              data[item.spk]=item.sync;
+            }
             console.log(JSON.stringify(data));
             console.log(`selected ${data.length} items`);
             if(items.length>0){
@@ -5191,15 +5553,18 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                       query:"grunge rating >= 5"},{name:"visual best",query:"\"visual kei\" rating >= 5"},
                   {name:"english best",query:"language = english rating >= 5"},{name:"stone temple pilots",
                       query:"\"stone temple pilots\""},{name:"soundwitch",query:"soundwitch"},
-                  {name:"Gothic Emily",query:"\"gothic emily\""}];
+                  {name:"Gothic Emily",query:"\"gothic emily\""},{name:"Driving Hits Volume 1",
+                      query:"\":DRV\" p lt -14d"},{name:"Driving Hits Volume 2",query:"\":VL2\" p lt -14d"},
+                  {name:"Driving Hits Volume 3",query:"comment=\":DRV\" or comment=\":VL2\" p lt -14d"}];
+        
         class SavedSearchList extends DomElement {
           constructor(parent,index,song){
             super("div",{className:style.savedSearchList},[]);
             for(let i=0;i<savedSearches.length;i++)
-              {
-                let s=savedSearches[i];
-                this.appendChild(new SavedSearchItem(s.name,s.query));
-              }
+            {
+              let s=savedSearches[i];
+              this.appendChild(new SavedSearchItem(s.name,s.query));
+            }
           }
         }
         class SavedSearchPage extends DomElement {
@@ -5264,9 +5629,10 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
     const[]=(function(){
         return[];
       })();
-    return{FileSystemPage,LandingPage,LibraryPage,LoginPage,NoteContext,NotesPage,
-          OpenApiDocPage,PlaylistPage,PublicFilePage,SavedSearchPage,SettingsPage,StoragePage,
-          StoragePreviewPage,SyncPage,UserRadioPage,fmtEpochTime};
+    return{FileSystemPage,LandingPage,LibraryPage,LoginPage,NoteContentPage,NoteContext,
+          NoteEditPage,NotesPage,OpenApiDocPage,PlaylistPage,PublicFilePage,SavedSearchPage,
+          SettingsPage,StoragePage,StoragePreviewPage,SyncPage,UserRadioPage,fmtEpochTime};
+    
   })(api,audio,components,daedalus,resources,router,store);
 app=(function(api,components,daedalus,pages,resources,router,store){
     "use strict";
@@ -5292,7 +5658,9 @@ app=(function(api,components,daedalus,pages,resources,router,store){
               '/login');
       rt.addAuthRoute(u.userSettings,(cbk)=>parent.handleRoute(cbk,pages.SettingsPage),
               '/login');
-      rt.addAuthRoute(u.userNotesContent,(cbk)=>parent.handleRoute(cbk,pages.NotesPage),
+      rt.addAuthRoute(u.userNotesEdit,(cbk)=>parent.handleRoute(cbk,pages.NoteEditPage),
+              '/login');
+      rt.addAuthRoute(u.userNotesContent,(cbk)=>parent.handleRoute(cbk,pages.NoteContentPage),
               '/login');
       rt.addAuthRoute(u.userNotesList,(cbk)=>parent.handleRoute(cbk,pages.NotesPage),
               '/login');
@@ -5335,9 +5703,13 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         if(!this.attrs.nav.isFixed()){
           setTimeout(()=>{
               history.pushState({},"",res_path);
+              window.scrollTo(0,0);
+              console.log("scrolled");
             },500);
         }else{
           history.pushState({},"",res_path);
+          window.scrollTo(0,0);
+          console.log("scrolled");
         }
         this.attrs.nav.hide();
       }

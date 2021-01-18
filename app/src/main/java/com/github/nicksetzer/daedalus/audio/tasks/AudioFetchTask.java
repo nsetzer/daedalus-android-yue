@@ -4,8 +4,8 @@ import android.util.Log;
 
 import com.github.nicksetzer.daedalus.api.YueApi;
 import com.github.nicksetzer.daedalus.audio.AudioService;
-import com.github.nicksetzer.daedalus.audio.Pair;
 import com.github.nicksetzer.metallurgy.orm.NaturalPrimaryKey;
+import com.github.nicksetzer.metallurgy.orm.dsl.Pair;
 
 import org.json.JSONArray;
 import org.json.JSONException;

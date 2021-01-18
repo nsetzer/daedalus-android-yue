@@ -14,6 +14,7 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -170,7 +171,13 @@ public class WebActivity extends Activity {
     public void launchAudioService() {
 
         Intent intent = new Intent(this, AudioService.class);
-        startService(intent);
+        // originally was startService
+        //startService(intent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
         android.util.Log.e("daedalus-js", "launching audio service");
     }
 
