@@ -162,6 +162,7 @@ public class NativeAudio {
 
     @JavascriptInterface
     public void beginSync(String token) {
+        Log.info("begin sync: " + token);
         Intent intent = new Intent(m_activity, AudioService.class);
         intent.setAction(AudioActions.ACTION_SYNC);
         intent.putExtra("token", token);

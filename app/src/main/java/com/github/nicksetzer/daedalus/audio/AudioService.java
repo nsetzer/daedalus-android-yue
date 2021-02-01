@@ -47,6 +47,7 @@ import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.R;
 import com.github.nicksetzer.daedalus.audio.tasks.AudioFetchTask;
 import com.github.nicksetzer.daedalus.audio.tasks.AudioSyncTask;
+import com.github.nicksetzer.metallurgy.orm.dsl.DslException;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -325,6 +326,36 @@ public class AudioService extends MediaBrowserServiceCompat {
 
     }
 
+    public void disableNotification() {
+
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
+
+        builder.setContentTitle("App is running in background");
+        builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+
+        MediaSessionCompat session = null;
+
+        Context context = getApplicationContext();
+        String packageName = context.getPackageName();
+        Intent openApp = context.getPackageManager().getLaunchIntentForPackage(packageName);
+
+        openApp.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+
+        // Add the Uri data so apps can identify that it was a notification click
+        openApp.setAction(Intent.ACTION_VIEW);
+        openApp.setData(Uri.parse("daedalus://notification.click"));
+
+        Notification notification = builder.setOngoing(true)
+                .setSmallIcon(R.drawable.play)
+                .setPriority(NotificationManager.IMPORTANCE_HIGH)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
+                .build();
+
+        startForeground(1, notification);
+
+    }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -601,7 +632,27 @@ public class AudioService extends MediaBrowserServiceCompat {
     }
 
     public String mediaBuildForest(String query, int syncState, int showBannished) {
-        return m_database.m_songsTable.queryForest(query, syncState, showBannished).toString();
+
+        try {
+            return m_database.m_songsTable.queryForest(query, syncState, showBannished).toString();
+        } catch (DslException e) {
+            Log.error("dsl error", e);
+            JSONObject obj = new JSONObject();
+            try {
+                obj.put("title", "Query Error");
+                String msg = e.getMessage();
+                msg = msg.replace('\"', '\'');
+                obj.put("message", msg);
+
+
+                Log.info(obj.toString());
+                sendEvent(AudioEvents.ONEXCEPT, obj.toString());
+            } catch (JSONException ex2) {
+                Log.error("error formatting exception", ex2);
+            }
+        }
+        return "";
+
     }
 
     public String getSyncInfo() {

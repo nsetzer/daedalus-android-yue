@@ -2356,12 +2356,61 @@ components=(function(daedalus,resources){
         }
         return[NavFooter,NavHeader];
       })();
+    const[ErrorDrawer]=(function(){
+        const style={drawer:'dcs-d9d8fbb3-0',headerDiv:'dcs-d9d8fbb3-1',lhs:'dcs-d9d8fbb3-2',
+                  title:'dcs-d9d8fbb3-3',message:'dcs-d9d8fbb3-4',button:'dcs-d9d8fbb3-5',
+                  hide:'dcs-d9d8fbb3-6'};
+        class ErrorDrawer extends DomElement {
+          constructor(icon){
+            super("div",{className:style.drawer},[]);
+            this.attrs={div:new DomElement("div",{className:style.headerDiv},[]),
+                          divLHS:new DomElement("div",{className:style.lhs},[]),divTitle:new DomElement(
+                              "div",{className:style.title},[]),divMessage:new DomElement("div",
+                              {className:style.message},[]),divButton:new DomElement("div",{className:style.button},
+                              [])};
+            this.appendChild(this.attrs.div);
+            this.attrs.div.appendChild(this.attrs.divLHS);
+            this.attrs.div.appendChild(this.attrs.divButton);
+            this.attrs.divLHS.appendChild(this.attrs.divTitle);
+            this.attrs.divLHS.appendChild(this.attrs.divMessage);
+            this.attrs.title=this.attrs.divTitle.appendChild(new TextElement("Title"));
+            
+            this.attrs.message=this.attrs.divMessage.appendChild(new TextElement(
+                              "Message xxxx xxxx"));
+            this.attrs.button=this.attrs.divButton.appendChild(new SvgButtonElement(
+                              icon,this.removeFirstError.bind(this)));
+            this.addClassName(style.hide);
+            this.attrs.errors=[];
+          }
+          appendError(title,message){
+            this.attrs.errors.push({title,message});
+            this.removeClassName(style.hide);
+            this.updateError();
+          }
+          removeFirstError(){
+            this.attrs.errors=this.attrs.errors.slice(1);
+            this.updateError();
+          }
+          updateError(){
+            if(this.attrs.errors.length>0){
+              this.removeClassName(style.hide);
+              let err=this.attrs.errors[0];
+              let title=(this.attrs.errors.length)+". "+err.title;
+              this.attrs.title.setText(title);
+              this.attrs.message.setText(err.message);
+            }else{
+              this.addClassName(style.hide);
+            }
+          }
+        }
+        return[ErrorDrawer];
+      })();
     const[]=(function(){
         return[];
       })();
-    return{CheckBoxElement,HSpacer,MiddleText,MiddleTextLink,MoreMenu,NavFooter,NavHeader,
-          NavMenu,SvgButtonElement,SvgElement,SwipeHandler,TreeItem,TreeView,VSpacer};
-    
+    return{CheckBoxElement,ErrorDrawer,HSpacer,MiddleText,MiddleTextLink,MoreMenu,
+          NavFooter,NavHeader,NavMenu,SvgButtonElement,SvgElement,SwipeHandler,TreeItem,
+          TreeView,VSpacer};
   })(daedalus,resources);
 router=(function(api,daedalus){
     "use strict";
@@ -5360,6 +5409,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
             this.addAction(resources.svg['download'],()=>{
                 if(daedalus.platform.isAndroid){
+                  console.log("begin sync");
                   AndroidNativeAudio.beginSync(""+api.getAuthToken());
                 }
               });
@@ -5552,10 +5602,10 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         const savedSearches=[{name:"stoner best",query:"stoner rating >= 5"},{name:"grunge best",
                       query:"grunge rating >= 5"},{name:"visual best",query:"\"visual kei\" rating >= 5"},
                   {name:"english best",query:"language = english rating >= 5"},{name:"stone temple pilots",
-                      query:"\"stone temple pilots\""},{name:"soundwitch",query:"soundwitch"},
+                      query:"\"stone temple pilots\" not STPLIGHT"},{name:"soundwitch",query:"soundwitch"},
                   {name:"Gothic Emily",query:"\"gothic emily\""},{name:"Driving Hits Volume 1",
-                      query:"\":DRV\" p lt -14d"},{name:"Driving Hits Volume 2",query:"\":VL2\" p lt -14d"},
-                  {name:"Driving Hits Volume 3",query:"comment=\":DRV\" or comment=\":VL2\" p lt -14d"}];
+                      query:"\":DRV\" && p lt -14d"},{name:"Driving Hits Volume 2",query:"\":VL2\" && p lt -14d"},
+                  {name:"Driving Hits Volume 3",query:"(comment=\":DRV\" or comment=\":VL2\") && p lt -14d"}];
         
         class SavedSearchList extends DomElement {
           constructor(parent,index,song){
@@ -5696,8 +5746,13 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         const body=document.getElementsByTagName("BODY")[0];
         body.className=style.body;
         this.attrs={main:new pages.LandingPage,page_cache:{},nav:null,router:null,
-                  container:new DomElement("div",{},[])};
+                  container:new DomElement("div",{},[]),drawer:new components.ErrorDrawer(
+                      resources.svg.media_error)};
         window.onresize=this.handleResize.bind(this);
+        this.appendChild(this.attrs.drawer);
+        components.ErrorDrawer.post=(title,message)=>{
+          this.attrs.drawer.appendError(title,message);
+        };
       }
       doNavigate(res_path){
         if(!this.attrs.nav.isFixed()){
@@ -5787,9 +5842,16 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         }else{
           this.buildRouter();
         }
+        if(daedalus.platform.isAndroid){
+          registerAndroidEvent('onexcept',this.handleError.bind(this));
+        }
       }
       handleResize(event){
         this.toggleShowMenuFixed();
+      }
+      handleError(payload){
+        console.log(JSON.stringify(payload));
+        this.attrs.drawer.appendError(payload.title,payload.message);
       }
       toggleShowMenuFixed(){
         if(!this.attrs.nav){

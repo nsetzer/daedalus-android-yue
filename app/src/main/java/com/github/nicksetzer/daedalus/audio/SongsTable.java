@@ -6,8 +6,10 @@ import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.metallurgy.orm.DatabaseConnection;
 import com.github.nicksetzer.metallurgy.orm.EntityTable;
 import com.github.nicksetzer.metallurgy.orm.TableSchema;
+import com.github.nicksetzer.metallurgy.orm.dsl.DateUtil;
 import com.github.nicksetzer.metallurgy.orm.dsl.DslException;
 import com.github.nicksetzer.metallurgy.orm.dsl.Pair;
+import com.github.nicksetzer.metallurgy.orm.dsl.QDateTime;
 import com.github.nicksetzer.metallurgy.orm.dsl.Token;
 
 import org.json.JSONArray;
@@ -98,7 +100,7 @@ public class SongsTable extends EntityTable {
         return count;
     }
 
-    public JSONArray queryForest(String query, int syncState, int showBannished) {
+    public JSONArray queryForest(String query, int syncState, int showBannished) throws DslException {
 
         Log.error(query);
 
@@ -113,13 +115,9 @@ public class SongsTable extends EntityTable {
 
             sb.append(" WHERE (");
 
+            QDateTime now = DateUtil.now();
             if (!query.isEmpty()) {
-                try {
-                    token = SongTableDsl.parse(query);
-                } catch (DslException ex) {
-                    Log.error("error parsing", query);
-                    return new JSONArray();
-                }
+                token = SongTableDsl.parse(query, now);
             }
 
             if (syncState == 1) {
@@ -130,11 +128,7 @@ public class SongsTable extends EntityTable {
                 token = SongTableDsl.and_(tok, token);
             }
 
-            try {
-                result = SongTableDsl.transform(token);
-            } catch (DslException ex) {
-                return new JSONArray();
-            }
+            result = SongTableDsl.transform(token, now);
 
             sb.append(result.first);
             sb.append(")");

@@ -3,6 +3,7 @@ package com.github.nicksetzer.daedalus.audio;
 import com.github.nicksetzer.metallurgy.orm.dsl.DslException;
 import com.github.nicksetzer.metallurgy.orm.dsl.Pair;
 import com.github.nicksetzer.metallurgy.orm.dsl.Position;
+import com.github.nicksetzer.metallurgy.orm.dsl.QDateTime;
 import com.github.nicksetzer.metallurgy.orm.dsl.QueryParser;
 import com.github.nicksetzer.metallurgy.orm.dsl.QueryTransform;
 import com.github.nicksetzer.metallurgy.orm.dsl.StringUtil;
@@ -19,25 +20,25 @@ public class SongTableDsl {
         SongTableQueryTransform() {
 
             // boolean
-            addColumnDef("valid", new String[]{"valid"}, SqlType.NUMBER);
-            addColumnDef("sync", new String[]{"sync"}, SqlType.NUMBER);
-            addColumnDef("synced", new String[]{"synced"}, SqlType.NUMBER);
+            addColumnDef("valid", new String[]{"valid"}, SqlType.INTEGER);
+            addColumnDef("sync", new String[]{"sync"}, SqlType.INTEGER);
+            addColumnDef("synced", new String[]{"synced"}, SqlType.INTEGER);
 
             // number
-            addColumnDef("play_count", new String[]{"pcnt", "play_count"}, SqlType.NUMBER);
-            addColumnDef("skip_count", new String[]{"scnt", "skip_count"}, SqlType.NUMBER);
-            addColumnDef("album_index", new String[]{"index", "album_index"}, SqlType.NUMBER);
-            addColumnDef("rating", new String[]{"rating", "rte"}, SqlType.NUMBER);
+            addColumnDef("play_count", new String[]{"pcnt", "play_count"}, SqlType.INTEGER);
+            addColumnDef("skip_count", new String[]{"scnt", "skip_count"}, SqlType.INTEGER);
+            addColumnDef("album_index", new String[]{"index", "album_index"}, SqlType.INTEGER);
+            addColumnDef("rating", new String[]{"rating", "rte"}, SqlType.INTEGER);
 
             // year
-            addColumnDef("year", new String[]{"year"}, SqlType.NUMBER);
+            addColumnDef("year", new String[]{"year"}, SqlType.INTEGER);
 
             // duration
-            addColumnDef("length", new String[]{"length", "duration"}, SqlType.NUMBER);
+            addColumnDef("length", new String[]{"length", "duration"}, SqlType.INTEGER);
 
             // date
-            addColumnDef("date_added", new String[]{"added"}, SqlType.EPOCHTIME);
-            addColumnDef("last_played", new String[]{"played", "p"}, SqlType.EPOCHTIME);
+            addColumnDef("date_added", new String[]{"added"}, SqlType.EPOCHTIME_SECONDS);
+            addColumnDef("last_played", new String[]{"played", "p"}, SqlType.EPOCHTIME_SECONDS);
 
             // text
             addColumnDef("artist", new String[]{"art", "artist"}, SqlType.STRING);
@@ -65,13 +66,15 @@ public class SongTableDsl {
 
     }
 
-    static Token parse(String text) throws DslException {
+    static Token parse(String text, QDateTime now) throws DslException {
         QueryParser parser = new QueryParser();
+        parser.setCurrentDateTime(now);
         return parser.parse(text);
     }
 
-    static Pair<String, List<String>> transform(Token token) throws DslException {
+    static Pair<String, List<String>> transform(Token token, QDateTime now) throws DslException {
         SongTableQueryTransform xform = new SongTableQueryTransform();
+        xform.setCurrentDateTime(now);
         return xform.transform(token);
     }
 

@@ -9,6 +9,8 @@ import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
+import com.github.nicksetzer.daedalus.Log;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -98,8 +100,9 @@ public class AudioManager {
                 //MediaPlayer.MEDIA_ERROR_UNSUPPORTED
                 //MediaPlayer.MEDIA_ERROR_TIMED_OUT
                 //MEDIA_ERROR_SYSTEM
-                m_service.sendEvent(AudioEvents.ONERROR,
-                        "{\"what\": " + what + ", \"extra\": " + extra + "}");
+                String payload = "{\"what\": " + what + ", \"extra\": " + extra + "}";
+                Log.error("sending error to javascript: " + payload);
+                m_service.sendEvent(AudioEvents.ONERROR, payload);
 
                 return true; // true when error is handled
             }
@@ -271,6 +274,8 @@ public class AudioManager {
         if (m_queue.next()) {
             loadIndex(m_queue.getCurrentIndex());
             m_service.sendEvent("onindexchanged", "{\"index\": " + m_queue.getCurrentIndex() + "}");
+        } else {
+            m_service.disableNotification();
         }
 
     }
