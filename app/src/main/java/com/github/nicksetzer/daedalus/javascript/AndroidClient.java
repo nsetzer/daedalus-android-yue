@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
 import android.os.Environment;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
@@ -166,5 +167,18 @@ public class AndroidClient {
         }
 
         return obj.toString();
+    }
+
+    @JavascriptInterface
+    public boolean isWifiConnected() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager)m_activity.getSystemService(Context.CONNECTIVITY_SERVICE);
+            boolean isMetered = cm.isActiveNetworkMetered();
+            return !isMetered;
+
+        } catch (Exception e) {
+            android.util.Log.e("daedalus-js", e.toString());
+        }
+        return false;
     }
 }

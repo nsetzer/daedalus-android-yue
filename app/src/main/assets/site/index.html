@@ -13,7 +13,7 @@ function registerAndroidEvent(name, callback) {
     AndroidEvents[name] = callback;
 }
 function invokeAndroidEvent(name, payload) {
-    console.log(name + " " + payload);    if (!!AndroidEvents[name]) {
+    if (!!AndroidEvents[name]) {
         AndroidEvents[name](JSON.parse(payload));
     } else {
         console.error("unregistered event: " + name);

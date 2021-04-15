@@ -437,30 +437,25 @@ daedalus=(function(){
         class TextInputElement extends DomElement {
           constructor(text,_,submit_callback){
             super("input",{value:text,type:"text"},[]);
-            this.textChanged=Signal(this,'textChanged');
             this.attrs={submit_callback};
           }
           setText(text){
-            this.updateProps({value:text});
-            this.textChanged.emit(this.props);
+            this.getDomNode().value=text;
           }
           getText(){
-            return this.props.value;
+            return this.getDomNode().value;
           }
           onChange(event){
-            this.updateProps({value:event.target.value},false);
-            this.textChanged.emit(this.props);
+
           }
           onPaste(event){
-            this.updateProps({value:event.target.value},false);
-            this.textChanged.emit(this.props);
+
           }
           onKeyUp(event){
-            this.updateProps({value:event.target.value},false);
-            this.textChanged.emit(this.props);
             if(event.key=="Enter"){
               if(this.attrs.submit_callback){
-                this.attrs.submit_callback(this.props.value);
+                console.log("enter: "+this.getText());
+                this.attrs.submit_callback(this.getText());
               }
             }
           }
@@ -1690,7 +1685,6 @@ components=(function(daedalus,resources){
     const DomElement=daedalus.DomElement;
     const ButtonElement=daedalus.ButtonElement;
     const TextElement=daedalus.TextElement;
-    const TextInputElement=daedalus.TextInputElement;
     const Router=daedalus.Router;
     const[SvgButtonElement,SvgElement]=(function(){
         const style={svgButton:'dcs-b308e454-0'};
@@ -3133,8 +3127,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
     const DomElement=daedalus.DomElement;
     const ButtonElement=daedalus.ButtonElement;
     const TextElement=daedalus.TextElement;
-    const TextInputElement=daedalus.TextInputElement;
     const Router=daedalus.Router;
+    const TextInputElement=daedalus.TextInputElement;
     const LinkElement=daedalus.LinkElement;
     const routes=router.routes;
     const[fmtEpochTime]=(function(){
@@ -3198,8 +3192,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.appendChild(this.attrs.btn2);
           }
           handleLoginClicked(){
-            const username=this.attrs.edit_username.props.value;
-            const password=this.attrs.edit_password.props.value;
+            const username=this.attrs.edit_username.getText();
+            const password=this.attrs.edit_password.getText();
             api.authenticate(username,password).then((data)=>{
                 if(data.token){
                   api.setUsertoken(data.token);
@@ -4272,7 +4266,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(this.attrs.active!=active){
               this.attrs.active=active;
               if(active===true){
-                this.attrs.txt1.setText((this.attrs.index+1)+". *** "+this.attrs.song.title);
+                this.attrs.txt1.setText((this.attrs.index+1)+". "+this.attrs.song.title);
                 
                 this.addClassName(style.songItemActive);
                 return">T";
@@ -4570,6 +4564,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         }
         const SWIPE_RIGHT=0x01;
         const SWIPE_LEFT=0x02;
+        const SWIPE_OFFSET=32;
         class SongList extends daedalus.DraggableList {
           constructor(){
             super();
@@ -4579,6 +4574,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.swipeActionLeft=null;
             this.attrs.swipeActionCancel=null;
             this.attrs.swipeConfig=SWIPE_RIGHT;
+            this.attrs.swipe_offset=0;
           }
           updateModel(indexStart,indexEnd){
             super.updateModel(indexStart,indexEnd);
@@ -4626,6 +4622,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.attrs.y=y;
               this.attrs.isSwipe=true;
             }
+            this.attrs.swipe_offset=0;
           }
           handleChildSwipeMove(child,event){
             if(this.attrs.isAnimated){
@@ -4647,9 +4644,18 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               }
             }
             let deltax=event.pageX-this.attrs.xstart-this.attrs.x;
+            if(!!this.attrs.draggingEle){
+              if(deltax<-SWIPE_OFFSET){
+                this.attrs.draggingEle.style['background-color']="#88bb7F";
+              }else if(deltax>SWIPE_OFFSET){
+                this.attrs.draggingEle.style['background-color']="#bb887F";
+              }else{
+                this.attrs.draggingEle.style['background-color']="#FFFFFF";
+              }
+            }
             if(!this.attrs.isDraggingStarted){
               const draggingRect=this.attrs.draggingEle.getBoundingClientRect();
-              if(Math.abs(deltax)<32){
+              if(Math.abs(deltax)<SWIPE_OFFSET){
                 return false;
               }
               this.attrs.isDraggingStarted=true;
@@ -4660,10 +4666,12 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.attrs.draggingEle.parentNode.insertBefore(this.attrs.placeholder,
                               this.attrs.draggingEle.nextSibling);
               this.attrs.placeholder.style.height=`${draggingRect.height-2}px`;
+              this.attrs.swipe_offset=(deltax>0?-SWIPE_OFFSET:SWIPE_OFFSET);
             }
             org_event.preventDefault();
             this.attrs.draggingEle.style.position='absolute';
-            this.attrs.draggingEle.style.left=`${event.pageX-this.attrs.x}px`;
+            this.attrs.draggingEle.style.left=`${event.pageX-this.attrs.x+this.attrs.swipe_offset}px`;
+            
             return true;
           }
           handleChildSwipeEnd(child,event){
@@ -4682,20 +4690,25 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
             let deltax=this.attrs.draggingEle.offsetLeft-this.attrs.placeholder.offsetLeft;
             
-            const SWIPE_OFFSET=32;
             const cfg=this.attrs.swipeConfig;
-            if(success&&deltax>SWIPE_OFFSET&&cfg&SWIPE_RIGHT){
-              this.attrs.draggingEle.style.left=`${document.body.clientWidth}px`;
-              
-              this.swipeActionRight=child;
-            }else if(success&&deltax<SWIPE_OFFSET&&cfg&SWIPE_LEFT){
-              this.attrs.draggingEle.style.left=`${-this.attrs.draggingEle.clientWidth}px`;
-              
-              this.swipeActionLeft=child;
-            }else{
-              this.attrs.draggingEle.style.left=this.attrs.placeholder.offsetLeft+'px';
-              
-              if(success){
+            if(success){
+              if(deltax>0&&deltax>SWIPE_OFFSET&&cfg&SWIPE_RIGHT){
+                this.attrs.draggingEle.style.left=`${document.body.clientWidth}px`;
+                
+                this.swipeActionLeft=null;
+                this.swipeActionRight=child;
+                this.swipeActionCancel=null;
+              }else if(deltax<0&&deltax<-SWIPE_OFFSET){
+                this.attrs.draggingEle.style.left=this.attrs.placeholder.offsetLeft+'px';
+                
+                this.swipeActionLeft=child;
+                this.swipeActionRight=null;
+                this.swipeActionCancel=null;
+              }else{
+                this.attrs.draggingEle.style.left=this.attrs.placeholder.offsetLeft+'px';
+                
+                this.swipeActionLeft=null;
+                this.swipeActionRight=null;
                 this.swipeActionCancel=child;
               }
             }
@@ -4715,40 +4728,38 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(!this.attrs.draggingEle){
               return;
             }
-            this.attrs.draggingEle.style.removeProperty('left');
-            this.attrs.draggingEle.style.removeProperty('position');
-            this.attrs.draggingEle.style.removeProperty('transition');
-            this.attrs.draggingEle.style.removeProperty('width');
-            this.attrs.draggingEle.style.removeProperty('background');
+            let s=this.attrs.draggingEle.style;
+            s.removeProperty('left');
+            s.removeProperty('position');
+            s.removeProperty('transition');
+            s.removeProperty('width');
+            s.removeProperty('background');
             this.attrs.draggingEle=null;
             if(!!this.swipeActionRight){
-              console.log("swipe action right");
               this.handleSwipeRight(this.swipeActionRight);
               this.swipeActionRight=null;
             }
             if(!!this.swipeActionLeft){
-              console.log("swipe action left");
               this.handleSwipeLeft(this.swipeActionLeft);
               this.swipeActionLeft=null;
             }
             if(!!this.swipeActionCancel){
-              console.log("swipe action cancel");
               this.handleSwipeCancel(this.swipeActionCancel);
               this.swipeActionCancel=null;
             }
           }
           handleSwipeRight(child){
-            console.log("handle swipe right",child.attrs.index);
+            console.log(`handle swipe right index: ${child.attrs.index}`);
             const index=child.attrs.index;
             audio.AudioDevice.instance().queueRemoveIndex(index);
           }
           handleSwipeLeft(child){
-            console.log("handle swipe left");
+            console.log(`handle swipe left index: ${child.attrs.index}`);
+            const index=child.attrs.index;
+            audio.AudioDevice.instance().playIndex(index);
           }
           handleSwipeCancel(child){
             console.log("handle swipe cancel");
-            const index=child.attrs.index;
-            audio.AudioDevice.instance().playIndex(index);
           }
         }
         class PlaylistPage extends DomElement {
@@ -5095,8 +5106,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           constructor(parent){
             super();
             this.attrs.parent=parent;
-            this.attrs.txtInput=new TextInputElement("",null,()=>{
-                this.attrs.parent.search(this.attrs.txtInput.props.value);
+            this.attrs.txtInput=new TextInputElement("",null,(text)=>{
+                this.attrs.parent.search(text);
               });
             this.attrs.txtInput.updateProps({"autocapitalize":"off"});
             this.addAction(resources.svg['menu'],()=>{
@@ -5112,6 +5123,11 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 audio.AudioDevice.instance().next();
               });
             this.addRow(false);
+            this.addRowAction(0,resources.svg.media_error,()=>{
+                console.log("clear");
+                this.attrs.txtInput.setText("");
+                console.log(this.attrs.txtInput.props.value);
+              });
             this.addRowElement(0,this.attrs.txtInput);
             this.attrs.txtInput.addClassName(style.grow);
             if(daedalus.platform.isAndroid){
@@ -5121,13 +5137,11 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.addRowElement(0,this.attrs.chk);
               this.addRowElement(0,new components.HSpacer("1em"));
             }
-            this.attrs.show_banished=new SearchBannishedCheckBox(this.handleCheckShowBannished.bind(
-                              this),0);
             this.addRowElement(0,new components.HSpacer("1em"));
-            this.addRowElement(0,this.attrs.show_banished);
-            this.addRowElement(0,new components.HSpacer("1em"));
-            this.addRowAction(0,resources.svg['search'],()=>{
-                this.attrs.parent.search(this.attrs.txtInput.props.value);
+            this.addRowAction(0,resources.svg.search,()=>{
+                const text=this.attrs.txtInput.getText();
+                console.log("search: "+text);
+                this.attrs.parent.search(text);
               });
           }
           setQuery(query){
@@ -5136,15 +5150,11 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           handleCheck(){
             this.attrs.chk.setCheckState((this.attrs.chk.attrs.checkState+1)%3);
           }
-          handleCheckShowBannished(){
-            this.attrs.show_banished.setCheckState((this.attrs.show_banished.attrs.checkState+1)%2);
-            
-          }
           syncState(){
             return this.attrs.chk.attrs.checkState;
           }
           showBanished(){
-            return this.attrs.show_banished.attrs.checkState;
+            return false;
           }
         }
         class Footer extends components.NavFooter {
@@ -5383,8 +5393,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           constructor(parent){
             super();
             this.attrs.parent=parent;
-            this.attrs.txtInput=new TextInputElement("",null,()=>{
-                this.attrs.parent.search(this.attrs.txtInput.props.value);
+            this.attrs.txtInput=new TextInputElement("",null,(text)=>{
+                this.attrs.parent.search(text);
               });
             this.attrs.txtInput.updateProps({"autocapitalize":"off"});
             this.attrs.status=new components.MiddleText("...");
@@ -5398,6 +5408,12 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
             this.addAction(resources.svg['sort'],()=>{
                 if(daedalus.platform.isAndroid){
+                  if(Client){
+                    if(!Client.isWifiConnected()){
+                      components.ErrorDrawer.post("Connection Status","Wifi Not Connected");
+                      
+                    }
+                  }
                   AndroidNativeAudio.beginFetch(""+api.getAuthToken());
                 }
               });
@@ -5424,7 +5440,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.addRowElement(0,new components.HSpacer("1em"));
             }
             this.addRowAction(0,resources.svg['search'],()=>{
-                this.attrs.parent.search(this.attrs.txtInput.props.value);
+                this.attrs.parent.search(this.attrs.txtInput.getText());
               });
             this.addRow(false);
             this.addRowElement(1,this.attrs.status);
@@ -5433,7 +5449,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.status.setText(text);
           }
           searchText(){
-            return this.attrs.txtInput.props.value;
+            return this.attrs.txtInput.getText();
           }
           handleCheck(){
             this.attrs.chk.setCheckState((this.attrs.chk.attrs.checkState+1)%3);
@@ -5482,6 +5498,12 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                                   this));
               registerAndroidEvent('onresume',this.handleResume.bind(this));
               this.updateInfo();
+            }
+            if(Client){
+              if(!Client.isWifiConnected()){
+                components.ErrorDrawer.post("Connection Status","Wifi Not Connected");
+                
+              }
             }
           }
           elementUnmounted(){
@@ -5690,7 +5712,6 @@ app=(function(api,components,daedalus,pages,resources,router,store){
     const DomElement=daedalus.DomElement;
     const ButtonElement=daedalus.ButtonElement;
     const TextElement=daedalus.TextElement;
-    const TextInputElement=daedalus.TextInputElement;
     const AuthenticatedRouter=daedalus.AuthenticatedRouter;
     const style={body:'dcs-1e053eca-0',rootWebDesktop:'dcs-1e053eca-1',rootWebMobile:'dcs-1e053eca-2',
           rootMobile:'dcs-1e053eca-3',margin:'dcs-1e053eca-4',fullsize:'dcs-1e053eca-5',
@@ -5749,6 +5770,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
                   container:new DomElement("div",{},[]),drawer:new components.ErrorDrawer(
                       resources.svg.media_error)};
         window.onresize=this.handleResize.bind(this);
+        this.attrs.loading=this.appendChild(new TextElement("loading..."));
         this.appendChild(this.attrs.drawer);
         components.ErrorDrawer.post=(title,message)=>{
           this.attrs.drawer.appendError(title,message);
@@ -5813,6 +5835,10 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         this.handleLocationChanged();
         this.connect(history.locationChanged,this.handleLocationChanged.bind(this));
         
+        if(this.attrs.loading!=null){
+          this.removeChild(this.attrs.loading);
+          this.attrs.loading=null;
+        }
       }
       handleLocationChanged(){
         this.toggleShowMenuFixed();
