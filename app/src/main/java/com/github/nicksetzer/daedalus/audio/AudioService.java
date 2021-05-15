@@ -79,7 +79,7 @@ public class AudioService extends MediaBrowserServiceCompat {
     private static final String MY_EMPTY_MEDIA_ROOT_ID = "empty_root_id";
 
 
-    AudioManager m_manager;
+    public AudioManager m_manager;
     public Database m_database;
     Executor m_executor;
 
@@ -252,7 +252,8 @@ public class AudioService extends MediaBrowserServiceCompat {
         if (m_manager != null && m_manager.m_queue != null) {
 
             if (session != null) {
-                session.setMetadata(m_manager.m_queue.getMetadata(m_manager.m_queue.getCurrentIndex()));
+                // TODO: this looks redundant with AudioManager when the song is initially loaded
+                //session.setMetadata(m_manager.m_queue.getMetadata(m_manager.m_queue.getCurrentIndex()));
                 session.setPlaybackState(new PlaybackStateCompat.Builder()
                         .setState(
                                 mediaIsPlaying()?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
@@ -263,14 +264,7 @@ public class AudioService extends MediaBrowserServiceCompat {
             }
 
 
-            {
-                //Intent mediaIntent = new Intent(context, AudioService.class);
-                //Intent mediaIntent = new Intent();
-                //mediaIntent.setAction(AudioActions.ACTION_SKIPTOPREV);
-                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
-                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS);
-                builder.addAction(R.drawable.previous, "previous", intent);
-            }
+
 
             if (mediaIsPlaying()){
                 //Intent mediaIntent = new Intent(context, AudioService.class);
@@ -294,6 +288,15 @@ public class AudioService extends MediaBrowserServiceCompat {
                 PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PLAY);
                 builder.addAction(R.drawable.play, "play", intent);
 
+            }
+
+            {
+                //Intent mediaIntent = new Intent(context, AudioService.class);
+                //Intent mediaIntent = new Intent();
+                //mediaIntent.setAction(AudioActions.ACTION_SKIPTOPREV);
+                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
+                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS);
+                builder.addAction(R.drawable.previous, "previous", intent);
             }
 
             {
@@ -377,6 +380,7 @@ public class AudioService extends MediaBrowserServiceCompat {
 
             String token;
             String data;
+            String url;
             int index;
             if (action != null) {
                 switch (action) {
@@ -394,12 +398,31 @@ public class AudioService extends MediaBrowserServiceCompat {
                         m_manager.loadIndex(index);
                         break;
                     case AudioActions.ACTION_LOAD_URL:
-                        String url = intent.getExtras().getString("url");
+                        url = intent.getExtras().getString("url");
                         if (url != null) {
                             m_manager.loadUrl(url);
                         } else {
                             android.util.Log.e("daedalus-js", "received null url");
                         }
+                        break;
+                    case AudioActions.ACTION_LOAD_RADIO_URL:
+                        url = intent.getExtras().getString("url");
+                        if (url != null) {
+                            m_manager.loadRadioUrl(url);
+                        } else {
+                            android.util.Log.e("daedalus-js", "received null url");
+                        }
+                        break;
+                    case AudioActions.ACTION_PLAY_RADIO_URL:
+                        url = intent.getExtras().getString("url");
+                        if (url != null) {
+                            m_manager.playRadioUrl(url);
+                        } else {
+                            android.util.Log.e("daedalus-js", "received null url");
+                        }
+                        break;
+                    case AudioActions.ACTION_PLAY_NEXT_RADIO_URL:
+                        m_manager.nextRadioTrack();
                         break;
                     case AudioActions.ACTION_PLAY:
                         Log.info("play");
@@ -450,7 +473,13 @@ public class AudioService extends MediaBrowserServiceCompat {
                     case AudioActions.ACTION_CANCEL_TASK:
                         Log.info("cancel task");
                         taskKill();
-
+                    case AudioActions.ACTION_INIT_RADIO:
+                        Log.info( "init radio");
+                        token = intent.getExtras().getString("token");
+                        m_manager.setToken(token);
+                        token = intent.getExtras().getString("station");
+                        m_manager.setStation(token);
+                        break;
                     default:
                         if (action.equals("android.intent.action.MEDIA_BUTTON")) {
                             Log.info("weird action", action);

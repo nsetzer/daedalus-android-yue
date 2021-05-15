@@ -32,7 +32,6 @@ serve:
 #subparser.add_argument('out')
 
 
-https://yueapp.duckdns.org/
 .PHONY: build
 build:
 	source venv/bin/activate && \
@@ -44,6 +43,16 @@ build:
 			/mnt/d/git/yue-react-flask/frontend/src/app.js \
 			/mnt/d/git/daedalus-android/app/src/main/assets/site
 
+.PHONY: build-profile
+build-profile:
+	source venv/bin/activate && \
+		PYTHONPATH='./daedalus' \
+		python -m daedalus build-profile \
+			--platform android \
+			--env baseUrl='https://yueapp.duckdns.org' \
+			--static /mnt/d/git/yue-react-flask/frontend/resources \
+			/mnt/d/git/yue-react-flask/frontend/src/app.js \
+			/mnt/d/git/daedalus-android/app/src/main/assets/site
 
 .PHONY: serve2
 serve2:

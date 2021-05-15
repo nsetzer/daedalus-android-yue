@@ -39,14 +39,11 @@ public class WebActivity extends Activity {
     String profile = "prd";
 
     ServiceEventReceiver m_receiver;
-    ScreenEventReceiver m_screen_receiver;
+    ScreenEventReceiver m_screen_receiver = null;
     public LocalStorage m_storage;
 
     private Handler m_timeHandler = new Handler();
 
-
-
-    
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -122,6 +119,15 @@ public class WebActivity extends Activity {
     }
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (m_screen_receiver != null) {
+            unregisterReceiver(m_screen_receiver);
+            m_screen_receiver = null;
+        }
+    }
+
+    @Override
     public void onBackPressed() {
         /**
          * When the back button is pressed return to the previous page in the browser.
@@ -131,9 +137,8 @@ public class WebActivity extends Activity {
          */
 
         WebView view = findViewById(R.id.DaedalusView);
-        final String command = "true";
         final String script = "(function() {\n" +
-            "const result = window.history.goBack();\n" + // non-standard function
+            "const result = window.history.back();\n" + // non-standard function
             "return result;\n" +
             "})();";
 
@@ -146,6 +151,12 @@ public class WebActivity extends Activity {
 
     }
 
+    public void onBackPressedResult(boolean result) {
+        //if (!result) {
+        //    super.onBackPressed();
+        //}
+    }
+
     @Override
     public void onPostResume() {
         super.onPostResume();
@@ -155,16 +166,21 @@ public class WebActivity extends Activity {
         invokeJavascriptCallback(AudioEvents.ONRESUME, "{}");
     }
 
-    public void onBackPressedResult(boolean result) {
-        if (!result) {
-            super.onBackPressed();
-        }
-    }
+
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
 
-        android.util.Log.e("daedalus-js", "code: " + keyCode);
+
+
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BACK:
+                android.util.Log.i("daedalus-js", "KeyEvent.KEYCODE_BACK");
+                onBackPressed();
+                break;
+            default:
+                android.util.Log.e("daedalus-js", "android key code: " + keyCode);
+        }
         return false;
     }
 
@@ -185,6 +201,7 @@ public class WebActivity extends Activity {
 
 
     private void requestStoragePermission(){
+
 
         if (this.shouldShowRequestPermissionRationale(Manifest.permission.READ_EXTERNAL_STORAGE)){
             //If the user has denied the permission previously your code will come to this block

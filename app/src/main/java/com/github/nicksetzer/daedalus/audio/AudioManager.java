@@ -10,6 +10,8 @@ import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
 import com.github.nicksetzer.daedalus.Log;
+import com.github.nicksetzer.daedalus.api.YueApi;
+import com.github.nicksetzer.daedalus.audio.tasks.RadioNextTrackTask;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -46,6 +48,10 @@ public class AudioManager {
     private android.media.AudioManager m_manager;
 
     private boolean m_autoPlay = true;
+    private int playback_mode = 0;
+
+    private String m_token = null;
+    private String m_station = null;
 
     AudioQueue m_queue;
 
@@ -217,8 +223,40 @@ public class AudioManager {
         }
     }
 
+    public void loadRadioUrl(final String url) {
+        playback_mode = 1;
+        m_autoPlay = false;
+        loadUrl(url);
+
+        // replace the existing meta data with dummy data if there was an error
+        MediaMetadataCompat data = new MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Unknown Artist")
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Unknown Album")
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Unknown Title")
+                .build();
+
+        m_session.setMetadata(data);
+    }
+
+    public void playRadioUrl(final String url) {
+        playback_mode = 1;
+        m_autoPlay = true;
+        loadUrl(url);
+
+        // replace the existing meta data with dummy data if there was an error
+        MediaMetadataCompat data = new MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Unknown Artist")
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Unknown Album")
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Unknown Title")
+                .build();
+
+        m_session.setMetadata(data);
+    }
+
     public void loadIndex(int index) {
         m_queue.setCurrentIndex(index);
+        playback_mode = 0;
+        m_autoPlay = true;
         loadUrl( m_queue.getUrl(index));
 
         // get the current meta data
@@ -260,15 +298,30 @@ public class AudioManager {
         m_mediaPlayer.stop();
     }
 
-    public void onSongEnd() {
-        try {
-            long spk = m_queue.getSpk(m_queue.getCurrentIndex());
-            m_service.m_database.m_songsTable.updatePlayTime(spk);
-        } catch (JSONException e) {
-            android.util.Log.e("daedalus-js", "unable update song playtime");
-        }
-        skipToNext();
+    public void nextRadioTrack() {
+
+        m_service.m_executor.execute(new RadioNextTrackTask(m_service, m_token, m_station));
+
     }
+
+    public void onSongEnd() {
+
+        if (playback_mode == 0) {
+            // normal playback
+            try {
+                long spk = m_queue.getSpk(m_queue.getCurrentIndex());
+                m_service.m_database.m_songsTable.updatePlayTime(spk);
+            } catch (JSONException e) {
+                android.util.Log.e("daedalus-js", "unable update song playtime");
+            }
+            skipToNext();
+        } else {
+            // radio playback
+            nextRadioTrack();
+        }
+    }
+
+
 
     public void skipToNext() {
         if (m_queue.next()) {
@@ -297,7 +350,16 @@ public class AudioManager {
         return m_mediaPlayer.isPlaying();
     }
 
+    public void setToken(final String token) {
+        m_token = token;
+    }
+
+    public void setStation(final String station) {
+        m_station = station;
+    }
+
     public void saveQueueData(String data, int index) {
+        // save the queue to a text file using json format
         String path = m_service.getExternalFilesDir(null)+ "/" + "queue.json";
         FileOutputStream stream = null;
         try {

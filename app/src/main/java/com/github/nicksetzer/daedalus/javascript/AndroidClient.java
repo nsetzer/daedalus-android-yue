@@ -2,10 +2,13 @@ package com.github.nicksetzer.daedalus.javascript;
 
 import com.github.nicksetzer.daedalus.audio.AudioDownloadFile;
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
+import android.net.Uri;
 import android.os.Environment;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
@@ -17,6 +20,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.net.URI;
 
 public class AndroidClient {
     private Activity m_activity;
@@ -180,5 +184,11 @@ public class AndroidClient {
             android.util.Log.e("daedalus-js", e.toString());
         }
         return false;
+    }
+
+    @JavascriptInterface
+    public void setClipboardUrl(final String title, final String url) {
+        ClipboardManager clipboard = (ClipboardManager) m_activity.getSystemService(Context.CLIPBOARD_SERVICE);
+        clipboard.setPrimaryClip(ClipData.newPlainText(title, url));
     }
 }

@@ -1,5 +1,7 @@
 package com.github.nicksetzer.daedalus.api;
 
+import android.net.Uri;
+
 import com.github.nicksetzer.daedalus.Log;
 
 import org.json.JSONArray;
@@ -7,6 +9,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -16,6 +19,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.StringWriter;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.util.List;
 import java.util.Map;
@@ -242,5 +246,73 @@ public class YueApi {
             fileStream.close();
         }
 
+    }
+
+    public static String librarySongAudioUrl(final String token, final String uid) throws IOException{
+        URL url = new URL(PROTOCOL, DOMAIN,PORT, "/api/library/" + uid + "/audio?token=" + token);
+        return url.toString();
+
+    }
+
+    public static JSONObject radioStationNextTrack(final String token, final String station) throws IOException {
+        URL url = new URL(PROTOCOL, DOMAIN,PORT, "/api/radio/station/" + station + "/next_track");
+
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("Authorization", token);
+        conn.setReadTimeout(10000);
+        conn.setConnectTimeout(10000);
+
+        android.util.Log.e("daedalus-js-api", "protocol: " + url.getProtocol());
+        android.util.Log.e("daedalus-js-api", "method: " + conn.getRequestMethod());
+        android.util.Log.e("daedalus-js-api", "url: " + url.toString());
+
+        try {
+            conn.connect();
+        } catch (Exception e) {
+            android.util.Log.e("daedalus-js-api", "failed to connect: " + e.toString());
+            return null;
+        }
+
+        int status = conn.getResponseCode();
+        android.util.Log.e("daedalus-js-api", "status: " + status);
+        if (status != HttpURLConnection.HTTP_OK) {
+            String text = readResponseText(conn.getErrorStream());
+            android.util.Log.e("daedalus-js-api", "body:" + text);
+            return null;
+        }
+
+        String contentLength = conn.getHeaderField("Content-Length");
+        int total_length = 0;
+        if (!contentLength.isEmpty()) {
+            total_length = Integer.parseInt(contentLength);
+        }
+
+        InputStream netStream = conn.getInputStream();
+
+        StringBuilder sb = new StringBuilder();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] bytes = new byte[2048];
+        int length;
+        int received = 0;
+        while ((length = netStream.read(bytes))!=-1) {
+            received += length;
+            out.write(bytes, 0, length);
+        }
+
+        if (received != total_length) {
+            Log.warn("received: " + received + ", expected: " + total_length);
+        }
+
+        JSONObject track = null;
+        try {
+            JSONObject obj = new JSONObject(out.toString("UTF-8"));
+
+            track = obj.getJSONObject("result");
+        } catch (JSONException e) {
+            return null;
+        }
+
+        return track;
     }
 }

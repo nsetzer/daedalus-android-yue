@@ -47,7 +47,7 @@ public class SongTableDsl {
             addColumnDef("composer", new String[]{"composer"}, SqlType.STRING);
             addColumnDef("country", new String[]{"country"}, SqlType.STRING);
             addColumnDef("comment", new String[]{"comment"}, SqlType.STRING);
-            addColumnDef("language", new String[]{"language"}, SqlType.STRING);
+            addColumnDef("language", new String[]{"language", "lang"}, SqlType.STRING);
             addColumnDef("genre", new String[]{"genre"}, SqlType.STRING);
 
             // not used

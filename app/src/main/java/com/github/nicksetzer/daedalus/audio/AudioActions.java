@@ -7,6 +7,9 @@ public class AudioActions {
     public static final String ACTION_SET_QUEUE = "daeadalus.audio.set_queue";
     public static final String ACTION_UPDATE_QUEUE = "daeadalus.audio.update_queue";
     public static final String ACTION_LOAD_URL = "daeadalus.audio.load_url";
+    public static final String ACTION_LOAD_RADIO_URL = "daeadalus.audio.load_radio_url";
+    public static final String ACTION_PLAY_RADIO_URL = "daeadalus.audio.play_radio_url";
+    public static final String ACTION_PLAY_NEXT_RADIO_URL = "daeadalus.audio.play_next_radio_url";
     public static final String ACTION_LOAD_INDEX = "daeadalus.audio.load_index";
     public static final String ACTION_PLAY = "daeadalus.audio.play";
     public static final String ACTION_PAUSE = "daeadalus.audio.pause";
@@ -22,4 +25,6 @@ public class AudioActions {
     public static final String ACTION_CANCEL_TASK = "daeadalus.library.cancel_task";
 
     public static final String ACTION_EVENT = "daeadalus.audio.event";
+
+    public static final String ACTION_INIT_RADIO = "daeadalus.audio.init_radio";
 }

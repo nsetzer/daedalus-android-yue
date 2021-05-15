@@ -454,7 +454,6 @@ daedalus=(function(){
           onKeyUp(event){
             if(event.key=="Enter"){
               if(this.attrs.submit_callback){
-                console.log("enter: "+this.getText());
                 this.attrs.submit_callback(this.getText());
               }
             }
@@ -497,9 +496,14 @@ daedalus=(function(){
           }
           const rectA=nodeA.getBoundingClientRect();
           const rectB=nodeB.getBoundingClientRect();
-          return(rectA.top+rectA.height/2<rectB.top+rectB.height/2);
+          const a=rectA.top+rectA.height/2;
+          const b=rectB.top+rectB.height/2;
+          return a<b;
         }
         function childIndex(node){
+          if(node===null){
+            return 0;
+          }
           let count=0;
           while((node=node.previousSibling)!=null){
             count++;
@@ -542,17 +546,17 @@ daedalus=(function(){
           constructor(){
             super("div",{},[]);
             this.attrs={x:null,y:null,placeholder:null,placeholderClassName:placeholder,
-                          draggingEle:null,isDraggingStarted:false,indexStart:-1,lockX:true};
+                          draggingEle:null,isDraggingStarted:false,indexStart:-1,lockX:true,swipeScrollTimer:null};
             
           }
           setPlaceholderClassName(className){
             this.attrs.placeholderClassName=className;
           }
           handleChildDragBegin(child,event){
-            event.preventDefault();
             if(!!this.attrs.draggingEle){
+              console.error("running drag cancel because previous did not finish");
+              
               this.handleChildDragCancel();
-              return;
             }
             let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
             
@@ -560,10 +564,104 @@ daedalus=(function(){
               event=evt[0];
             }
             this.attrs.draggingEle=child.getDomNode();
+            this.attrs.draggingChild=child;
             this.attrs.indexStart=childIndex(this.attrs.draggingEle);
+            if(this.attrs.indexStart<0){
+              console.error("drag begin failed for child");
+              this.attrs.draggingEle=null;
+              this.attrs.indexStart=-1;
+              return;
+            }
             const rect=this.attrs.draggingEle.getBoundingClientRect();
             this.attrs.x=event.clientX-rect.left;
-            this.attrs.y=event.pageY-rect.top;
+            this.attrs.y=event.pageY+window.scrollY;
+            this.attrs.eventSource=child;
+          }
+          handleChildDragMoveImpl(pageX,pageY){
+            const rect=this.attrs.draggingEle.parentNode.getBoundingClientRect();
+            
+            pageY-=rect.top+window.scrollY;
+            const draggingRect=this.attrs.draggingEle.getBoundingClientRect();
+            if(this.attrs.indexStart<0){
+              console.error("drag move failed for child");
+              return;
+            }
+            if(!this.attrs.isDraggingStarted){
+              this.attrs.isDraggingStarted=true;
+              this.attrs.placeholder=document.createElement('div');
+              this.attrs.placeholder.classList.add(this.attrs.placeholderClassName);
+              
+              this.attrs.draggingEle.parentNode.insertBefore(this.attrs.placeholder,
+                              this.attrs.draggingEle.nextSibling);
+              this.attrs.placeholder.style.height=`${this.attrs.draggingEle.clientHeight}px`;
+              
+            }
+            this.attrs.draggingEle.style.position='absolute';
+            let ypos=pageY-(this.attrs.draggingEle.clientHeight/2);
+            this.attrs.draggingEle.style.top=`${ypos}px`;
+            if(!this.attrs.lockX){
+              this.attrs.draggingEle.style.left=`${pageX-this.attrs.x}px`;
+            }
+            const prevEle=this.attrs.draggingEle.previousElementSibling;
+            const nextEle=this.attrs.placeholder.nextElementSibling;
+            if(prevEle&&isAbove(this.attrs.draggingEle,prevEle)){
+              swap(this.attrs.placeholder,this.attrs.draggingEle);
+              swap(this.attrs.placeholder,prevEle);
+              const a=childIndex(prevEle)-1;
+              const b=childIndex(this.attrs.draggingEle);
+              prevEle._fiber.element.setIndex(a);
+              this.attrs.draggingEle._fiber.element.setIndex(b);
+            }else if(nextEle&&isAbove(nextEle,this.attrs.draggingEle)){
+              swap(nextEle,this.attrs.placeholder);
+              swap(nextEle,this.attrs.draggingEle);
+              const a=childIndex(nextEle);
+              const b=childIndex(this.attrs.draggingEle);
+              nextEle._fiber.element.setIndex(a);
+              this.attrs.draggingEle._fiber.element.setIndex(b);
+            }
+          }
+          _handleAutoScroll(dy){
+            const rate=15;
+            const step=rate*dy;
+            let _y=window.pageYOffset;
+            window.scrollBy(0,step);
+            if(_y!=window.pageYOffset){
+              let total_step=window.pageYOffset-_y;
+              this.attrs.y+=total_step;
+              this.attrs.autoScrollY+=total_step;
+              this.handleChildDragMoveImpl(this.attrs.autoScrollX,this.attrs.autoScrollY);
+              
+            }
+          }
+          _handleChildDragAutoScroll(evt){
+            const _rect=this.attrs.draggingEle.parentNode.getBoundingClientRect();
+            
+            let node=this.getDomNode();
+            const lstTop=window.scrollY+_rect.top;
+            let top=window.scrollY+_rect.top;
+            let bot=top+window.innerHeight-lstTop;
+            let y=Math.floor(evt.pageY-node.offsetTop-window.scrollY);
+            let h=this.attrs.draggingEle.clientHeight;
+            if(y<top+h){
+              this.attrs.autoScrollX=Math.floor(evt.pageX);
+              this.attrs.autoScrollY=Math.floor(evt.pageY);
+              if(this.attrs.swipeScrollTimer===null){
+                this.attrs.swipeScrollTimer=setInterval(()=>{
+                    this._handleAutoScroll(-1);
+                  },33);
+              }
+            }else if(y>bot-h*2){
+              this.attrs.autoScrollX=Math.floor(evt.pageX);
+              this.attrs.autoScrollY=Math.floor(evt.pageY);
+              if(this.attrs.swipeScrollTimer===null){
+                this.attrs.swipeScrollTimer=setInterval(()=>{
+                    this._handleAutoScroll(1);
+                  },33);
+              }
+            }else if(this.attrs.swipeScrollTimer!==null){
+              clearInterval(this.attrs.swipeScrollTimer);
+              this.attrs.swipeScrollTimer=null;
+            }
           }
           handleChildDragMove(child,event){
             if(!this.attrs.draggingEle||this.attrs.draggingEle!==child.getDomNode(
@@ -576,57 +674,60 @@ daedalus=(function(){
             if(evt){
               event=evt[0];
             }
-            const draggingRect=this.attrs.draggingEle.getBoundingClientRect();
-            if(!this.attrs.isDraggingStarted){
-              this.attrs.isDraggingStarted=true;
-              this.attrs.placeholder=document.createElement('div');
-              this.attrs.placeholder.classList.add(this.attrs.placeholderClassName);
-              
-              this.attrs.draggingEle.parentNode.insertBefore(this.attrs.placeholder,
-                              this.attrs.draggingEle.nextSibling);
-              this.attrs.placeholder.style.height=`${draggingRect.height}px`;
-            }
-            this.attrs.draggingEle.style.position='absolute';
-            let ypos=event.pageY-this.attrs.y+window.scrollY;
-            this.attrs.draggingEle.style.top=`${ypos}px`;
-            if(!this.attrs.lockX){
-              this.attrs.draggingEle.style.left=`${event.pageX-this.attrs.x}px`;
-            }
-            const prevEle=this.attrs.draggingEle.previousElementSibling;
-            const nextEle=this.attrs.placeholder.nextElementSibling;
-            if(prevEle&&isAbove(this.attrs.draggingEle,prevEle)){
-              swap(this.attrs.placeholder,this.attrs.draggingEle);
-              swap(this.attrs.placeholder,prevEle);
-              return;
-            }
-            if(nextEle&&isAbove(nextEle,this.attrs.draggingEle)){
-              swap(nextEle,this.attrs.placeholder);
-              swap(nextEle,this.attrs.draggingEle);
+            this._handleChildDragAutoScroll(event);
+            let x=Math.floor(event.pageX);
+            let y=Math.floor(event.pageY);
+            if(this.attrs._px!==x||this.attrs._py!==y){
+              this.attrs._px=x;
+              this.attrs._py=y;
+              return this.handleChildDragMoveImpl(x,y);
             }
           }
           handleChildDragEnd(child,event){
-            if(!this.attrs.draggingEle||this.attrs.draggingEle!==child.getDomNode(
-                            )){
-              return;
-            }
             this.handleChildDragCancel();
           }
-          handleChildDragCancel(){
+          handleChildDragCancel(doUpdate=true){
             this.attrs.placeholder&&this.attrs.placeholder.parentNode.removeChild(
                           this.attrs.placeholder);
-            this.attrs.draggingEle.style.removeProperty('top');
-            this.attrs.draggingEle.style.removeProperty('left');
-            this.attrs.draggingEle.style.removeProperty('position');
             const indexEnd=childIndex(this.attrs.draggingEle);
-            this.updateModel(this.attrs.indexStart,indexEnd);
+            if(this.attrs.indexStart>=0&&this.attrs.indexStart!==indexEnd){
+              this.updateModel(this.attrs.indexStart,indexEnd);
+            }
+            if(this.attrs.draggingEle){
+              this.attrs.draggingEle.style.removeProperty('top');
+              this.attrs.draggingEle.style.removeProperty('left');
+              this.attrs.draggingEle.style.removeProperty('position');
+            }
+            if(this.attrs.swipeScrollTimer!==null){
+              clearInterval(this.attrs.swipeScrollTimer);
+              this.attrs.swipeScrollTimer=null;
+            }
             this.attrs.x=null;
             this.attrs.y=null;
             this.attrs.draggingEle=null;
             this.attrs.isDraggingStarted=false;
+            this.attrs.placeholder=null;
+            this.attrs.indexStart=-1;
+            console.error("drag cancel");
           }
           updateModel(indexStart,indexEnd){
             this.children.splice(indexEnd,0,this.children.splice(indexStart,1)[0]);
             
+          }
+          debugString(){
+            let str="";
+            if(this.attrs.isDraggingStarted){
+              str+=" dragging";
+            }else{
+              str+=" not dragging";
+            }
+            if(this.attrs.draggingEle){
+              str+='elem';
+            }
+            if(this.attrs.x||this.attrs.y){
+              str+=` x:${this.attrs.x}, y:${this.attrs.y}`;
+            }
+            return str;
           }
         }
         return[ButtonElement,DomElement,DraggableList,DraggableListItem,HeaderElement,
@@ -1307,6 +1408,7 @@ daedalus=(function(){
           Object.keys(fiber.props).filter(isProp).forEach(key=>{
               dom[key]=fiber.props[key];
             });
+          dom._fiber=fiber;
           return dom;
         }
         function updateDomNode(fiber){
@@ -1318,6 +1420,7 @@ daedalus=(function(){
             console.log("fiber does not contain a dom");
             return;
           }
+          dom._fiber=fiber;
           if(fiber.oldIndex!=fiber.index&&parentDom){
             if(parentDom.children[fiber.index]!==dom){
               parentDom.removeChild(fiber.dom);
@@ -1441,8 +1544,8 @@ api.requests=(function(){
   })();
 Object.assign(api,(function(api,daedalus){
       "use strict";
-      const[clearUserToken,getAuthConfig,getAuthToken,getUsertoken,setUsertoken]=(
-              function(){
+      const[clearPublicToken,clearUserToken,getAuthConfig,getAuthToken,getPublictoken,
+              getUsertoken,setPublictoken,setUsertoken]=(function(){
           let user_token=null;
           function getUsertoken(){
             if(user_token===null){
@@ -1457,7 +1560,7 @@ Object.assign(api,(function(api,daedalus){
             LocalStorage.setItem("user_token",token);
             user_token=token;
           }
-          function clearUserToken(creds){
+          function clearUserToken(){
             LocalStorage.removeItem("user_token");
             user_token=null;
           }
@@ -1467,15 +1570,144 @@ Object.assign(api,(function(api,daedalus){
           function getAuthToken(){
             return user_token;
           }
-          return[clearUserToken,getAuthConfig,getAuthToken,getUsertoken,setUsertoken];
-          
+          let public_token=null;
+          function getPublictoken(){
+            if(public_token===null){
+              const token=LocalStorage.getItem("public_token");
+              if(!!token){
+                public_token=token;
+              }
+            }
+            return public_token;
+          }
+          function setPublictoken(token){
+            LocalStorage.setItem("public_token",token);
+            public_token=token;
+          }
+          function clearPublicToken(){
+            LocalStorage.removeItem("public_token");
+            public_token=null;
+          }
+          return[clearPublicToken,clearUserToken,getAuthConfig,getAuthToken,getPublictoken,
+                      getUsertoken,setPublictoken,setUsertoken];
+        })();
+      const[multiSort,shuffle,sortTracks,track_shuffle]=(function(){
+          function shuffle(a){
+            for(let i=a.length-1;i>0;i--)
+            {
+              const j=Math.floor(Math.random()*(i+1));
+              [a[i],a[j]]=[a[j],a[i]];
+            }
+            return a;
+          }
+          function track_shuffle(tracks,pk="artist",sk="uid"){
+            shuffle(tracks);
+            let pkc={};
+            let pka={};
+            for(let i=0;i<tracks.length;i++)
+            {
+              let pkv=tracks[i][pk];
+              let skv=tracks[i][sk];
+              if(pkc[pkv]==undefined){
+                pkc[pkv]=0;
+              }
+              pka[skv]=pkc[pkv];
+              pkc[pkv]+=1;
+            }
+            let total=0;
+            let count=0;
+            for(const prop in pkc){
+              total+=pkc[prop];
+              count+=1;
+            }
+            let average=total/count;
+            let sorted=[...Object.keys(pkc)].sort((a,b)=>pkc[a]<pkc[b]);
+            let i=0;
+            for(i=0;i<sorted.length;i++)
+            {
+              if(pkc[sorted[i]]<average){
+                break;
+              }
+            }
+            let group2count={};
+            let pk2group={};
+            while(i<sorted.length){
+              let gk=sorted[i];
+              group2count[gk]=0;
+              pk2group[gk]=gk;
+              while(pkc[gk]<=average){
+                let j=sorted.length-1;
+                if(i!=j){
+                  pkc[gk]+=pkc[sorted[j]];
+                  pk2group[sorted[j]]=gk;
+                  sorted.splice(j,1);
+                }else{
+                  break;
+                }
+              }
+              i+=1;
+            }
+            for(let i=0;i<tracks.length;i++)
+            {
+              let pkv=tracks[i][pk];
+              let skv=tracks[i][sk];
+              let gk=pk2group[pkv];
+              if(gk!==undefined){
+                pka[skv]=group2count[gk];
+                group2count[gk]+=1;
+              }
+            }
+            tracks.sort((a,b)=>{
+                return pka[a[sk]]>pka[b[sk]];
+              });
+            for(let idx=1;idx<tracks.length;idx++)
+            {
+              if(tracks[idx][pk]==tracks[idx-1][pk]&&idx+1<tracks.length){
+                let tmp=tracks[idx];
+                tracks[idx]=tracks[idx+1];
+                tracks[idx+1]=tmp;
+              }
+            }
+            return tracks;
+          }
+          const sort_order=['year','album','album_index'];
+          function sortTracks(tracks,order=sort_order){
+            tracks.sort((a,b)=>{
+                return order.map((k)=>{
+                    const av=a[k];
+                    const bv=b[k];
+                    return(av==bv)?0:(av<bv)?-1:1;
+                  }).reduce((p,n)=>p?p:n,0);
+              });
+            return tracks;
+          }
+          function multiSort(tracks,order=sort_order){
+            tracks.sort((a,b)=>{
+                return order.map((ord)=>{
+                    const av=a[ord.key];
+                    const bv=b[ord.key];
+                    if(ord.ascending!==false){
+                      return(av==bv)?0:(av<bv)?-1:1;
+                    }else{
+                      return(av==bv)?0:(av>bv)?-1:1;
+                    }
+                  }).reduce((p,n)=>p?p:n,0);
+              });
+            return tracks;
+          }
+          return[multiSort,shuffle,sortTracks,track_shuffle];
         })();
       const[authenticate,env,fsGetPath,fsGetPathContent,fsGetPathContentUrl,fsGetPublicPathUrl,
               fsGetRoots,fsNoteCreate,fsNoteGetContent,fsNoteList,fsNoteSetContent,fsPathPreviewUrl,
               fsPathUrl,fsPublicUriGenerate,fsPublicUriInfo,fsPublicUriRevoke,fsSearch,
               fsUploadFile,libraryDomainInfo,librarySearchForest,librarySong,librarySongAudioUrl,
-              queueCreate,queueGetQueue,queuePopulate,queueSetQueue,radioVideoInfo,userDoc,
-              validate_token]=(function(){
+              queueCreate,queueGetQueue,queuePopulate,queueSetQueue,radioPublicStationAddTrack,
+              radioPublicStationPreviousTracks,radioPublicStationRelated,radioPublicStationSearch,
+              radioPublicStationTracks,radioPublicStationUpdates,radioPublicStationVote,
+              radioStationAddTrack,radioStationCurrentTrack,radioStationEnable,radioStationInfo,
+              radioStationList,radioStationNextTrack,radioStationPreviousTracks,radioStationRelated,
+              radioStationSearch,radioStationTracks,radioStationUpdates,radioStationUrl,
+              radioStationVote,radioVideoInfo,userDoc,validate_token]=(function(){
           const env={baseUrl:(daedalus.env&&daedalus.env.baseUrl)?daedalus.env.baseUrl:""};
           
           env.origin=window.location.origin;
@@ -1638,6 +1870,124 @@ Object.assign(api,(function(api,daedalus){
             const cfg=getAuthConfig();
             return api.requests.get_json(url,cfg);
           }
+          function radioStationList(){
+            const url=env.baseUrl+'/api/radio/list';
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioStationUrl(station,broadcast_id){
+            const url=env.baseUrl+daedalus.util.joinpath('/radio',broadcast_id)+'?login=1';
+            
+            return url;
+          }
+          function radioStationEnable(station,enable){
+            const params=daedalus.util.serializeParameters({enable});
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "broadcast")+params;
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioStationCurrentTrack(station){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "current_track");
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioStationInfo(station){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "broadcast");
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioStationNextTrack(station){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "next_track");
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioStationSearch(station,source,query){
+            const params=daedalus.util.serializeParameters({source,query});
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "search")+params;
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioPublicStationSearch(station,source,query){
+            const params=daedalus.util.serializeParameters({source,query});
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "search")+params;
+            return api.requests.get_json(url);
+          }
+          function radioStationRelated(station,source,sid){
+            const params=daedalus.util.serializeParameters({source,sid});
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "related")+params;
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioPublicStationRelated(station,source,sid){
+            const params=daedalus.util.serializeParameters({source,sid});
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "related")+params;
+            return api.requests.get_json(url);
+          }
+          function radioStationTracks(station){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "tracks");
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioStationUpdates(station,updateId){
+            const params=daedalus.util.serializeParameters({updateId});
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "updates")+params;
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioPublicStationUpdates(station,updateId){
+            const params=daedalus.util.serializeParameters({updateId});
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "updates")+params;
+            return api.requests.get_json(url);
+          }
+          function radioPublicStationTracks(station){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "tracks");
+            return api.requests.get_json(url);
+          }
+          function radioStationPreviousTracks(station){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "previous_tracks");
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioPublicStationPreviousTracks(station){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "previous_tracks");
+            return api.requests.get_json(url);
+          }
+          function radioStationVote(station,uid,magnitude){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "vote");
+            const cfg=getAuthConfig();
+            return api.requests.post_json(url,{uid,magnitude},cfg);
+          }
+          function radioPublicStationVote(station,uid,magnitude){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "vote");
+            return api.requests.post_json(url,{uid,magnitude});
+          }
+          function radioStationAddTrack(station,track){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "add_track");
+            const cfg=getAuthConfig();
+            return api.requests.post_json(url,track,cfg);
+          }
+          function radioPublicStationAddTrack(station,track){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "add_track");
+            return api.requests.post_json(url,track);
+          }
           function fsUploadFile(root,path,headers,params,success=null,failure=null,
                       progress=null){
             const urlbase=env.baseUrl+daedalus.util.joinpath('/api/fs',root,'path',
@@ -1651,28 +2001,42 @@ Object.assign(api,(function(api,daedalus){
                       fsNoteSetContent,fsPathPreviewUrl,fsPathUrl,fsPublicUriGenerate,fsPublicUriInfo,
                       fsPublicUriRevoke,fsSearch,fsUploadFile,libraryDomainInfo,librarySearchForest,
                       librarySong,librarySongAudioUrl,queueCreate,queueGetQueue,queuePopulate,
-                      queueSetQueue,radioVideoInfo,userDoc,validate_token];
+                      queueSetQueue,radioPublicStationAddTrack,radioPublicStationPreviousTracks,
+                      radioPublicStationRelated,radioPublicStationSearch,radioPublicStationTracks,
+                      radioPublicStationUpdates,radioPublicStationVote,radioStationAddTrack,
+                      radioStationCurrentTrack,radioStationEnable,radioStationInfo,radioStationList,
+                      radioStationNextTrack,radioStationPreviousTracks,radioStationRelated,
+                      radioStationSearch,radioStationTracks,radioStationUpdates,radioStationUrl,
+                      radioStationVote,radioVideoInfo,userDoc,validate_token];
         })();
-      return{authenticate,clearUserToken,env,fsGetPath,fsGetPathContent,fsGetPathContentUrl,
-              fsGetPublicPathUrl,fsGetRoots,fsNoteCreate,fsNoteGetContent,fsNoteList,fsNoteSetContent,
-              fsPathPreviewUrl,fsPathUrl,fsPublicUriGenerate,fsPublicUriInfo,fsPublicUriRevoke,
-              fsSearch,fsUploadFile,getAuthConfig,getAuthToken,getUsertoken,libraryDomainInfo,
-              librarySearchForest,librarySong,librarySongAudioUrl,queueCreate,queueGetQueue,
-              queuePopulate,queueSetQueue,radioVideoInfo,setUsertoken,userDoc,validate_token};
-      
+      return{authenticate,clearPublicToken,clearUserToken,env,fsGetPath,fsGetPathContent,
+              fsGetPathContentUrl,fsGetPublicPathUrl,fsGetRoots,fsNoteCreate,fsNoteGetContent,
+              fsNoteList,fsNoteSetContent,fsPathPreviewUrl,fsPathUrl,fsPublicUriGenerate,
+              fsPublicUriInfo,fsPublicUriRevoke,fsSearch,fsUploadFile,getAuthConfig,getAuthToken,
+              getPublictoken,getUsertoken,libraryDomainInfo,librarySearchForest,librarySong,
+              librarySongAudioUrl,multiSort,queueCreate,queueGetQueue,queuePopulate,queueSetQueue,
+              radioPublicStationAddTrack,radioPublicStationPreviousTracks,radioPublicStationRelated,
+              radioPublicStationSearch,radioPublicStationTracks,radioPublicStationUpdates,
+              radioPublicStationVote,radioStationAddTrack,radioStationCurrentTrack,radioStationEnable,
+              radioStationInfo,radioStationList,radioStationNextTrack,radioStationPreviousTracks,
+              radioStationRelated,radioStationSearch,radioStationTracks,radioStationUpdates,
+              radioStationUrl,radioStationVote,radioVideoInfo,setPublictoken,setUsertoken,
+              shuffle,sortTracks,track_shuffle,userDoc,validate_token};
     })(api,daedalus));
 resources=(function(daedalus){
     "use strict";
     const platform_prefix=daedalus.platform.isAndroid?"file:///android_asset/site/static/icon/":"/static/icon/";
     
-    const svg_icon_names=["album","bolt","create","discard","disc","documents","download",
-          "edit","equalizer","externalmedia","file","folder","genre","logout","media_error",
-          "media_next","media_pause","media_play","media_prev","media_shuffle","menu",
-          "microphone","more","music_note","new_folder","note","open","playlist","preview",
-          "rename","return","save","search","search_generic","select","settings","shuffle",
+    const svg_icon_names=["album","arrow_left","arrow_right","arrow_up","arrow_down",
+          "bolt","create","discard","disc","documents","dot","download","edit","equalizer",
+          "externalmedia","file","folder","genre","history","logout","media_error","media_next",
+          "media_pause","media_play","media_prev","media_shuffle","menu","microphone",
+          "more","music_note","new_folder","note","open","playlist","preview","rename",
+          "return","save","search","search_generic","select","settings","share","shuffle",
           "sort","upload","volume_0","volume_1","volume_2","volume_4","checkbox_unchecked",
           "checkbox_partial","checkbox_download","checkbox_checked","checkbox_synced",
-          "checkbox_not_synced","plus","minus"];
+          "checkbox_not_synced","plus","minus","vote_up_0","vote_up_1","vote_down_0",
+          "vote_down_1"];
     const svg={};
     svg_icon_names.forEach(name=>{
         svg[name]=platform_prefix+name+".svg";
@@ -1783,7 +2147,8 @@ components=(function(daedalus,resources){
         SwipeHandler.LEFT=4;
         return[SwipeHandler];
       })();
-    const[HSpacer,VSpacer]=(function(){
+    const[HSpacer,HStretch,VSpacer]=(function(){
+        const style={HStretch:'dcs-50305fc2-0'};
         class HSpacer extends DomElement {
           constructor(width){
             super("div",{},[]);
@@ -1832,7 +2197,12 @@ components=(function(daedalus,resources){
             }
           }
         }
-        return[HSpacer,VSpacer];
+        class HStretch extends DomElement {
+          constructor(widh){
+            super("div",{className:style.HStretch},[]);
+          }
+        }
+        return[HSpacer,HStretch,VSpacer];
       })();
     const[CheckBoxElement]=(function(){
         const style={chkbox:'dcs-6e53eb54-0'};
@@ -2078,6 +2448,9 @@ components=(function(daedalus,resources){
             if(this.hasChildren()){
               this.attrs.btn=this.attrs.container1.appendChild(new SvgButtonElement(
                                   resources.svg.plus,this.handleToggleExpand.bind(this)));
+            }else{
+              this.attrs.btn=this.attrs.container1.appendChild(new SvgButtonElement(
+                                  resources.svg.dot,()=>{}));
             }
             this.attrs.txt=this.attrs.container1.appendChild(new components.MiddleText(
                               title));
@@ -2286,9 +2659,10 @@ components=(function(daedalus,resources){
     const[NavFooter,NavHeader]=(function(){
         const style={header:'dcs-b0bc04f9-0',footer:'dcs-b0bc04f9-1',headerDiv:'dcs-b0bc04f9-2',
                   toolbar:'dcs-b0bc04f9-3',toolbarInner:'dcs-b0bc04f9-4',toolbarFooter:'dcs-b0bc04f9-5',
-                  toolbarFooterInner:'dcs-b0bc04f9-6',toolbar2:'dcs-b0bc04f9-7',toolbarInner2:'dcs-b0bc04f9-8',
-                  footerText:'dcs-b0bc04f9-9',toolbar2Start:'dcs-b0bc04f9-10',toolbar2Center:'dcs-b0bc04f9-11',
-                  grow:'dcs-b0bc04f9-12',pad:'dcs-b0bc04f9-13'};
+                  toolbarFooterInnerV1:'dcs-b0bc04f9-6',toolbarFooterInnerV2:'dcs-b0bc04f9-7',
+                  toolbar2:'dcs-b0bc04f9-8',toolbarInner2:'dcs-b0bc04f9-9',footerText:'dcs-b0bc04f9-10',
+                  toolbar2Start:'dcs-b0bc04f9-11',toolbar2Center:'dcs-b0bc04f9-12',grow:'dcs-b0bc04f9-13',
+                  pad:'dcs-b0bc04f9-14'};
         class NavHeader extends DomElement {
           constructor(){
             super("div",{className:style.header},[]);
@@ -2303,6 +2677,10 @@ components=(function(daedalus,resources){
             const child=new SvgButtonElement(icon,callback);
             this.attrs.toolbarInner.appendChild(child);
             return child;
+          }
+          addToolBarElement(element){
+            this.attrs.toolbarInner.appendChild(element);
+            return element;
           }
           addRow(center=false){
             let outer=new DomElement("div",{className:style.toolbar2},[]);
@@ -2319,7 +2697,9 @@ components=(function(daedalus,resources){
             return inner;
           }
           addRowElement(rowIndex,element){
-            this.attrs.rows[rowIndex].children[0].appendChild(element);
+            let c=this.attrs.rows[rowIndex].children[0];
+            c.appendChild(element);
+            return c;
           }
           addRowAction(rowIndex,icon,callback){
             this.attrs.rows[rowIndex].children[0].appendChild(new SvgButtonElement(
@@ -2331,10 +2711,14 @@ components=(function(daedalus,resources){
             super("div",{className:style.footer},[]);
             this.attrs={div:new DomElement("div",{className:style.headerDiv},[]),
                           toolbar:new DomElement("div",{className:style.toolbarFooter},[]),toolbarInner:new DomElement(
-                              "div",{className:style.toolbarFooterInner},[])};
+                              "div",{className:style.toolbarFooterInnerV1},[])};
             this.appendChild(this.attrs.div);
             this.attrs.div.appendChild(this.attrs.toolbar);
             this.attrs.toolbar.appendChild(this.attrs.toolbarInner);
+          }
+          spaceEvenly(){
+            this.attrs.toolbarInner.removeClassName(style.toolbarFooterInnerV1);
+            this.attrs.toolbarInner.addClassName(style.toolbarFooterInnerV2);
           }
           addAction(icon,callback){
             const child=new SvgButtonElement(icon,callback);
@@ -2349,6 +2733,166 @@ components=(function(daedalus,resources){
           }
         }
         return[NavFooter,NavHeader];
+      })();
+    const[Slider]=(function(){
+        const style={slider:'dcs-c2096b8d-0',sliderInput:'dcs-c2096b8d-1',sliderSpan:'dcs-c2096b8d-2'};
+        
+        ;
+        ;
+        class Slider extends DomElement {
+          constructor(cbk=null){
+            super("label",{className:style.slider},[]);
+            this.attrs.cbk=cbk;
+            this.attrs.chk=this.appendChild(new DomElement("input",{type:'checkbox',
+                                  className:style.sliderInput,'onclick':this.handleClick.bind(this)}));
+            
+            this.attrs.span=this.appendChild(new DomElement("span",{className:style.sliderSpan}));
+            
+          }
+          setChecked(checked){
+            this.attrs.chk.getDomNode().checked=checked;
+          }
+          isChecked(){
+            return this.attrs.chk.getDomNode().checked;
+          }
+          handleClick(event){
+            ((this.attrs.cbk)||(()=>null))(this.isChecked());
+          }
+        }
+        return[Slider];
+      })();
+    const[ProgressBar]=(function(){
+        const style={progressBar:'dcs-f3332da9-0',progressBar_bar:'dcs-f3332da9-1',
+                  progressBar_button:'dcs-f3332da9-2'};
+        class ProgressBarTrack extends DomElement {
+          constructor(parent){
+            super("div",{className:style.progressBar_bar},[]);
+          }
+        }
+        class ProgressBarButton extends DomElement {
+          constructor(parent){
+            super("div",{className:style.progressBar_button},[]);
+          }
+        }
+        class ProgressBar extends DomElement {
+          constructor(callback){
+            super("div",{className:style.progressBar},[]);
+            this.attrs={callback,pressed:false,pos:0,tpos:0,startx:0,track:this.appendChild(
+                              new ProgressBarTrack()),btn:this.appendChild(new ProgressBarButton(
+                                ))};
+          }
+          setPosition(position,count=1.0){
+            let pos=0;
+            if(count>0){
+              pos=position/count;
+            }
+            this.attrs.pos=pos;
+            const btn=this.attrs.btn.getDomNode();
+            const ele=this.getDomNode();
+            if(btn&&ele){
+              let m2=(ele.clientWidth-btn.clientWidth);
+              let m1=0;
+              let x=m2*pos;
+              if(x>m2){
+                x=m2;
+              }else if(x<m1){
+                x=m1;
+              }
+              this.attrs.startx=Math.floor(x)+"px";
+              if(!this.attrs.pressed){
+                const btn=this.attrs.btn.getDomNode();
+                btn.style.left=this.attrs.startx;
+              }
+            }
+          }
+          onMouseDown(event){
+            this.trackingStart();
+            this.trackingMove(event);
+          }
+          onMouseMove(event){
+            if(!this.attrs.pressed){
+              return;
+            }
+            this.trackingMove(event);
+          }
+          onMouseLeave(event){
+            if(!this.attrs.pressed){
+              return;
+            }
+            this.trackingEnd(false);
+          }
+          onMouseUp(event){
+            if(!this.attrs.pressed){
+              return;
+            }
+            this.trackingMove(event);
+            this.trackingEnd(true);
+          }
+          onTouchStart(event){
+            this.trackingStart();
+            this.trackingMove(event);
+          }
+          onTouchMove(event){
+            if(!this.attrs.pressed){
+              return;
+            }
+            this.trackingMove(event);
+          }
+          onTouchCancel(event){
+            if(!this.attrs.pressed){
+              return;
+            }
+            this.trackingEnd(false);
+          }
+          onTouchEnd(event){
+            if(!this.attrs.pressed){
+              return;
+            }
+            this.trackingMove(event);
+            this.trackingEnd(true);
+          }
+          trackingStart(){
+            const btn=this.attrs.btn.getDomNode();
+            this.attrs.startx=btn.style.left;
+            this.attrs.pressed=true;
+          }
+          trackingEnd(accept){
+            const btn=this.attrs.btn.getDomNode();
+            this.attrs.pressed=false;
+            if(accept){
+              if(this.attrs.callback){
+                this.attrs.callback(this.attrs.tpos);
+              }
+            }else{
+              btn.style.left=this.attrs.startx;
+            }
+          }
+          trackingMove(event){
+            let org_event=event;
+            let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
+            
+            if(evt){
+              event=evt[0];
+            }
+            if(!event){
+              return;
+            }
+            const btn=this.attrs.btn.getDomNode();
+            const ele=this.getDomNode();
+            const rect=ele.getBoundingClientRect();
+            let x=event.pageX-rect.left-(btn.clientWidth/2);
+            let m2=ele.clientWidth-btn.clientWidth;
+            let m1=0;
+            if(x>m2){
+              x=m2;
+            }else if(x<m1){
+              x=m1;
+            }
+            this.attrs.tpos=(m2>0&&x>=0)?x/m2:0.0;
+            btn.style.left=Math.floor(x)+"px";
+          }
+        }
+        return[ProgressBar];
       })();
     const[ErrorDrawer]=(function(){
         const style={drawer:'dcs-d9d8fbb3-0',headerDiv:'dcs-d9d8fbb3-1',lhs:'dcs-d9d8fbb3-2',
@@ -2402,9 +2946,9 @@ components=(function(daedalus,resources){
     const[]=(function(){
         return[];
       })();
-    return{CheckBoxElement,ErrorDrawer,HSpacer,MiddleText,MiddleTextLink,MoreMenu,
-          NavFooter,NavHeader,NavMenu,SvgButtonElement,SvgElement,SwipeHandler,TreeItem,
-          TreeView,VSpacer};
+    return{CheckBoxElement,ErrorDrawer,HSpacer,HStretch,MiddleText,MiddleTextLink,
+          MoreMenu,NavFooter,NavHeader,NavMenu,ProgressBar,Slider,SvgButtonElement,SvgElement,
+          SwipeHandler,TreeItem,TreeView,VSpacer};
   })(daedalus,resources);
 router=(function(api,daedalus){
     "use strict";
@@ -2429,9 +2973,11 @@ router=(function(api,daedalus){
           userStorage:"/u/storage/:mode/:path*",userFs:"/u/fs/:path*",userPlaylist:"/u/playlist",
           userSettings:"/u/settings",userNotesEdit:"/u/notes/:noteId/edit",userNotesContent:"/u/notes/:noteId",
           userNotesList:"/u/notes",userLibraryList:"/u/library/list",userLibrarySync:"/u/library/sync",
-          userLibrarySavedSearch:"/u/library/saved",userRadio:"/u/radio",userWildCard:"/u/:path*",
-          login:"/login",apiDoc:"/doc",publicFile:"/p/:uid/:filename",wildCard:"/:path*"};
-    
+          userLibrarySavedSearch:"/u/library/saved",userRadio:"/u/radio",userRadioStation:"/u/radio/:station",
+          userRadioStationSearch:"/u/radio/:station/search",userRadioStationHistory:"/u/radio/:station/history",
+          userWildCard:"/u/:path*",login:"/login",apiDoc:"/doc",publicFile:"/p/:uid/:filename",
+          publicRadioSearch:"/radio/:station/search",publicRadioHistory:"/radio/:station/history",
+          publicRadio:"/radio/:station",wildCard:"/:path*"};
     const routes={};
     Object.keys(route_urls).map(key=>{
         routes[key]=patternCompile(route_urls[key]);
@@ -2448,11 +2994,11 @@ audio=(function(api,daedalus){
     const StyleSheet=daedalus.StyleSheet;
     const DomElement=daedalus.DomElement;
     const TextElement=daedalus.TextElement;
-    const[AudioDevice]=(function(){
+    const[AudioDevice,NativeDeviceImpl,RemoteDeviceImpl]=(function(){
         let device_instance=null;
         class RemoteDeviceImpl{
-          constructor(device){
-            this.device=device;
+          constructor(parent){
+            this.parent=parent;
             this.audio_instance=new Audio();
             this.auto_play=false;
             const bind=(x)=>{
@@ -2471,15 +3017,13 @@ audio=(function(api,daedalus){
           }
           setQueue(queue){
             const idList=queue.map(song=>song.id).filter(uuid=>!!uuid);
-            api.queueSetQueue(idList).then(result=>{
-                console.log(result);
-              }).catch(result=>{
-                console.log(result);
-              });
-            this.device._sendEvent('handleAudioQueueChanged',queue);
+            this.parent._sendEvent('handleAudioQueueChanged',queue);
+            return api.queueSetQueue(idList);
           }
           updateQueue(index,queue){
-
+            return new Promise((resolve,reject)=>{
+                reject('not implemented');
+              });
           }
           loadQueue(){
             return api.queueGetQueue();
@@ -2487,11 +3031,19 @@ audio=(function(api,daedalus){
           createQueue(query){
             return api.queueCreate(query,50);
           }
-          playSong(index,song){
-            const url=api.librarySongAudioUrl(song.id);
+          loadUrl(url){
+            this.audio_instance.src=url;
+            this.audio_instance.volume=.75;
+            this.auto_play=false;
+          }
+          playUrl(url){
             this.audio_instance.src=url;
             this.audio_instance.volume=.75;
             this.auto_play=true;
+          }
+          playSong(index,song){
+            const url=api.librarySongAudioUrl(song.id);
+            this.playUrl(url);
           }
           play(){
             this.audio_instance.play();
@@ -2500,7 +3052,7 @@ audio=(function(api,daedalus){
             if(this.isPlaying()){
               this.pause();
             }
-            this.device._sendEvent('handleAudioSongChanged',null);
+            this.parent._sendEvent('handleAudioSongChanged',null);
           }
           pause(){
             if(this.isPlaying()){
@@ -2523,46 +3075,43 @@ audio=(function(api,daedalus){
             return this.audio_instance&&this.audio_instance.currentTime>0&&!this.audio_instance.paused&&!this.audio_instance.ended&&this.audio_instance.readyState>2;
             
           }
+          onplay(event){
+            this.parent._sendEvent('handleAudioPlay',{});
+          }
           onloadstart(event){
             console.log('audio on load start');
             if(this.auto_play){
               this.audio_instance.play();
             }
-            this.device._sendEvent('handleAudioLoadStart',{});
-          }
-          onplay(event){
-            this.device._sendEvent('handleAudioPlay',{});
+            this.parent._sendEvent('handleAudioLoadStart',{});
           }
           onplaying(event){
-            console.log("playing",event);
-            this.device._sendEvent('handleAudioPlay',{});
+            this.parent._sendEvent('handleAudioPlay',{});
           }
           onpause(event){
-            this.device._sendEvent('handleAudioPause',{});
-          }
-          onwaiting(event){
-            this.device._sendEvent('handleAudioWaiting',{});
-          }
-          onstalled(event){
-            this.device._sendEvent('handleAudioStalled',{});
-          }
-          ontimeupdate(event){
-            this.device._sendEvent('handleAudioTimeUpdate',{currentTime:this.audio_instance.currentTime,
-                              duration:this.audio_instance.duration});
+            this.parent._sendEvent('handleAudioPause',{});
           }
           ondurationchange(event){
-            this.device._sendEvent('handleAudioDurationChange',{currentTime:this.audio_instance.currentTime,
+            this.parent._sendEvent('handleAudioDurationChange',{currentTime:this.audio_instance.currentTime,
                               duration:this.audio_instance.duration});
           }
+          ontimeupdate(event){
+            this.parent._sendEvent('handleAudioTimeUpdate',{currentTime:this.audio_instance.currentTime,
+                              duration:this.audio_instance.duration});
+          }
+          onwaiting(event){
+            this.parent._sendEvent('handleAudioWaiting',{});
+          }
+          onstalled(event){
+            this.parent._sendEvent('handleAudioStalled',{});
+          }
           onended(event){
-            console.log("on ended",this.current_index);
-            this.device._sendEvent('handleAudioEnded',event);
-            this.device.next();
+            this.parent._sendEvent('handleAudioEnded',event);
+            this.parent.next();
           }
           onerror(event){
-            console.log("on error",this.current_index);
-            this.device._sendEvent('handleAudioError',event);
-            this.device.next();
+            this.parent._sendEvent('handleAudioError',event);
+            this.parent.next();
           }
         }
         function mapSongToObj(song){
@@ -2584,11 +3133,11 @@ audio=(function(api,daedalus){
             bind('error');
             bind('timeupdate');
             bind('indexchanged');
+            bind('trackchanged');
             this._currentTime=0;
             this._duration=0;
           }
           setQueue(queue){
-            console.log("setting queue");
             return new Promise((accept,reject)=>{
                 const lst=queue.map(mapSongToObj);
                 const data=JSON.stringify(lst);
@@ -2598,7 +3147,6 @@ audio=(function(api,daedalus){
               });
           }
           updateQueue(index,queue){
-            console.log("updating queue");
             return new Promise((accept,reject)=>{
                 const lst=queue.map(mapSongToObj);
                 const data=JSON.stringify(lst);
@@ -2607,9 +3155,7 @@ audio=(function(api,daedalus){
               });
           }
           loadQueue(){
-            console.log("loading queue");
             return new Promise((accept,reject)=>{
-                console.log("loading queue: from promise");
                 let data;
                 try{
                   data=AndroidNativeAudio.getQueue();
@@ -2618,16 +3164,20 @@ audio=(function(api,daedalus){
                 };
                 if(data.length>0){
                   let tracks=JSON.parse(data);
-                  console.log("loading queue: "+tracks.length);
                   accept({result:tracks});
                 }else{
-                  console.log("loading queue: error");
                   accept({result:[]});
                 }
               });
           }
           createQueue(query){
             return api.queueCreate(query,50);
+          }
+          loadUrl(url){
+            AndroidNativeAudio.loadRadioUrl(url);
+          }
+          playUrl(url){
+            AndroidNativeAudio.playRadioUrl(url);
           }
           playSong(index,song){
             AndroidNativeAudio.loadIndex(index);
@@ -2698,6 +3248,12 @@ audio=(function(api,daedalus){
             this.device._sendEvent('handleAudioSongChanged',{...this.device.current_song,
                               index});
           }
+          ontrackchanged(payload){
+            this.device.current_track=payload;
+            console.log("received android event: onTrackChanged");
+            console.log(JSON.stringify(payload));
+            this.device._sendEvent('handleTrackChanged',payload);
+          }
         }
         class AudioDevice{
           constructor(){
@@ -2718,14 +3274,24 @@ audio=(function(api,daedalus){
           }
           queueSet(songList){
             this.queue=songList;
-            this.impl.updateQueue(-1,this.queue);
+            this.impl.updateQueue(-1,this.queue).then((result)=>{}).catch((error)=>{
+              
+                if(error!=="not implemented"){
+                  console.error(error);
+                }
+              });
             this.stop();
           }
           queueSave(){
-            this.impl.setQueue(this.queue);
+            this.impl.setQueue(this.queue).then((result)=>{}).catch((error)=>{
+                if(error!=="not implemented"){
+                  console.error(error);
+                }
+              });
           }
           queueLoad(){
             this.impl.loadQueue().then(result=>{
+                console.log(result);
                 this.queue=result.result;
                 this._sendEvent('handleAudioQueueChanged',this.queue);
               }).catch(error=>{
@@ -2739,13 +3305,11 @@ audio=(function(api,daedalus){
           queueCreate(query){
             this.impl.createQueue(query).then(result=>{
                 this.queue=result.result;
-                this.impl.updateQueue(this.current_index,this.queue);
                 this._sendEvent('handleAudioQueueChanged',this.queue);
               }).catch(error=>{
                 console.log(error);
                 this.queue=[];
                 this.current_index=-1;
-                this.impl.updateQueue(this.current_index,this.queue);
                 this._sendEvent('handleAudioQueueChanged',this.queue);
               });
             this.stop();
@@ -2760,7 +3324,12 @@ audio=(function(api,daedalus){
               }else if(this.current_index==target){
                 this.current_index+=1;
               }
-              this.impl.updateQueue(this.current_index,this.queue);
+              this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
+                                }).catch((error)=>{
+                  if(error!=="not implemented"){
+                    console.error(error);
+                  }
+                });
               this._sendEvent('handleAudioQueueChanged',this.queue);
             }
           }
@@ -2774,7 +3343,12 @@ audio=(function(api,daedalus){
               }else if(this.current_index==target){
                 this.current_index-=1;
               }
-              this.impl.updateQueue(this.current_index,this.queue);
+              this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
+                                }).catch((error)=>{
+                  if(error!=="not implemented"){
+                    console.error(error);
+                  }
+                });
               this._sendEvent('handleAudioQueueChanged',this.queue);
             }
           }
@@ -2787,7 +3361,12 @@ audio=(function(api,daedalus){
             }else if(index>this.current_index&&target<=this.current_index){
               this.current_index+=1;
             }
-            this.impl.updateQueue(this.current_index,this.queue);
+            this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
+                            }).catch((error)=>{
+                if(error!=="not implemented"){
+                  console.error(error);
+                }
+              });
             this._sendEvent('handleAudioQueueChanged',this.queue);
           }
           queuePlayNext(song){
@@ -2802,13 +3381,17 @@ audio=(function(api,daedalus){
               this.queue=[song];
               this._sendEvent('handleAudioSongChanged',null);
             }
-            this.impl.updateQueue(this.current_index,this.queue);
+            this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
+                            }).catch((error)=>{
+                if(error!=="not implemented"){
+                  console.error(error);
+                }
+              });
             this._sendEvent('handleAudioQueueChanged',this.queue);
           }
           queueRemoveIndex(index){
             if(index>=0&&index<this.queue.length){
               this.queue.splice(index,1);
-              console.log("queue, sliced",index,this.queue.length);
               if(this.current_index>=this.queue.length){
                 this.pause();
                 this.current_index=-1;
@@ -2823,10 +3406,54 @@ audio=(function(api,daedalus){
                 this.current_index-=1;
                 this.current_song=this.queue[index];
               }
-              console.log("queue, sliced update");
-              this.impl.updateQueue(this.current_index,this.queue);
+              this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
+                                }).catch((error)=>{
+                  if(error!=="not implemented"){
+                    console.error(error);
+                  }
+                });
               this._sendEvent('handleAudioQueueChanged',this.queue);
             }
+          }
+          queueReinsertIndex(index,newIndex){
+            let temp_current=this.current_song;
+            if(index<0&&index>=this.queue.length){
+              return;
+            }
+            if(newIndex<0&&newIndex>=this.queue.length){
+              return;
+            }
+            if(index==newIndex){
+              return;
+            }
+            let track=this.queue.splice(index,1)[0];
+            this.queue.splice(newIndex,0,track);
+            if(index<this.current_index){
+              this.current_index-=1;
+            }
+            if(newIndex<this.current_index){
+              this.current_index+=1;
+            }
+            if(this.current_index<0||this.current_index>=this.queue.length){
+              this.pause();
+              this.current_index=-1;
+              this.current_song=null;
+              this._sendEvent('handleAudioSongChanged',null);
+            }else if(this.queue[this.current_index]!=this.current_song){
+              this.pause();
+              this.current_song=this.queue[index];
+              this._sendEvent('handleAudioSongChanged',{...this.queue[index],index});
+              
+            }
+            this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
+              
+                this.queue_modified=false;
+              }).catch((error)=>{
+                if(error!=="not implemented"){
+                  console.error(error);
+                }
+              });
+            this._sendEvent('handleAudioQueueChanged',this.queue);
           }
           stop(){
             this.current_index=-1;
@@ -2838,7 +3465,6 @@ audio=(function(api,daedalus){
           }
           _playSong(song){
             this.current_song=song;
-            console.log(song);
             this.impl.playSong(this.current_index,this.current_song);
             this._sendEvent('handleAudioSongChanged',{...song,index:this.current_index});
             
@@ -2848,7 +3474,6 @@ audio=(function(api,daedalus){
             this._playSong(song);
           }
           playIndex(index){
-            console.log(index);
             if(index>=0&&index<this.queue.length){
               this.current_index=index;
               this._playSong(this.queue[index]);
@@ -2899,8 +3524,8 @@ audio=(function(api,daedalus){
           currentTime(){
             return this.impl.currentTime();
           }
-          setCurrentTime(time){
-            return this.impl.setCurrentTime(time);
+          setCurrentTime(seconds){
+            return this.impl.setCurrentTime(seconds);
           }
           duration(){
             return this.impl.duration();
@@ -2944,7 +3569,7 @@ audio=(function(api,daedalus){
           }
           return device_instance;
         };
-        return[AudioDevice];
+        return[AudioDevice,NativeDeviceImpl,RemoteDeviceImpl];
       })();
     const[BrownNoiseContext,NoiseContext,OceanNoiseContext,PinkNoiseContext,WhiteNoiseContext]=(
           function(){
@@ -3118,8 +3743,8 @@ audio=(function(api,daedalus){
     const[]=(function(){
         return[];
       })();
-    return{AudioDevice,BrownNoiseContext,NoiseContext,OceanNoiseContext,PinkNoiseContext,
-          WhiteNoiseContext};
+    return{AudioDevice,BrownNoiseContext,NativeDeviceImpl,NoiseContext,OceanNoiseContext,
+          PinkNoiseContext,RemoteDeviceImpl,WhiteNoiseContext};
   })(api,daedalus);
 pages=(function(api,audio,components,daedalus,resources,router,store){
     "use strict";
@@ -4192,18 +4817,15 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[NoteContentPage,NoteContext,NoteEditPage,NotesPage];
       })();
     const[PlaylistPage]=(function(){
-        const style={main:'dcs-13113e22-0',toolbar:'dcs-13113e22-1',info:'dcs-13113e22-2',
-                  songList:'dcs-13113e22-3',songItem:'dcs-13113e22-4',songItemPlaceholder:'dcs-13113e22-5',
-                  songItemActive:'dcs-13113e22-6',fontBig:'dcs-13113e22-7',fontSmall:'dcs-13113e22-8',
-                  songItemRow:'dcs-13113e22-9',songItemRhs:'dcs-13113e22-10',songItemRow2:'dcs-13113e22-11',
-                  callbackLink2:'dcs-13113e22-12',grip:'dcs-13113e22-13',space5:'dcs-13113e22-14',
-                  center80:'dcs-13113e22-15',centerRow:'dcs-13113e22-16',lockScreen:'dcs-13113e22-17',
-                  padding1:'dcs-13113e22-18',padding2:'dcs-13113e22-19',progressBar:'dcs-13113e22-20',
-                  progressBar_bar:'dcs-13113e22-21',progressBar_button:'dcs-13113e22-22'};
+        const style={main:'dcs-13113e22-0',header:'dcs-13113e22-1',content:'dcs-13113e22-2',
+                  toolbar:'dcs-13113e22-3',info:'dcs-13113e22-4',songList:'dcs-13113e22-5',
+                  songItem:'dcs-13113e22-6',songItemPlaceholder:'dcs-13113e22-7',songItemActive:'dcs-13113e22-8',
+                  fontBig:'dcs-13113e22-9',fontSmall:'dcs-13113e22-10',songItemRow:'dcs-13113e22-11',
+                  songItemRhs:'dcs-13113e22-12',songItemIndex:'dcs-13113e22-13',songItemRow2:'dcs-13113e22-14',
+                  callbackLink2:'dcs-13113e22-15',grip:'dcs-13113e22-16',space5:'dcs-13113e22-17',
+                  center80:'dcs-13113e22-18',centerRow:'dcs-13113e22-19',lockScreen:'dcs-13113e22-20',
+                  padding1:'dcs-13113e22-21',padding2:'dcs-13113e22-22',listItemEnd:'dcs-13113e22-23'};
         
-        ;
-        ;
-        ;
         ;
         function formatTime(secs){
           secs=secs===Infinity?0:secs;
@@ -4221,6 +4843,16 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.state.callback();
           }
         }
+        class SvgMoreElement extends components.SvgElement {
+          constructor(callback){
+            super(resources.svg.more,{width:20,height:20,className:style.listItemEnd});
+            
+            this.state={callback};
+          }
+          onClick(event){
+            this.state.callback();
+          }
+        }
         class SongItem extends DomElement {
           constructor(parent,index,song){
             super("div",{className:style.songItem},[]);
@@ -4229,11 +4861,15 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             const grip=this.appendChild(new DomElement("div",{className:style.grip},
                               []));
             this.appendChild(new DomElement("div",{className:style.space5},[]));
+            const dividx=this.appendChild(new DomElement("div",{className:style.songItemIndex},
+                              []));
+            this.attrs.txt0=dividx.appendChild(new TextElement(`${index+1}.`));
             grip.props.onMouseDown=(event)=>{
               let node=this.getDomNode();
               node.style.width=node.clientWidth+'px';
               node.style.background="white";
               this.attrs.parent.handleChildDragBegin(this,event);
+              event.preventDefault();
               event.stopPropagation();
             };
             grip.props.onTouchStart=(event)=>{
@@ -4241,11 +4877,12 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               node.style.width=node.clientWidth+'px';
               node.style.background="white";
               this.attrs.parent.handleChildDragBegin(this,event);
+              event.preventDefault();
               event.stopPropagation();
             };
             const divrhs=this.appendChild(new DomElement("div",{className:style.songItemRhs},
                               []));
-            this.attrs.txt1=divrhs.appendChild(new components.MiddleText((index+1)+". "+song.title));
+            this.attrs.txt1=divrhs.appendChild(new components.MiddleText(song.title));
             
             this.attrs.txt1.addClassName(style.fontBig);
             const div=divrhs.appendChild(new DomElement("div",{},[]));
@@ -4255,48 +4892,54 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             
             div.addClassName(style.fontSmall);
             div.addClassName(style.songItemRow2);
+            this.appendChild(new SvgMoreElement(()=>{
+                  this.attrs.parent.attrs.parent.handleShowSongMore(this.attrs.index,
+                                      this.attrs.song);
+                }));
           }
           setIndex(index){
-            if(index!=this.attrs.index){
+            if(index!==this.attrs.index){
               this.attrs.index=index;
-              this.attrs.txt1.setText((index+1)+". "+this.attrs.song.title);
+              this.attrs.txt0.setText(`${index+1}.`);
             }
           }
           updateActive(active){
             if(this.attrs.active!=active){
               this.attrs.active=active;
               if(active===true){
-                this.attrs.txt1.setText((this.attrs.index+1)+". "+this.attrs.song.title);
-                
                 this.addClassName(style.songItemActive);
                 return">T";
               }else{
                 this.removeClassName(style.songItemActive);
-                this.attrs.txt1.setText((this.attrs.index+1)+". "+this.attrs.song.title);
-                
                 return">F";
               }
             }
             return">S";
           }
           onTouchStart(event){
+            if(!event.cancelable){
+              return;
+            }
             let node=this.getDomNode();
             node.style.width=node.clientWidth+'px';
             node.style.background="white";
+            console.log(`touch start ${this.attrs.index}`);
             this.attrs.parent.handleChildSwipeBegin(this,event);
-            event.stopPropagation();
-          }
-          onMouseDown(event){
-            let node=this.getDomNode();
-            node.style.width=node.clientWidth+'px';
-            node.style.background="white";
-            this.attrs.parent.handleChildSwipeBegin(this,event);
-            event.stopPropagation();
           }
           onTouchMove(event){
+            if(!event.cancelable){
+              console.log(`touch move ${this.attrs.index} ignore`);
+              return;
+            }
+            if(this.attrs.parent.attrs.eventSource!==this){
+              console.log(`touch move ${this.attrs.index} wrong source`);
+              return;
+            }
             if(this.attrs.parent.attrs.isSwipe){
-              if(!this.attrs.parent.handleChildSwipeMove(this,event)){
-                return;
+              if(this.attrs.parent.attrs.swipeArgs.started){
+                this.attrs.parent.handleChildSwipeMove(this,event);
+              }else{
+                this.attrs.parent.handleChildSwipeMoveBegin(this,event);
               }
             }else{
               this.attrs.parent.handleChildDragMove(this,event);
@@ -4304,10 +4947,20 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             event.stopPropagation();
           }
           onTouchEnd(event){
+            if(!event.cancelable){
+              console.log(`touch end ${this.attrs.index} ignore`);
+              return;
+            }
+            if(this.attrs.parent.attrs.eventSource!==this){
+              console.error(`touch end ${this.attrs.index} wrong source`);
+              return;
+            }
+            this.attrs.parent.attrs.eventSource=null;
+            console.log(`touch end ${this.attrs.index}`);
             if(this.attrs.parent.attrs.isSwipe){
               this.attrs.parent.handleChildSwipeEnd(this,{target:this.getDomNode(
                                     )});
-            }else{
+            }else if(this.attrs.parent.attrs.isDraggingStarted){
               this.attrs.parent.handleChildDragEnd(this,{target:this.getDomNode()});
               
               let node=this.getDomNode();
@@ -4317,6 +4970,15 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             event.stopPropagation();
           }
           onTouchCancel(event){
+            if(this.attrs.parent.attrs.eventSource!==this){
+              console.error(`touch cancel ${this.attrs.index} on wrong element`);
+              
+              event.preventDefault();
+              return;
+            }else{
+              console.log(`touch cancel ${this.attrs.index}`);
+            }
+            this.attrs.parent.attrs.eventSource=null;
             if(this.attrs.parent.attrs.isSwipe){
               this.attrs.parent.handleChildSwipeEnd(this,{target:this.getDomNode(
                                     )});
@@ -4329,10 +4991,24 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
             event.stopPropagation();
           }
+          onMouseDown(event){
+            let node=this.getDomNode();
+            node.style.width=node.clientWidth+'px';
+            node.style.background="white";
+            this.attrs.parent.handleChildSwipeBegin(this,event);
+          }
           onMouseMove(event){
+            if(event.buttons!==1){
+              return;
+            }
+            if(this.attrs.parent.attrs.eventSource!==this){
+              return;
+            }
             if(this.attrs.parent.attrs.isSwipe){
-              if(!this.attrs.parent.handleChildSwipeMove(this,event)){
-                return;
+              if(this.attrs.parent.attrs.swipeArgs.started){
+                this.attrs.parent.handleChildSwipeMove(this,event);
+              }else{
+                this.attrs.parent.handleChildSwipeMoveBegin(this,event);
               }
             }else{
               this.attrs.parent.handleChildDragMove(this,event);
@@ -4340,10 +5016,14 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             event.stopPropagation();
           }
           onMouseLeave(event){
+            if(this.attrs.parent.attrs.eventSource!==this){
+              return;
+            }
+            this.attrs.parent.attrs.eventSource=null;
             if(this.attrs.parent.attrs.isSwipe){
               this.attrs.parent.handleChildSwipeCancel(this,event);
             }else{
-              this.attrs.parent.handleChildDragMove(this,event);
+              this.attrs.parent.handleChildDragEnd(this,event);
               let node=this.getDomNode();
               node.style.removeProperty('width');
               node.style.removeProperty('background');
@@ -4351,6 +5031,10 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             event.stopPropagation();
           }
           onMouseUp(event){
+            if(this.attrs.parent.attrs.eventSource!==this){
+              return;
+            }
+            this.attrs.parent.attrs.eventSource=null;
             if(this.attrs.parent.attrs.isSwipe){
               this.attrs.parent.handleChildSwipeEnd(this,event);
             }else{
@@ -4360,134 +5044,6 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               node.style.removeProperty('background');
             }
             event.stopPropagation();
-          }
-        }
-        class ProgressBarTrack extends DomElement {
-          constructor(parent){
-            super("div",{className:style.progressBar_bar},[]);
-          }
-        }
-        class ProgressBarButton extends DomElement {
-          constructor(parent){
-            super("div",{className:style.progressBar_button},[]);
-          }
-        }
-        class ProgressBar extends DomElement {
-          constructor(callback){
-            super("div",{className:style.progressBar},[]);
-            this.attrs={callback,pressed:false,pos:0,tpos:0,startx:0,track:this.appendChild(
-                              new ProgressBarTrack()),btn:this.appendChild(new ProgressBarButton(
-                                ))};
-          }
-          setPosition(position,count=1.0){
-            let pos=0;
-            if(count>0){
-              pos=position/count;
-            }
-            this.attrs.pos=pos;
-            const btn=this.attrs.btn.getDomNode();
-            const ele=this.getDomNode();
-            if(btn&&ele){
-              let m2=(ele.clientWidth-btn.clientWidth);
-              let m1=0;
-              let x=m2*pos;
-              if(x>m2){
-                x=m2;
-              }else if(x<m1){
-                x=m1;
-              }
-              this.attrs.startx=Math.floor(x)+"px";
-              if(!this.attrs.pressed){
-                const btn=this.attrs.btn.getDomNode();
-                btn.style.left=this.attrs.startx;
-              }
-            }
-          }
-          onMouseDown(event){
-            this.trackingStart();
-            this.trackingMove(event);
-          }
-          onMouseMove(event){
-            if(!this.attrs.pressed){
-              return;
-            }
-            this.trackingMove(event);
-          }
-          onMouseLeave(event){
-            if(!this.attrs.pressed){
-              return;
-            }
-            this.trackingEnd(false);
-          }
-          onMouseUp(event){
-            if(!this.attrs.pressed){
-              return;
-            }
-            this.trackingMove(event);
-            this.trackingEnd(true);
-          }
-          onTouchStart(event){
-            this.trackingStart();
-            this.trackingMove(event);
-          }
-          onTouchMove(event){
-            if(!this.attrs.pressed){
-              return;
-            }
-            this.trackingMove(event);
-          }
-          onTouchCancel(event){
-            if(!this.attrs.pressed){
-              return;
-            }
-            this.trackingEnd(false);
-          }
-          onTouchEnd(event){
-            if(!this.attrs.pressed){
-              return;
-            }
-            this.trackingMove(event);
-            this.trackingEnd(true);
-          }
-          trackingStart(){
-            const btn=this.attrs.btn.getDomNode();
-            this.attrs.startx=btn.style.left;
-            this.attrs.pressed=true;
-          }
-          trackingEnd(accept){
-            const btn=this.attrs.btn.getDomNode();
-            this.attrs.pressed=false;
-            if(accept){
-              if(this.attrs.callback){
-                this.attrs.callback(this.attrs.tpos);
-              }
-            }else{
-              btn.style.left=this.attrs.startx;
-            }
-          }
-          trackingMove(event){
-            let org_event=event;
-            let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
-            
-            if(evt){
-              event=evt[0];
-            }
-            if(!event){
-              return;
-            }
-            const btn=this.attrs.btn.getDomNode();
-            const ele=this.getDomNode();
-            const rect=ele.getBoundingClientRect();
-            let x=event.pageX-rect.left-(btn.clientWidth/2);
-            let m2=ele.clientWidth-btn.clientWidth;
-            let m1=0;
-            if(x>m2){
-              x=m2;
-            }else if(x<m1){
-              x=m1;
-            }
-            this.attrs.tpos=(m2>0&&x>=0)?x/m2:0.0;
-            btn.style.left=Math.floor(x)+"px";
           }
         }
         class Header extends components.NavHeader {
@@ -4507,13 +5063,17 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.addAction(resources.svg['media_next'],()=>{
                 audio.AudioDevice.instance().next();
               });
-            this.addAction(resources.svg['save'],()=>{
-                audio.AudioDevice.instance().queueSave();
-              });
+            if(!daedalus.platform.isAndroid){
+              this.addAction(resources.svg['save'],()=>{
+                  audio.AudioDevice.instance().queueSave();
+                });
+            }
             this.attrs.txt_SongTitle=new components.MiddleText("Select A Song");
-            this.attrs.txt_SongTime=new TextElement("00:00:00/00:00:00");
-            this.attrs.txt_SongStatus=new TextElement("");
-            this.attrs.pbar_time=new ProgressBar((pos)=>{
+            this.attrs.txt_SongArtist=new components.MiddleText("");
+            this.attrs.txt_SongAlbum=new components.MiddleText("");
+            this.attrs.txt_SongTime=new TextElement("00:00:00");
+            this.attrs.txt_SongTime2=new TextElement("00:00:00");
+            this.attrs.pbar_time=new components.ProgressBar((pos)=>{
                 let inst=audio.AudioDevice.instance();
                 let dur=inst.duration();
                 if(!!dur){
@@ -4524,37 +5084,42 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.addRow(true);
             this.addRow(true);
             this.addRow(true);
+            this.addRow(true);
+            this.addRow(true);
             this.addRowElement(0,this.attrs.txt_SongTitle);
-            this.addRowElement(1,this.attrs.txt_SongTime);
-            this.addRowElement(2,this.attrs.txt_SongStatus);
-            this.addRowElement(3,this.attrs.pbar_time);
-            this.attrs.txt_SongTime.props.onClick=()=>{
+            this.addRowElement(1,this.attrs.txt_SongArtist);
+            this.addRowElement(2,this.attrs.txt_SongAlbum);
+            this.addRowElement(3,this.attrs.txt_SongTime).props.onClick=()=>{
               const device=audio.AudioDevice.instance();
               device.setCurrentTime(device.duration()-2);
             };
+            this.addRowElement(3,new components.HStretch());
+            this.addRowElement(3,this.attrs.txt_SongTime2);
+            this.addRowElement(5,this.attrs.pbar_time);
           }
           setSong(song){
             if(song===null){
               this.attrs.txt_SongTitle.setText("Select A Song");
-              this.attrs.txt_SongTitle.setText("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
-              
+              this.attrs.txt_SongArtist.setText("\xa0");
+              this.attrs.txt_SongAlbum.setText("\xa0");
             }else{
-              console.log(`set song: ${song.artist+" - "+song.title}`);
-              this.attrs.txt_SongTitle.setText(song.artist+" - "+song.title);
+              this.attrs.txt_SongTitle.setText(song.title);
+              this.attrs.txt_SongArtist.setText(song.artist);
+              this.attrs.txt_SongAlbum.setText(song.album);
             }
           }
           setTime(currentTime,duration){
             try{
               const t1=formatTime(currentTime);
               const t2=formatTime(duration);
-              this.attrs.txt_SongTime.setText(t1+"/"+t2);
+              this.attrs.txt_SongTime.setText(t1);
+              this.attrs.txt_SongTime2.setText(t2);
               this.attrs.pbar_time.setPosition(currentTime,duration);
             }catch(e){
               console.error(e);
             };
           }
           setStatus(status){
-            this.attrs.txt_SongStatus.setText(status);
             if(status==="playing"){
               this.attrs.act_play_pause.setUrl(resources.svg['media_pause']);
             }else{
@@ -4564,35 +5129,38 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         }
         const SWIPE_RIGHT=0x01;
         const SWIPE_LEFT=0x02;
-        const SWIPE_OFFSET=32;
+        const SWIPE_OFFSET=24;
         class SongList extends daedalus.DraggableList {
-          constructor(){
+          constructor(parent){
             super();
+            this.attrs.parent=parent;
             this.attrs.isSwipe=false;
             this.attrs.isAnimated=false;
             this.attrs.swipeActionRight=null;
             this.attrs.swipeActionLeft=null;
             this.attrs.swipeActionCancel=null;
             this.attrs.swipeConfig=SWIPE_RIGHT;
+            this.attrs.swipeArgs={started:false,valid:false};
+            this.attrs.swipeScrollTimer=null;
             this.attrs.swipe_offset=0;
           }
           updateModel(indexStart,indexEnd){
             super.updateModel(indexStart,indexEnd);
             audio.AudioDevice.instance().queueSwapSong(indexStart,indexEnd);
+            console.error(`updateModel: ${indexStart} -> ${indexEnd}`);
           }
           handleChildDragBegin(child,event){
             if(this.attrs.isAnimated){
               return;
             }
-            super.handleChildDragBegin(child,event);
             this.attrs.isSwipe=false;
+            super.handleChildDragBegin(child,event);
           }
           handleChildDragMove(child,event){
             if(this.attrs.isAnimated){
               return;
             }
             super.handleChildDragMove(child,event);
-            this.attrs.isSwipe=false;
           }
           handleChildSwipeBegin(child,event){
             if(this.attrs.isAnimated){
@@ -4600,7 +5168,6 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
             if(!!this.attrs.draggingEle){
               this.handleChildSwipeCancel(child,event);
-              return;
             }
             const org_event=event;
             let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
@@ -4610,49 +5177,62 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
             const draggingEle=child.getDomNode();
             const rect=draggingEle.getBoundingClientRect();
-            const x=event.pageX-rect.left;
-            const y=event.pageY-rect.top;
-            let pos=Math.abs(Math.floor(100*(x/(rect.right-rect.left))));
-            if(pos>30&&pos<70){
-              org_event.preventDefault();
-              this.attrs.draggingEle=draggingEle;
-              this.attrs.xstart=rect.left;
-              this.attrs.ystart=rect.top;
-              this.attrs.x=x;
-              this.attrs.y=y;
-              this.attrs.isSwipe=true;
-            }
+            const x=event.pageX;
+            const y=event.pageY;
             this.attrs.swipe_offset=0;
+            this.attrs.swipeArgs={draggingEle:draggingEle,xstart:rect.left,ystart:rect.top,
+                          x:x,y:y,valid:true,started:false};
+            this.attrs.isSwipe=true;
+            this.attrs.eventSource=child;
+          }
+          handleChildSwipeMoveBegin(child,event){
+            let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
+            
+            if(evt){
+              event=evt[0];
+            }
+            let deltax=event.pageX-this.attrs.swipeArgs.xstart-this.attrs.swipeArgs.x;
+            
+            if(Math.abs(deltax)>SWIPE_OFFSET/4){
+              this.attrs.draggingEle=this.attrs.swipeArgs.draggingEle;
+              this.attrs.xstart=this.attrs.swipeArgs.xstart;
+              this.attrs.ystart=this.attrs.swipeArgs.ystart;
+              this.attrs.x=this.attrs.swipeArgs.x;
+              this.attrs.y=this.attrs.swipeArgs.y;
+              this.attrs.isSwipe=true;
+              this.attrs.swipeArgs.started=true;
+              this.attrs.swipeArgs.valid=false;
+            }
+          }
+          handleChildSwipeMoveDeltaX(child,deltax){
+            let color;
+            if(deltax<-SWIPE_OFFSET){
+              color="#88bb7F";
+            }else if(deltax>SWIPE_OFFSET){
+              color="#bb887F";
+            }else{
+              color="#FFFFFF";
+            }
+            let nd=child.getDomNode();
+            nd.style['background-color']=color;
           }
           handleChildSwipeMove(child,event){
             if(this.attrs.isAnimated){
               return;
             }
-            if(!this.attrs.draggingEle||this.attrs.draggingEle!==child.getDomNode(
-                            )){
+            if(!this.attrs.draggingEle){
               return;
             }
+            event.preventDefault();
             let org_event=event;
             let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
             
             if(evt){
               event=evt[0];
-              if(event.pageY<this.attrs.draggingEle.offsetTop||event.pageY>this.attrs.draggingEle.offsetTop+this.attrs.draggingEle.clientHeight){
-              
-                this.handleChildSwipeCancel(child,event);
-                return;
-              }
             }
+            const rect=this.attrs.draggingEle.parentNode.getBoundingClientRect();
+            
             let deltax=event.pageX-this.attrs.xstart-this.attrs.x;
-            if(!!this.attrs.draggingEle){
-              if(deltax<-SWIPE_OFFSET){
-                this.attrs.draggingEle.style['background-color']="#88bb7F";
-              }else if(deltax>SWIPE_OFFSET){
-                this.attrs.draggingEle.style['background-color']="#bb887F";
-              }else{
-                this.attrs.draggingEle.style['background-color']="#FFFFFF";
-              }
-            }
             if(!this.attrs.isDraggingStarted){
               const draggingRect=this.attrs.draggingEle.getBoundingClientRect();
               if(Math.abs(deltax)<SWIPE_OFFSET){
@@ -4665,14 +5245,18 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               
               this.attrs.draggingEle.parentNode.insertBefore(this.attrs.placeholder,
                               this.attrs.draggingEle.nextSibling);
-              this.attrs.placeholder.style.height=`${draggingRect.height-2}px`;
+              this.attrs.placeholder.style.height=`${this.attrs.draggingEle.clientHeight}px`;
+              
               this.attrs.swipe_offset=(deltax>0?-SWIPE_OFFSET:SWIPE_OFFSET);
+            }else if(!!this.attrs.draggingEle){
+              let deltax2=this.attrs.draggingEle.offsetLeft-this.attrs.placeholder.offsetLeft;
+              
+              this.handleChildSwipeMoveDeltaX(child,deltax2);
             }
-            org_event.preventDefault();
             this.attrs.draggingEle.style.position='absolute';
             this.attrs.draggingEle.style.left=`${event.pageX-this.attrs.x+this.attrs.swipe_offset}px`;
             
-            return true;
+            return;
           }
           handleChildSwipeEnd(child,event){
             this.handleChildSwipeCancel(child,event,true);
@@ -4711,10 +5295,15 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 this.swipeActionRight=null;
                 this.swipeActionCancel=child;
               }
+              this.attrs.draggingEle.style.transition='left .35s';
+              setTimeout(this.handleChildSwipeTimeout.bind(this),350);
+              this.attrs.isAnimated=true;
+            }else{
+              this.swipeActionLeft=null;
+              this.swipeActionRight=null;
+              this.swipeActionCancel=null;
+              this.handleChildSwipeTimeout();
             }
-            this.attrs.draggingEle.style.transition='left .35s';
-            setTimeout(this.handleChildSwipeTimeout.bind(this),350);
-            this.attrs.isAnimated=true;
           }
           handleChildSwipeTimeout(){
             this.attrs.isAnimated=false;
@@ -4747,6 +5336,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.handleSwipeCancel(this.swipeActionCancel);
               this.swipeActionCancel=null;
             }
+            this.attrs.isSwipe=false;
+            this.attrs.placeholder=null;
+            this.attrs.draggingEle=null;
           }
           handleSwipeRight(child){
             console.log(`handle swipe right index: ${child.attrs.index}`);
@@ -4761,45 +5353,69 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           handleSwipeCancel(child){
             console.log("handle swipe cancel");
           }
+          debugString(){
+            let str=super.debugString();
+            if(this.attrs.isSwipe){
+              str+=` swipe sx:${this.attrs.swipe_offset}`;
+            }
+            return str;
+          }
         }
         class PlaylistPage extends DomElement {
           constructor(){
             super("div",{className:style.main},[]);
             this.attrs={device:audio.AudioDevice.instance(),header:new Header(this),
-                          container:new SongList(),padding1:new DomElement("div",{className:style.padding1},
-                              []),padding2:new DomElement("div",{className:style.padding2},[]),
-                          currentIndex:-1};
+                          content:new DomElement("div",{className:style.content},[]),container:new SongList(
+                              this),padding1:new DomElement("div",{className:style.padding1},[]),
+                          padding2:new DomElement("div",{className:style.padding2},[]),currentIndex:-1,
+                          more:new components.MoreMenu(this.handleHideSongMore.bind(this)),more_index:-1,
+                          more_song:null};
             this.attrs.container.setPlaceholderClassName(style.songItemPlaceholder);
             
             this.attrs.container.addClassName(style.songList);
+            this.attrs.header.addClassName(style.header);
             this.appendChild(this.attrs.header);
             this.appendChild(this.attrs.padding1);
-            this.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.content);
+            this.attrs.content.appendChild(this.attrs.container);
             this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.more);
+            this.attrs.more.addAction("play next",this.handleMorePlaySongNext.bind(
+                              this));
           }
           elementMounted(){
-            console.log("mount playlist view");
             this.attrs.device.connectView(this);
             if(this.attrs.device.queueLength()==0){
-              console.log(`playlist mounted. reload queue`);
               this.attrs.device.queueLoad();
             }else{
-              console.log(`playlist mounted. current_index: ${this.attrs.device.current_index}`);
-              
               const song=this.attrs.device.currentSong();
               this.attrs.header.setSong(song);
               this.handleAudioQueueChanged(this.attrs.device.queue);
-              console.log(`playlist mount complete`);
             }
             if(daedalus.platform.isAndroid){
               registerAndroidEvent('onresume',this.handleResume.bind(this));
             }
           }
           elementUnmounted(){
-            console.log("dismount playlist view");
             this.attrs.device.disconnectView(this);
             if(daedalus.platform.isAndroid){
               registerAndroidEvent('onresume',()=>{});
+            }
+          }
+          handleShowSongMore(index,song){
+            this.attrs.more_index=index;
+            this.attrs.more_song=song;
+            this.attrs.more.show();
+          }
+          handleHideSongMore(){
+            this.attrs.more.hide();
+          }
+          handleMorePlaySongNext(){
+            const current_index=audio.AudioDevice.instance().currentSongIndex();
+            console.log(`move ${this.attrs.more_index} to ${current_index}`);
+            if(current_index!=this.attrs.more_index){
+              audio.AudioDevice.instance().queueReinsertIndex(this.attrs.more_index,
+                              current_index+1);
             }
           }
           handleAudioPlay(event){
@@ -4846,8 +5462,6 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           handleAudioQueueChanged(songList){
             const current_id=audio.AudioDevice.instance().currentSongId();
             const current_index=audio.AudioDevice.instance().currentSongIndex();
-            console.log(`handleAudioQueueChanged: ${this.attrs.device.current_index+1}/${this.attrs.device.queue.length}::${current_id}`);
-            
             let miss=0;
             let hit=0;
             let del=0;
@@ -4875,8 +5489,6 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               item.updateActive(index===current_index);
             }
             const removeCount=containerList.length-index;
-            console.log("update",containerList.length,songList.length,removeCount,
-                          index);
             if(removeCount>0){
               containerList.splice(index,removeCount);
               del+=removeCount;
@@ -4891,7 +5503,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(miss>0||del>0){
               this.attrs.container.update();
             }
-            console.log("miss rate",hit,miss,del);
+            console.log(`miss rate hit: ${hit} miss: ${miss} del: ${del}`);
           }
           handleResume(){
             console.log("on app resume");
@@ -5081,27 +5693,10 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         }
         const style={main:'dcs-f089c6c5-0',grow:'dcs-f089c6c5-1',viewPad:'dcs-f089c6c5-2',
                   listItemCheck:'dcs-f089c6c5-3',savedSearchPage:'dcs-f089c6c5-4',savedSearchList:'dcs-f089c6c5-5',
-                  savedSearchItem:'dcs-f089c6c5-6',padding1:'dcs-f089c6c5-7',padding2:'dcs-f089c6c5-8'};
+                  savedSearchItem:'dcs-f089c6c5-6',padding1:'dcs-f089c6c5-7',padding2:'dcs-f089c6c5-8',
+                  listItem:'dcs-f089c6c5-9',listItemMid:'dcs-f089c6c5-10',listItemQuery:'dcs-f089c6c5-11',
+                  listItemInner:'dcs-f089c6c5-12',show:'dcs-f089c6c5-13',hide:'dcs-f089c6c5-14'};
         
-        function shuffle(a){
-          for(let i=a.length-1;i>0;i--)
-          {
-            const j=Math.floor(Math.random()*(i+1));
-            [a[i],a[j]]=[a[j],a[i]];
-          }
-          return a;
-        }
-        const sort_order=['year','album','album_index'];
-        function sortTracks(tracks,order=sort_order){
-          tracks.sort((a,b)=>{
-              return order.map((k)=>{
-                  const av=a[k];
-                  const bv=b[k];
-                  return(av==bv)?0:(av<bv)?-1:1;
-                }).reduce((p,n)=>p?p:n,0);
-            });
-          return tracks;
-        }
         class Header extends components.NavHeader {
           constructor(parent){
             super();
@@ -5124,9 +5719,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
             this.addRow(false);
             this.addRowAction(0,resources.svg.media_error,()=>{
-                console.log("clear");
                 this.attrs.txtInput.setText("");
-                console.log(this.attrs.txtInput.props.value);
+                this.attrs.txtInput.getDomNode().focus();
+                this.attrs.parent.search("");
               });
             this.addRowElement(0,this.attrs.txtInput);
             this.attrs.txtInput.addClassName(style.grow);
@@ -5166,18 +5761,19 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 this.attrs.parent.attrs.view.selectAll(count==0);
               });
             this.addAction(resources.svg['sort'],()=>{
-                const songList=this.attrs.parent.attrs.view.getSelectedSongs();
+                let songList=this.attrs.parent.attrs.view.getSelectedSongs();
                 console.log("creating playlist",songList.length);
-                audio.AudioDevice.instance().queueSet(sortTracks(songList).splice(
-                                      0,100));
+                songList=api.sortTracks(songList).splice(0,100);
+                audio.AudioDevice.instance().queueSet();
                 audio.AudioDevice.instance().next();
                 this.attrs.parent.attrs.view.selectAll(false);
               });
             this.addAction(resources.svg['media_shuffle'],()=>{
-                const songList=this.attrs.parent.attrs.view.getSelectedSongs();
+                let songList=this.attrs.parent.attrs.view.getSelectedSongs();
                 console.log("creating playlist",songList.length);
-                audio.AudioDevice.instance().queueSet(shuffle(songList).splice(0,
-                                      100));
+                songList=api.track_shuffle(songList).splice(0,100);
+                console.log("creating playlist",songList.length);
+                audio.AudioDevice.instance().queueSet(songList);
                 audio.AudioDevice.instance().next();
                 this.attrs.parent.attrs.view.selectAll(false);
               });
@@ -5610,76 +6206,1217 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
         }
         class SavedSearchItem extends DomElement {
-          constructor(name,query){
+          constructor(parent,name,query){
             super("div",{className:style.savedSearchItem},[]);
-            this.attrs={name,query};
-            this.appendChild(new DomElement("div",{},[new TextElement(name)]));
-            this.appendChild(new DomElement("div",{},[new TextElement(query)]));
-          }
-          onClick(event){
-            router.navigate(router.routes.userLibraryList({},{query:this.attrs.query}));
+            this.attrs={parent,name,query};
+            this.attrs.row0=this.appendChild(new DomElement("div",{className:style.listItem},
+                              []));
+            this.attrs.text=this.attrs.row0.appendChild(new DomElement("div",{className:style.listItemMid},
+                              [new TextElement(name)]));
+            this.attrs.div_query=this.appendChild(new DomElement("pre",{className:style.listItemQuery},
+                              []));
+            this.attrs.div_query_inner=this.attrs.div_query.appendChild(new DomElement(
+                              "div",{className:style.listItemInner},[]));
+            this.attrs.div_query_inner.appendChild(new DomElement("div",{},[new TextElement(
+                                      query)]));
+            this.attrs.div_query_inner.appendChild(new components.HSpacer("1em"));
             
+            this.attrs.row0.appendChild(new components.SvgButtonElement(resources.svg.more,
+                              ()=>{
+                  this.attrs.parent.handleShowMore(this);
+                }));
+            this.attrs.row0.appendChild(new components.SvgButtonElement(resources.svg.arrow_right,
+                              ()=>{
+                  router.navigate(router.routes.userLibraryList({},{query:this.attrs.query}));
+                  
+                }));
+            this.attrs.div_query.addClassName(style.hide);
+            this.attrs.text.props.onClick=(event)=>{
+              if(this.attrs.div_query.hasClassName(style.hide)){
+                this.attrs.div_query.removeClassName(style.hide);
+                this.attrs.div_query.addClassName(style.show);
+              }else{
+                this.attrs.div_query.removeClassName(style.show);
+                this.attrs.div_query.addClassName(style.hide);
+              }
+            };
           }
         }
         const savedSearches=[{name:"stoner best",query:"stoner rating >= 5"},{name:"grunge best",
-                      query:"grunge rating >= 5"},{name:"visual best",query:"\"visual kei\" rating >= 5"},
-                  {name:"english best",query:"language = english rating >= 5"},{name:"stone temple pilots",
+                      query:"grunge rating >= 5"},{name:"english best",query:"language = english rating >= 5"},
+                  {name:"visual best",query:"\"visual kei\" rating >= 5"},{name:"jrock best",
+                      query:"language = japanese rating >= 2"},{name:"stone temple pilots",
                       query:"\"stone temple pilots\" not STPLIGHT"},{name:"soundwitch",query:"soundwitch"},
                   {name:"Gothic Emily",query:"\"gothic emily\""},{name:"Driving Hits Volume 1",
                       query:"\":DRV\" && p lt -14d"},{name:"Driving Hits Volume 2",query:"\":VL2\" && p lt -14d"},
                   {name:"Driving Hits Volume 3",query:"(comment=\":DRV\" or comment=\":VL2\") && p lt -14d"}];
         
         class SavedSearchList extends DomElement {
-          constructor(parent,index,song){
+          constructor(parent){
             super("div",{className:style.savedSearchList},[]);
+            this.attrs={parent};
             for(let i=0;i<savedSearches.length;i++)
             {
               let s=savedSearches[i];
-              this.appendChild(new SavedSearchItem(s.name,s.query));
+              this.appendChild(new SavedSearchItem(this,s.name,s.query));
             }
+          }
+          handleShowMore(listItem){
+            this.attrs.parent.handleShowMore(listItem);
           }
         }
         class SavedSearchPage extends DomElement {
           constructor(){
             super("div",{className:style.savedSearchPage},[]);
             this.attrs={device:audio.AudioDevice.instance(),header:new SavedSearchHeader(
-                              this),container:new SavedSearchList(),padding1:new DomElement("div",
-                              {className:style.padding1},[]),padding2:new DomElement("div",{className:style.padding2},
-                              [])};
+                              this),container:new SavedSearchList(this),padding1:new DomElement(
+                              "div",{className:style.padding1},[]),padding2:new DomElement("div",
+                              {className:style.padding2},[]),more:new components.MoreMenu(this.handleHideMore.bind(
+                                  this))};
             this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.more);
             this.appendChild(this.attrs.padding1);
             this.appendChild(this.attrs.container);
             this.appendChild(this.attrs.padding2);
+            this.attrs.more.addAction("delete",()=>{});
+          }
+          handleShowMore(listItem){
+            this.attrs.more.show();
+          }
+          handleHideMore(){
+            this.attrs.more.hide();
           }
         }
         return[LibraryPage,SavedSearchPage,SyncPage];
       })();
-    const[UserRadioPage]=(function(){
-        const style={main:'dcs-a4af2c4a-0',header:'dcs-a4af2c4a-1'};
-        class Header extends DomElement {
-          constructor(parent){
-            super("div",{className:style.header},[]);
-            this.appendChild(new components.MiddleText("No Soap Radio"));
+    const[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
+          UserRadioListPage,UserRadioStationHistoryPage,UserRadioStationPage,UserRadioStationSearchPage]=(
+          function(){
+        const style={main:'dcs-a4af2c4a-0',grow:'dcs-a4af2c4a-1',svgDiv:'dcs-a4af2c4a-2',
+                  list:'dcs-a4af2c4a-3',headerInfo:'dcs-a4af2c4a-4',listItem:'dcs-a4af2c4a-5',
+                  listItemTitle:'dcs-a4af2c4a-6',listItemEnd:'dcs-a4af2c4a-7',listItemRow:'dcs-a4af2c4a-8',
+                  listItemRowText:'dcs-a4af2c4a-9',listItemColText:'dcs-a4af2c4a-10',votePanel:'dcs-a4af2c4a-11',
+                  voteButton:'dcs-a4af2c4a-12',icon1:'dcs-a4af2c4a-13',icon2:'dcs-a4af2c4a-14',
+                  padding2:'dcs-a4af2c4a-15',voteText:'dcs-a4af2c4a-16',voteUp:'dcs-a4af2c4a-17',
+                  voteNuetral:'dcs-a4af2c4a-18',voteDown:'dcs-a4af2c4a-19',show:'dcs-a4af2c4a-20',
+                  hide:'dcs-a4af2c4a-21'};
+        ;
+        class AudioDevice{
+          constructor(){
+            this.connected_elements=[];
+            this.current_station=null;
+            this.current_track=null;
+            this.impl=null;
+            this.auto_play=true;
+          }
+          setCurrentStation(station){
+            this.current_station=station;
+          }
+          currentStation(){
+            return this.current_station;
+          }
+          setImpl(impl){
+            this.impl=impl;
+          }
+          duration(){
+            return this.impl.duration();
+          }
+          setCurrentTime(seconds){
+            return this.impl.setCurrentTime(seconds);
+          }
+          togglePlayPause(){
+            if(this.current_track===null){
+              api.radioStationCurrentTrack(this.current_station).then((result)=>{
+                
+                  const track=result.result;
+                  if(track.source==='library'){
+                    const url=api.librarySongAudioUrl(track.sid);
+                    track.stream={url};
+                  }
+                  this.playTrack(track);
+                }).catch((error)=>{
+                  console.error(error);
+                });
+              return;
+            }
+            if(this.impl.isPlaying()){
+              this.impl.pause();
+            }else{
+              this.impl.play();
+            }
+          }
+          loadTrack(track){
+            console.log("loadTrack",track);
+            this.current_track=track;
+            this.impl.loadUrl(track.stream.url);
+            this._sendEvent('handleTrackChanged',track);
+          }
+          playTrack(track){
+            console.log("playTrack",track);
+            this.current_track=track;
+            this.impl.playUrl(track.stream.url);
+            this._sendEvent('handleTrackChanged',track);
+          }
+          next(){
+            if(daedalus.platform.isAndroid){
+              const match=router.AppRouter.match();
+              console.log("initialize android radio");
+              AndroidNativeAudio.initRadio(api.getAuthToken(),match.station);
+              console.log("play next track");
+              AndroidNativeAudio.playNextRadioUrl();
+            }else{
+              api.radioStationNextTrack(this.currentStation()).then(result=>{
+                  const track=result.result;
+                  if(track.source==='library'){
+                    const url=api.librarySongAudioUrl(track.sid);
+                    track.stream={url};
+                  }
+                  this.playTrack(track);
+                  store.globals.radio_previous_tracks.unshift(track);
+                }).catch(error=>{
+                  console.log(error);
+                });
+            }
+          }
+          connectView(elem){
+            if(this.connected_elements.filter(e=>e===elem).length>0){
+              console.error("already connected view");
+              return;
+            }
+            this.connected_elements.push(elem);
+          }
+          disconnectView(elem){
+            this.connected_elements=this.connected_elements.filter(e=>e!==elem);
+          }
+          _sendEvent(eventname,event){
+            this.connected_elements=this.connected_elements.filter(e=>e.isMounted(
+                            ));
+            this.connected_elements.forEach(e=>{
+                if(e&&e[eventname]){
+                  e[eventname](event);
+                }
+              });
           }
         }
-        class UserRadioPage extends DomElement {
+        let device_instance=null;
+        AudioDevice.instance=function(){
+          if(device_instance===null){
+            device_instance=new AudioDevice();
+            let impl;
+            if(daedalus.platform.isAndroid){
+              impl=new audio.NativeDeviceImpl(device_instance);
+            }else{
+              impl=new audio.RemoteDeviceImpl(device_instance);
+            }
+            device_instance.setImpl(impl);
+          }
+          return device_instance;
+        };
+        function formatTime(secs){
+          secs=secs===Infinity?0:secs;
+          let minutes=Math.floor(secs/60)||0;
+          let seconds=Math.floor(secs-minutes*60)||0;
+          return minutes+':'+(seconds<10?'0':'')+seconds;
+        }
+        let thumbnail_work_queue=[];
+        let thumbnail_work_count=0;
+        function thumbnail_DoProcessNext(){
+          if(thumbnail_work_queue.length>0){
+            const elem=thumbnail_work_queue.shift();
+            if(elem.props.src!=elem.state.url1){
+              elem.updateProps({src:elem.state.url1});
+            }else{
+              thumbnail_ProcessNext();
+            }
+          }
+        }
+        function thumbnail_ProcessNext(){
+          if(thumbnail_work_queue.length>0){
+            requestIdleCallback(thumbnail_DoProcessNext);
+          }else{
+            thumbnail_work_count-=1;
+          }
+        }
+        function thumbnail_ProcessStart(){
+          console.log("thumbnail_ProcessStart: "+thumbnail_work_queue.length);
+          if(thumbnail_work_queue.length>=3){
+            requestIdleCallback(thumbnail_DoProcessNext);
+            requestIdleCallback(thumbnail_DoProcessNext);
+            requestIdleCallback(thumbnail_DoProcessNext);
+            thumbnail_work_count=3;
+          }else if(thumbnail_work_queue.length>0){
+            requestIdleCallback(thumbnail_DoProcessNext);
+            thumbnail_work_count=1;
+          }
+        }
+        function thumbnail_CancelQueue(){
+          thumbnail_work_queue=[];
+          thumbnail_work_count=0;
+        }
+        class SvgIconElementImpl extends DomElement {
+          constructor(url1,url2,props){
+            super("img",{width:80,height:60,...props},[]);
+            this.setUrls();
+          }
+          onLoad(event){
+            thumbnail_ProcessNext();
+          }
+          onError(error){
+            console.warn("error loading: ",this.props.src,JSON.stringify(error));
+            
+            if(this.props.src!=this.state.url2&&this.state.url2){
+              this.updateProps({src:this.state.url2});
+            }else{
+              thumbnail_ProcessNext();
+            }
+          }
+          setUrls(url1,url2){
+            this.state={url1,url2};
+            if(url1){
+              thumbnail_work_queue.push(this);
+            }
+          }
+        }
+        class SvgIconElement extends DomElement {
+          constructor(url1,url2,props){
+            if(url2===null){
+              url2=url1;
+            }
+            super("div",{className:style.svgDiv},[new SvgIconElementImpl(url1,url2,
+                                  props)]);
+          }
+          setUrls(url1,url2){
+            this.children[0].setUrls(url1,url2);
+          }
+        }
+        class StationHeader extends components.NavHeader {
+          constructor(parent,isPublic){
+            super("div",{className:style.header},[]);
+            this.attrs.parent=parent;
+            if(!isPublic){
+              this.addAction(resources.svg['menu'],()=>{
+                  store.globals.showMenu();
+                });
+              this.addAction(resources.svg['media_play'],()=>{
+                  AudioDevice.instance().togglePlayPause();
+                });
+              this.addAction(resources.svg['media_next'],()=>{
+                  AudioDevice.instance().next();
+                });
+              this.addAction(resources.svg['media_next'],()=>{
+                  const device=AudioDevice.instance();
+                  device.setCurrentTime(device.duration()-2);
+                });
+            }
+            this.addAction(resources.svg['return'],()=>{
+                this.attrs.parent.getTracks(true);
+              });
+            if(!isPublic){
+              this.addToolBarElement(new DomElement("div",{className:[style.grow]}));
+              
+              this.attrs.act_clipboard=this.addAction(resources.svg['share'],()=>{
+                
+                  if(store.globals.radio_broadcast_id!==null){
+                    const url=api.radioStationUrl(null,store.globals.radio_broadcast_id);
+                    
+                    if(daedalus.platform.isAndroid){
+                      Client.setClipboardUrl("Yue Radio",url);
+                    }else{
+                      navigator.clipboard.writeText(url).then(()=>{
+                          console.log('shared');
+                        }).catch(error=>{
+                          components.ErrorDrawer.post("Share Error",""+error);
+                        });
+                    }
+                  }
+                });
+              this.attrs.act_clipboard.addClassName(style.hide);
+              this.attrs.slider=this.addToolBarElement(new components.Slider(this.handleToggleBroadcasting.bind(
+                                      this)));
+              this.attrs.toolbarInner.addClassName(style.main);
+            }
+            this.attrs.track_info=new TrackInfoElement();
+            this.attrs.track_div=new DomElement("div",{className:style.headerInfo},
+                          [this.attrs.track_info]);
+            this.addRow(true);
+            this.addRowElement(0,new components.MiddleText("Now Playing"));
+            this.addRow(true);
+            this.addRowElement(1,this.attrs.track_div);
+            if(!isPublic){
+              this.attrs.pbar_time=new components.ProgressBar((pos)=>{
+                  let inst=audio.AudioDevice.instance();
+                  let dur=inst.duration();
+                  if(!!dur){
+                    inst.setCurrentTime(pos*dur);
+                  }
+                });
+              this.addRow(true);
+              this.addRowElement(2,this.attrs.pbar_time);
+            }
+          }
+          setTrack(track){
+            this.attrs.track_info.setItem(track);
+          }
+          handleToggleBroadcasting(enable){
+            const match=router.AppRouter.match();
+            api.radioStationEnable(match.station,enable).then(result=>{
+                store.globals.radio_broadcast_id=result.result.broadcast_id;
+                if(enable){
+                  this.attrs.act_clipboard.removeClassName(style.hide);
+                }else{
+                  this.attrs.act_clipboard.addClassName(style.hide);
+                }
+                if((store.globals.radio_broadcast_id!==null)^(enable===true)){
+                  this.setBroadcasting(store.globals.radio_broadcast_id!==null);
+                }
+              }).catch(error=>{
+                components.ErrorDrawer.post("Broadcast Error","unable to toggle broadcast state");
+                
+              });
+          }
+          setBroadcasting(enable){
+            this.attrs.slider.setChecked(enable);
+            if(enable){
+              this.attrs.act_clipboard.removeClassName(style.hide);
+            }else{
+              this.attrs.act_clipboard.addClassName(style.hide);
+            }
+          }
+          setTime(currentTime,duration){
+            try{
+              this.attrs.pbar_time.setPosition(currentTime,duration);
+            }catch(e){
+              console.error(e);
+            };
+          }
+        }
+        class StationHistoryHeader extends components.NavHeader {
+          constructor(parent,isPublic){
+            super("div",{className:style.header},[]);
+            this.attrs.parent=parent;
+            if(!isPublic){
+              this.addAction(resources.svg['menu'],()=>{
+                  store.globals.showMenu();
+                });
+              this.addAction(resources.svg['media_play'],()=>{
+                  AudioDevice.instance().togglePlayPause();
+                });
+              this.addAction(resources.svg['media_next'],()=>{
+                  AudioDevice.instance().next();
+                });
+              this.addAction(resources.svg['media_next'],()=>{
+                  const device=AudioDevice.instance();
+                  device.setCurrentTime(device.duration()-2);
+                });
+            }
+            this.addAction(resources.svg['return'],()=>{
+                this.attrs.parent.getTracks(true);
+              });
+          }
+        }
+        class StationSearchHeader extends components.NavHeader {
+          constructor(parent,isPublic){
+            super("div",{className:style.header},[]);
+            this.attrs.parent=parent;
+            this.attrs.txtInput=new TextInputElement("",null,(text)=>{
+                this.attrs.parent.search(this.attrs.source,text);
+              });
+            this.attrs.txtInput.updateProps({"autocapitalize":"off"});
+            if(!isPublic){
+              this.attrs.source="library";
+              this.addAction(resources.svg['menu'],()=>{
+                  store.globals.showMenu();
+                });
+              this.attrs.act_toggle_source=this.addAction(resources.svg['playlist'],
+                              ()=>{
+                  if(this.attrs.source==='library'){
+                    this.attrs.source='youtube';
+                    this.attrs.act_toggle_source.setUrl(resources.svg['externalmedia']);
+                    
+                  }else{
+                    this.attrs.source='library';
+                    this.attrs.act_toggle_source.setUrl(resources.svg['playlist']);
+                    
+                  }
+                });
+            }else{
+              this.attrs.source="youtube";
+              this.addAction(resources.svg['externalmedia'],()=>{});
+            }
+            this.addRow(false);
+            this.addRowAction(0,resources.svg.media_error,()=>{
+                this.attrs.txtInput.setText("");
+                this.attrs.txtInput.getDomNode().focus();
+                this.attrs.parent.search("");
+              });
+            this.addRowElement(0,this.attrs.txtInput);
+            this.attrs.txtInput.addClassName(style.grow);
+            this.addRowAction(0,resources.svg.search,()=>{
+                const text=this.attrs.txtInput.getText();
+                this.attrs.parent.search(this.attrs.source,text);
+              });
+          }
+        }
+        class ListHeader extends components.NavHeader {
+          constructor(parent){
+            super("div",{className:style.header},[]);
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+          }
+        }
+        class Footer extends components.NavFooter {
+          constructor(parent,isPublic){
+            super();
+            this.spaceEvenly();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg.history,()=>{
+                const match=router.AppRouter.match();
+                const route_fn=(isPublic)?router.routes.publicRadioHistory:router.routes.userRadioStationHistory;
+                
+                router.navigate(route_fn({'station':match.station},{}));
+              });
+            this.addAction(resources.svg.music_note,()=>{
+                const match=router.AppRouter.match();
+                const route_fn=(isPublic)?router.routes.publicRadio:router.routes.userRadioStation;
+                
+                router.navigate(route_fn({'station':match.station},{}));
+              });
+            this.addAction(resources.svg.search,()=>{
+                const match=router.AppRouter.match();
+                const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
+                
+                let params={};
+                if(store.globals.radio_search_source!==undefined){
+                  params={source:store.globals.radio_search_source,query:store.globals.radio_search_query};
+                  
+                }
+                router.navigate(route_fn({'station':match.station},params));
+              });
+          }
+        }
+        class UpcomingTracksListElement extends DomElement {
+          constructor(elem){
+            super("div",{className:style.list},[]);
+          }
+        }
+        class TrackInfoElement extends DomElement {
+          constructor(){
+            super("div",{className:style.listItemRow},[]);
+            const url1=null;
+            const url2=null;
+            this.attrs.lbl_thumb=new SvgIconElement(url1,url2,{className:style.icon1});
+            
+            this.appendChild(this.attrs.lbl_thumb);
+            this.attrs.lbl_title=new TextElement("");
+            this.attrs.lbl_date=new TextElement("hello world");
+            this.attrs.lbl_duration=new TextElement("");
+            const div=new DomElement("div",{className:style.listItemColText});
+            div.appendChild(new DomElement("div",{className:style.listItemTitle},
+                              [this.attrs.lbl_title,new DomElement("br"),new TextElement("\xa0")]));
+            
+            div.appendChild(new DomElement("div",{className:style.listItemEnd},[this.attrs.lbl_date]));
+            
+            this.appendChild(div);
+            this.appendChild(new DomElement("div",{},[this.attrs.lbl_duration]));
+            
+          }
+          setItem(item){
+            const text1=item.title;
+            const text2=formatTime(item.duration);
+            const url1=resources.svg.disc;
+            const url2=((((item)||{}).thumbnail)||{}).url;
+            this.attrs.item=item;
+            this.attrs.lbl_title.setText(text1);
+            this.attrs.lbl_duration.setText(text2);
+            this.attrs.lbl_thumb.setUrls(url1,url2);
+            let dt=new Date(item.date_added*1000);
+            dt.setUTCSeconds(item.date_added);
+            const y=dt.getFullYear();
+            const m=dt.getMonth();
+            const d=dt.getDate();
+            const hh=dt.getHours();
+            const mm=dt.getMinutes();
+            const ss=dt.getSeconds();
+            this.attrs.lbl_date.setText(`${y}/${m}/${d} ${hh}:${mm}:${ss} [${item.uid}]`);
+            
+          }
+        }
+        class TrackVotesElement extends DomElement {
+          constructor(parent){
+            super("div",{className:style.votePanel},[]);
+            this.attrs.parent=parent;
+            this.attrs.btn_up=this.appendChild(new components.SvgButtonElement(resources.svg.vote_up_1,
+                              this.voteUp.bind(this)));
+            this.attrs.btn_up.updateProps({width:24,height:16,className:style.voteButton});
+            
+            this.attrs.lbl_vote=new TextElement();
+            this.appendChild(new DomElement("div",{className:style.voteText},[this.attrs.lbl_vote]));
+            
+            this.attrs.btn_down=this.appendChild(new components.SvgButtonElement(
+                              resources.svg.vote_down_1,this.voteDown.bind(this)));
+            this.attrs.btn_down.updateProps({width:24,height:16,className:style.voteButton});
+            
+            this.appendChild(new DomElement("div",{className:style.grow},[]));
+          }
+          setItem(item){
+            this.attrs.item=item;
+            this.attrs.lbl_vote.setText(item.vote_total);
+            if(item.vote===0){
+              this.attrs.btn_up.updateProps({src:resources.svg.vote_up_0});
+              this.attrs.btn_down.updateProps({src:resources.svg.vote_down_0});
+            }else if(item.vote>0){
+              this.attrs.btn_up.updateProps({src:resources.svg.vote_up_1});
+              this.attrs.btn_down.updateProps({src:resources.svg.vote_down_0});
+            }else if(item.vote<0){
+              this.attrs.btn_up.updateProps({src:resources.svg.vote_up_0});
+              this.attrs.btn_down.updateProps({src:resources.svg.vote_down_1});
+            }
+          }
+          voteUp(){
+            const item=this.attrs.item;
+            item.vote_total-=item.vote;
+            item.vote=(item.vote>0)?0:1;
+            item.vote_total+=item.vote;
+            if(item.vote===0){
+              this.attrs.btn_up.updateProps({src:resources.svg.vote_up_0});
+              this.attrs.btn_down.updateProps({src:resources.svg.vote_down_0});
+            }else{
+              this.attrs.btn_up.updateProps({src:resources.svg.vote_up_1});
+              this.attrs.btn_down.updateProps({src:resources.svg.vote_down_0});
+            }
+            this.attrs.lbl_vote.setText(item.vote_total);
+            this.attrs.parent.vote(this.attrs.item).then(result=>{}).catch(error=>{
+              
+                console.error(error);
+              });
+          }
+          voteDown(){
+            const item=this.attrs.item;
+            item.vote_total-=item.vote;
+            item.vote=(item.vote<0)?0:-1;
+            item.vote_total+=item.vote;
+            if(item.vote===0){
+              this.attrs.btn_up.updateProps({src:resources.svg.vote_up_0});
+              this.attrs.btn_down.updateProps({src:resources.svg.vote_down_0});
+            }else{
+              this.attrs.btn_up.updateProps({src:resources.svg.vote_up_0});
+              this.attrs.btn_down.updateProps({src:resources.svg.vote_down_1});
+            }
+            this.attrs.lbl_vote.setText(item.vote_total);
+            this.attrs.parent.vote(this.attrs.item).then(result=>{}).catch(error=>{
+              
+                console.error(error);
+              });
+          }
+          openExternal(){
+            if(this.attrs.item.source=="youtube"){
+              const url="https://www.youtube.com/watch?v="+this.attrs.item.uid;
+              window.open(url,"_blank");
+            }
+          }
+        }
+        class UpcomingTrackElement extends DomElement {
+          constructor(parent,item){
+            super("div",{className:style.listItem},[]);
+            this.attrs={parent,item};
+            this.attrs.info=this.appendChild(new TrackInfoElement());
+            this.attrs.vote=this.attrs.info.insertChild(0,new TrackVotesElement(this));
+            
+            this.attrs.info.setItem(item);
+            this.attrs.vote.setItem(item);
+          }
+          setItem(item){
+            if(item.uid!==this.attrs.item.uid||item.vote_total!==this.attrs.item.vote_total){
+            
+              this.attrs.item=item;
+              this.attrs.info.setItem(item);
+              this.attrs.vote.setItem(item);
+            }
+          }
+          vote(item){
+            return this.attrs.parent.vote(item);
+          }
+        }
+        class PreviousTrackElement extends DomElement {
+          constructor(parent,item){
+            super("div",{className:style.listItem},[]);
+            this.attrs={parent,item};
+            this.attrs.info=this.appendChild(new TrackInfoElement());
+            this.attrs.info.setItem(item);
+          }
+          setItem(item){
+            if(item.uid!==this.attrs.item.uid||item.vote_total!==this.attrs.item.vote_total){
+            
+              this.attrs.item=item;
+              this.attrs.info.setItem(item);
+            }
+          }
+        }
+        class SearchActionsElement extends DomElement {
+          constructor(addItemCbk){
+            super("div",{className:style.listItemRow},[]);
+            this.appendChild(new DomElement("div",{className:style.grow},[]));
+            this.appendChild(new components.SvgButtonElement(resources.svg.arrow_right,
+                              addItemCbk));
+          }
+          setItem(item){
+            this.attrs.item=item;
+          }
+        }
+        class SearchResultElement extends DomElement {
+          constructor(parent){
+            super("div",{className:style.listItem},[]);
+            this.attrs.parent=parent;
+            this.attrs.info=this.appendChild(new TrackInfoElement());
+            this.attrs.action=this.appendChild(new SearchActionsElement(this.addItem.bind(
+                                  this)));
+          }
+          setItem(item){
+            this.attrs.item=item;
+            this.attrs.info.setItem(item);
+            this.attrs.action.setItem(item);
+          }
+          addItem(){
+            this.attrs.parent.addTrackToPool(this.attrs.item).then(result=>{
+                const track=this.attrs.item;
+                track.uid=result.result[0];
+                track.vote=1;
+                track.vote_total=1;
+                track.date_added=Math.round(Date.now()/1000);
+                store.globals.radio_tracks[track.uid]=track;
+                this.attrs.parent.removeTrackBySID(track.source,track.sid);
+              }).catch(error=>{
+                console.error(error);
+              });
+          }
+        }
+        class StationListInfoElement extends DomElement {
+          constructor(item){
+            super("div",{className:style.listItemRow},[]);
+            const elem=this.appendChild(new components.MiddleText(item.name));
+            elem.addClassName(style.listItemRowText);
+            this.appendChild(new components.SvgButtonElement(resources.svg.arrow_right,
+                              ()=>{
+                  router.navigate(router.routes.userRadioStation({'station':item.name},
+                                          {}));
+                }));
+          }
+        }
+        class StationListItemElement extends DomElement {
+          constructor(item){
+            super("div",{className:style.listItem},[]);
+            this.appendChild(new StationListInfoElement(item));
+          }
+        }
+        function checkPublicAuthentication(){
+          const params=daedalus.util.parseParameters();
+          const logout=((((params)||{}).logout)||{})[0];
+          if(!!logout){
+            api.clearPublicToken(token2);
+            requestIdleCallback(()=>{
+                router.navigate(router.routes.login());
+              });
+            return false;
+          }
+          const token1=api.getPublictoken();
+          if(token1!==null){
+            return true;
+          }
+          const token2=((((params)||{}).login)||{})[0];
+          if(!token2){
+            requestIdleCallback(()=>{
+                router.navigate(router.routes.login());
+              });
+            return false;
+          }
+          api.setPublictoken(token2);
+          return true;
+        }
+        function getStationInfo(){
+          const match=router.AppRouter.match();
+          let station=match.station;
+          if(store.globals.radio_broadcast_id!==undefined){
+            return new Promise((accept,reject)=>{
+                accept({broadcast_id:store.globals.radio_broadcast_id});
+              });
+          }else{
+            return new Promise((accept,reject)=>{
+                api.radioStationInfo(station).then(result=>{
+                    store.globals.radio_broadcast_id=result.result.broadcast_id;
+                    accept(result.result);
+                  }).catch(error=>reject(error));
+              });
+          }
+        }
+        const sortOrder=[{key:'vote_total',ascending:true},{key:'date_added',ascending:true},
+                  {key:'uid',ascending:false}];
+        function getUpcomingTracks(){
+          let tracks=Object.keys(store.globals.radio_tracks).map(k=>store.globals.radio_tracks[
+                        k]);
+          tracks=api.multiSort(tracks,sortOrder);
+          tracks.reverse();
+          store.globals.radio_sorted_tracks=tracks;
+          return tracks;
+        }
+        function processUpdates(updates){
+          console.log(updates);
+          let current_track=null;
+          if(updates.kind==='refresh'){
+            store.globals.radio_tracks={};
+            updates.payload.tracks.forEach(track=>{
+                store.globals.radio_tracks[track.uid]=track;
+              });
+            store.globals.radio_previous_tracks=updates.payload.previous_tracks;
+            store.globals.radio_previous_tracks.reverse();
+            store.globals.radio_update_index=updates.uid;
+            const tmp=store.globals.radio_previous_tracks;
+            if(tmp.length>0){
+              current_track=tmp[0];
+            }
+          }else if(updates.kind==='update'){
+            updates.payload.forEach(update=>{
+                if(update.type==='vote_total_changed'){
+                  const track=store.globals.radio_tracks[update.payload.uid];
+                  track['vote_total']=update.payload.total;
+                }else if(update.type==='current_track_changed'){
+                  current_track=store.globals.radio_tracks[update.payload.uid];
+                  delete store.globals.radio_tracks[update.payload.uid];
+                  store.globals.radio_previous_tracks.unshift(current_track);
+                }else if(update.type==='track_removed'){
+                  delete store.globals.radio_tracks[update.payload.uid];
+                }else if(update.type==='track_added'){
+                  const track=update.payload;
+                  if(store.globals.radio_tracks[track.uid]!==undefined){
+                    store.globals.radio_tracks[track.uid]={...store.globals.radio_tracks[
+                                            track.uid],...track};
+                  }else{
+                    track['vote']=0;
+                    track['vote_total']=1;
+                    store.globals.radio_tracks[track.uid]=track;
+                  }
+                }else{
+                  console.error(`unknown type: ${update.type}`);
+                }
+              });
+            store.globals.radio_update_index=updates.uid;
+          }else{
+            console.error(`unknown kind: ${updates.kind}`);
+          }
+          if(current_track!==null){
+            store.globals.radio_current_track=current_track;
+          }else if(store.globals.radio_current_track===undefined){
+            store.globals.radio_current_track=null;
+          }
+          console.log("current",current_track,store.globals.radio_current_track);
+          
+          getUpcomingTracks();
+        }
+        function reconcileUpdates(page,elem,tracks,clsRowElement){
+          const lst=elem.children;
+          let index=0;
+          for(;index<lst.length&&index<tracks.length;index++)
+          {
+            lst[index].setItem(tracks[index]);
+          }
+          console.log(`reconcile: add ${tracks.length-index} remove ${lst.length-index}`);
+          
+          const removeCount=lst.length-index;
+          if(removeCount>0){
+            containerList.splice(index,removeCount);
+          }
+          for(;index<tracks.length;index++)
+          {
+            lst.push(new clsRowElement(page,tracks[index]));
+          }
+          elem.update();
+          thumbnail_ProcessStart();
+        }
+        function reconcileTrackUpdates(page,header,elem){
+          const tracks=store.globals.radio_sorted_tracks;
+          if(store.globals.radio_current_track!==null){
+            header.setTrack(store.globals.radio_current_track);
+          }
+          reconcileUpdates(page,elem,tracks,UpcomingTrackElement);
+        }
+        function reconcilePreviousTrackUpdates(page,elem){
+          const tracks=store.globals.radio_previous_tracks;
+          reconcileUpdates(page,elem,tracks,PreviousTrackElement);
+        }
+        class UserRadioStationPage extends DomElement {
           constructor(){
             super("div",{className:style.main},[]);
-            this.attrs={header:new Header(this),container:new DomElement("div",{},
-                              [])};
+            this.attrs={device:AudioDevice.instance(),header:new StationHeader(this),
+                          footer:new Footer(this),padding2:new DomElement("div",{className:style.padding2},
+                              []),lst:new UpcomingTracksListElement()};
             this.appendChild(this.attrs.header);
-            this.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
           }
           elementMounted(){
-            console.log("mount radio view");
-            api.radioVideoInfo("VHfi4kGPFvc").then(result=>{
+            console.log("mount user radio page");
+            const match=router.AppRouter.match();
+            this.attrs.device.setCurrentStation(match.station);
+            this.attrs.device.connectView(this);
+            getStationInfo().then(result=>{
+                this.attrs.header.setBroadcasting(result.broadcast_id!==null);
+              });
+            this.getTracks(false);
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+          }
+          handleTrackChanged(track){
+            console.log("on handle track changed");
+            console.log(track);
+            this.attrs.header.setTrack(track);
+            this.removeTrackByUID(track.uid);
+          }
+          handleAudioTimeUpdate(event){
+            this.attrs.header.setTime(event.currentTime,event.duration);
+          }
+          handleAudioDurationChange(event){
+            this.attrs.header.setTime(event.currentTime,event.duration);
+          }
+          removeTrackByUID(uid){
+            const lst=this.attrs.lst.children;
+            const N=lst.length;
+            for(let index=0;index<lst.length;index++)
+            {
+              const child=lst[index];
+              if(child.attrs.item.uid==uid){
+                lst.splice(index,1);
+                this.attrs.lst.update();
+                break;
+              }
+            }
+          }
+          getTracks(force){
+            let station=AudioDevice.instance().currentStation();
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
+            }
+            console.log(`get update ${force} ${uid}`);
+            if(uid>0&&force===false){
+              console.log(`${uid} ${force}`);
+              const tracks=getUpcomingTracks();
+              reconcileUpdates(this,this.attrs.lst,tracks,UpcomingTrackElement);
+              return;
+            }
+            api.radioStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+                reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+          vote(item){
+            return api.radioStationVote(AudioDevice.instance().currentStation(),item.uid,
+                          item.vote);
+          }
+        }
+        class UserRadioStationSearchPage extends DomElement {
+          constructor(){
+            super("div",{className:style.main},[]);
+            this.attrs={device:AudioDevice.instance(),header:new StationSearchHeader(
+                              this),footer:new Footer(this),lst:new UpcomingTracksListElement(),
+                          padding2:new DomElement("div",{className:style.padding2},[])};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+          }
+          elementMounted(){
+            console.log("mount user radio search");
+            const match=router.AppRouter.match();
+            this.attrs.device.setCurrentStation(match.station);
+            this.attrs.device.connectView(this);
+            const params=daedalus.util.parseParameters();
+            const f=(k,d)=>{
+              const v=params[k];
+              return(v===null||v===undefined)?d:v[0];
+            };
+            const source=f("source","library");
+            const query=f("query","");
+            if(source!==store.globals.radio_search_source||query!==store.globals.radio_search_query||!store.globals.radio_search_results){
+            
+              if(query!==""){
+                this.search(source,query);
+              }
+            }
+            this.getTracks(false);
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+          }
+          search(source,query){
+            console.log(source,query);
+            router.navigate(router.routes.userRadioStationSearch({station:this.attrs.device.currentStation(
+                                    )},{query,source}));
+            store.globals.radio_search_source=source;
+            store.globals.radio_search_query=query;
+            store.globals.radio_search_results=null;
+            api.radioStationSearch(AudioDevice.instance().currentStation(),source,
+                          query).then(result=>{
                 console.log(result);
+                store.globals.radio_search_results=result.result;
+                this.updateSearchResults();
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+          updateSearchResults(){
+            this.attrs.lst.removeChildren();
+            store.globals.radio_search_results.forEach(item=>{
+                const elem=new SearchResultElement(this);
+                elem.setItem(item);
+                this.attrs.lst.appendChild(elem);
+              });
+            thumbnail_ProcessStart();
+          }
+          getTracks(force){
+            const match=router.AppRouter.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
+            }
+            if(uid>0&&force===false){
+              return;
+            }
+            console.log(`get update ${uid}`);
+            api.radioStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+          addTrackToPool(track){
+            return api.radioStationAddTrack(AudioDevice.instance().currentStation(
+                            ),track);
+          }
+          removeTrackBySID(source,sid){
+            const lst=this.attrs.lst.children;
+            const N=lst.length;
+            for(let index=0;index<lst.length;index++)
+            {
+              const child=lst[index];
+              if(child.attrs.item.source==source&&child.attrs.item.sid==sid){
+                lst.splice(index,1);
+                this.attrs.lst.update();
+                break;
+              }
+            }
+          }
+        }
+        class UserRadioStationHistoryPage extends DomElement {
+          constructor(){
+            super("div",{className:style.main},[]);
+            this.attrs={device:AudioDevice.instance(),header:new StationHistoryHeader(
+                              this),footer:new Footer(this),padding2:new DomElement("div",{className:style.padding2},
+                              []),lst:new UpcomingTracksListElement()};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+          }
+          elementMounted(){
+            console.log("mount user history");
+            const match=router.AppRouter.match();
+            this.attrs.device.setCurrentStation(match.station);
+            this.attrs.device.connectView(this);
+            this.getTracks(false);
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+          }
+          handleTrackChanged(track){
+            console.log("on handle track changed");
+            console.log(track);
+            this.attrs.header.setTrack(track);
+          }
+          getTracks(force){
+            let station=AudioDevice.instance().currentStation();
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
+            }
+            if(uid>0&&force===false){
+              reconcilePreviousTrackUpdates(this,this.attrs.lst);
+              return;
+            }
+            console.log(`get update ${uid}`);
+            api.radioStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+                reconcilePreviousTrackUpdates(this,this.attrs.lst);
               }).catch(error=>{
                 console.log(error);
               });
           }
         }
-        return[UserRadioPage];
+        class UserRadioListPage extends DomElement {
+          constructor(){
+            super("div",{className:style.main},[]);
+            this.attrs={header:new ListHeader(this),lst:new UpcomingTracksListElement(
+                            )};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+          }
+          elementMounted(){
+            console.log("mount user radio list");
+            api.radioStationList().then(result=>{
+                this.attrs.lst.removeChildren();
+                console.log(result);
+                result.result.forEach(item=>{
+                    this.attrs.lst.appendChild(new StationListItemElement(item));
+                    
+                  });
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+        }
+        class PublicRadioStationPage extends DomElement {
+          constructor(){
+            super("div",{className:style.main},[]);
+            if(!checkPublicAuthentication()){
+              this.attrs.auth_failed=true;
+              return;
+            }
+            this.attrs={device:AudioDevice.instance(),header:new StationHeader(this,
+                              true),footer:new Footer(this,true),padding2:new DomElement("div",
+                              {className:style.padding2},[]),lst:new UpcomingTracksListElement(
+                            )};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+          }
+          elementMounted(){
+            if(this.attrs.auth_failed){
+              return;
+            }
+            console.log("mount public radio page");
+            this.getTracks(false);
+          }
+          getTracks(force){
+            const match=router.AppRouter.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
+            }
+            if(uid>0&&force===false){
+              return;
+            }
+            console.log(`get update ${uid}`);
+            api.radioPublicStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+                reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+          vote(item){
+            const match=router.AppRouter.match();
+            return api.radioPublicStationVote(match.station,item.uid,item.vote);
+          }
+        }
+        class PublicRadioStationSearchPage extends DomElement {
+          constructor(){
+            super("div",{className:style.main},[]);
+            if(!checkPublicAuthentication()){
+              this.attrs.auth_failed=true;
+              return;
+            }
+            this.attrs={device:AudioDevice.instance(),header:new StationSearchHeader(
+                              this,true),footer:new Footer(this,true),padding2:new DomElement("div",
+                              {className:style.padding2},[]),lst:new UpcomingTracksListElement(
+                            )};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+          }
+          elementMounted(){
+            if(this.attrs.auth_failed){
+              return;
+            }
+            console.log("mount public radio search");
+            this.getTracks(false);
+          }
+          getTracks(force){
+            const match=router.AppRouter.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
+            }
+            if(uid>0&&force===false){
+              return;
+            }
+            console.log(`get update ${uid}`);
+            api.radioPublicStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+        }
+        class PublicRadioStationHistoryPage extends DomElement {
+          constructor(){
+            super("div",{className:style.main},[]);
+            if(!checkPublicAuthentication()){
+              this.attrs.auth_failed=true;
+              return;
+            }
+            this.attrs={device:AudioDevice.instance(),header:new StationHistoryHeader(
+                              this,true),footer:new Footer(this,true),padding2:new DomElement("div",
+                              {className:style.padding2},[]),lst:new UpcomingTracksListElement(
+                            )};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+          }
+          elementMounted(){
+            if(this.attrs.auth_failed){
+              return;
+            }
+            console.log("mount public radio history");
+            this.getTracks(false);
+          }
+          getTracks(force){
+            const match=router.AppRouter.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
+            }
+            if(uid>0&&force===false){
+              reconcilePreviousTrackUpdates(this,this.attrs.lst);
+              return;
+            }
+            console.log(`get update ${uid}`);
+            api.radioPublicStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+                reconcilePreviousTrackUpdates(this,this.attrs.lst);
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+        }
+        return[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
+                  UserRadioListPage,UserRadioStationHistoryPage,UserRadioStationPage,UserRadioStationSearchPage];
+        
       })();
     const[OpenApiDocPage]=(function(){
         const styles={main:'dcs-71d9fd06-0'};
@@ -5702,9 +7439,10 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[];
       })();
     return{FileSystemPage,LandingPage,LibraryPage,LoginPage,NoteContentPage,NoteContext,
-          NoteEditPage,NotesPage,OpenApiDocPage,PlaylistPage,PublicFilePage,SavedSearchPage,
-          SettingsPage,StoragePage,StoragePreviewPage,SyncPage,UserRadioPage,fmtEpochTime};
-    
+          NoteEditPage,NotesPage,OpenApiDocPage,PlaylistPage,PublicFilePage,PublicRadioStationHistoryPage,
+          PublicRadioStationPage,PublicRadioStationSearchPage,SavedSearchPage,SettingsPage,
+          StoragePage,StoragePreviewPage,SyncPage,UserRadioListPage,UserRadioStationHistoryPage,
+          UserRadioStationPage,UserRadioStationSearchPage,fmtEpochTime};
   })(api,audio,components,daedalus,resources,router,store);
 app=(function(api,components,daedalus,pages,resources,router,store){
     "use strict";
@@ -5713,9 +7451,9 @@ app=(function(api,components,daedalus,pages,resources,router,store){
     const ButtonElement=daedalus.ButtonElement;
     const TextElement=daedalus.TextElement;
     const AuthenticatedRouter=daedalus.AuthenticatedRouter;
-    const style={body:'dcs-1e053eca-0',rootWebDesktop:'dcs-1e053eca-1',rootWebMobile:'dcs-1e053eca-2',
-          rootMobile:'dcs-1e053eca-3',margin:'dcs-1e053eca-4',fullsize:'dcs-1e053eca-5',
-          show:'dcs-1e053eca-6',hide:'dcs-1e053eca-7'};
+    const style={body:'dcs-1e053eca-0',navMenu:'dcs-1e053eca-1',rootWebDesktop:'dcs-1e053eca-2',
+          rootWebMobile:'dcs-1e053eca-3',rootMobile:'dcs-1e053eca-4',margin:'dcs-1e053eca-5',
+          fullsize:'dcs-1e053eca-6',show:'dcs-1e053eca-7',hide:'dcs-1e053eca-8'};
     function buildRouter(parent,container){
       const u=router.route_urls;
       let rt=new router.AppRouter(container);
@@ -5741,8 +7479,20 @@ app=(function(api,components,daedalus,pages,resources,router,store){
               '/login');
       rt.addAuthRoute(u.userLibrarySavedSearch,(cbk)=>parent.handleRoute(cbk,pages.SavedSearchPage),
               '/login');
-      rt.addAuthRoute(u.userRadio,(cbk)=>parent.handleRoute(cbk,pages.UserRadioPage),
+      rt.addAuthRoute(u.userRadioStationSearch,(cbk)=>parent.handleRoute(cbk,pages.UserRadioStationSearchPage),
               '/login');
+      rt.addAuthRoute(u.userRadioStationHistory,(cbk)=>parent.handleRoute(cbk,pages.UserRadioStationHistoryPage),
+              '/login');
+      rt.addAuthRoute(u.userRadioStation,(cbk)=>parent.handleRoute(cbk,pages.UserRadioStationPage),
+              '/login');
+      rt.addAuthRoute(u.userRadio,(cbk)=>parent.handleRoute(cbk,pages.UserRadioListPage),
+              '/login');
+      rt.addRoute(u.publicRadioSearch,(cbk)=>parent.handleRoute(cbk,pages.PublicRadioStationSearchPage));
+      
+      rt.addRoute(u.publicRadioHistory,(cbk)=>parent.handleRoute(cbk,pages.PublicRadioStationHistoryPage));
+      
+      rt.addRoute(u.publicRadio,(cbk)=>parent.handleRoute(cbk,pages.PublicRadioStationPage));
+      
       rt.addAuthRoute(u.userWildCard,(cbk)=>{
           history.pushState({},"","/u/storage/list");
         },'/login');
@@ -5793,6 +7543,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
       buildRouter(){
         this.attrs.router=buildRouter(this,this.attrs.container);
         this.attrs.nav=new components.NavMenu();
+        this.attrs.nav.addClassName(style.navMenu);
         store.globals.showMenu=()=>{
           this.attrs.nav.show();
         };
@@ -5821,6 +7572,9 @@ app=(function(api,components,daedalus,pages,resources,router,store){
               this.doNavigate("/u/fs");
             });
         }
+        this.attrs.nav.addAction(resources.svg.disc,"Radio",()=>{
+            this.doNavigate("/u/radio");
+          });
         this.attrs.nav.addAction(resources.svg.settings,"Settings",()=>{
             this.doNavigate("/u/settings");
           });

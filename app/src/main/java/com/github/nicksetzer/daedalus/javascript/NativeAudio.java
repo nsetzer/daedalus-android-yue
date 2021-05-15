@@ -68,6 +68,29 @@ public class NativeAudio {
     }
 
     @JavascriptInterface
+    public void loadRadioUrl(String url) {
+        Intent intent = new Intent(m_activity, AudioService.class);
+        intent.setAction(AudioActions.ACTION_LOAD_RADIO_URL);
+        intent.putExtra("url", url);
+        m_activity.startForegroundService(intent);
+    }
+
+    @JavascriptInterface
+    public void playRadioUrl(String url) {
+        Intent intent = new Intent(m_activity, AudioService.class);
+        intent.setAction(AudioActions.ACTION_PLAY_RADIO_URL);
+        intent.putExtra("url", url);
+        m_activity.startForegroundService(intent);
+    }
+
+    @JavascriptInterface
+    public void playNextRadioUrl() {
+        Intent intent = new Intent(m_activity, AudioService.class);
+        intent.setAction(AudioActions.ACTION_PLAY_NEXT_RADIO_URL);
+        m_activity.startForegroundService(intent);
+    }
+
+    @JavascriptInterface
     public void loadIndex(int index) {
         Intent intent = new Intent(m_activity, AudioService.class);
         intent.setAction(AudioActions.ACTION_LOAD_INDEX);
@@ -184,5 +207,16 @@ public class NativeAudio {
         String info = m_activity.getBoundService().getSyncInfo();
         return info;
 
+    }
+
+    @JavascriptInterface
+    public void initRadio(String token, String station) {
+        Log.info("init radio token: " + token);
+        Log.info("init radio station: " + station);
+        Intent intent = new Intent(m_activity, AudioService.class);
+        intent.setAction(AudioActions.ACTION_INIT_RADIO);
+        intent.putExtra("token", token);
+        intent.putExtra("station", station);
+        m_activity.startForegroundService(intent);
     }
 }
