@@ -192,7 +192,7 @@
   position: fixed;
   top: 0;
   left: 0;
-  background: rgba(0,0,0,0.33);
+  background: rgba(0,0,0,0.4);
   width: 100vw;
   height: 120vh;
   z-index: 1000;
@@ -205,9 +205,8 @@
   background: white;
   width: 50vw;
   min-width: 10em;
-  min-height: 10em;
   box-shadow: .5em .5em .5em 0 rgba(0,0,0,0.50);
-  padding: 1em;
+  background-color: #D5D5D5;
   z-index: 1000;
 }
 .dcs-f440542e-2 {
@@ -217,12 +216,11 @@
   display: none;
 }
 .dcs-f440542e-4 {
-  border-radius: .5em;
   border-color: #646464;
   border-style: solid;
   border-width: 1px;
   padding: 1em;
-  background-image: linear-gradient(#D5D5D5, #6A6A6A);
+  background-image: linear-gradient(#D5D5D5, #7F7F7F);
   text-align: center;
 }
 .dcs-f440542e-4:hover {
@@ -398,6 +396,21 @@
   border-style: solid;
   border-color: blue;
 }
+.dcs-f3332da9-0:hover {
+  cursor: pointer;
+}
+.dcs-f3332da9-0:hover .dcs-f3332da9-1 {
+  top: .15em;
+  height: .5em;
+  max-height: .5em;
+  min-height: .5em;
+}
+.dcs-f3332da9-0:hover .dcs-f3332da9-2 {
+  top: -.05em;
+  height: .7em;
+  max-height: .7em;
+  min-height: .7em;
+}
 .dcs-d9d8fbb3-0 {
   text-align: center;
   position: fixed;
@@ -437,6 +450,15 @@
 }
 .dcs-d9d8fbb3-6 {
   display: none;
+}
+.dcs-b8b07fd0-0 {
+  transform: rotate(0deg);
+  width: 32px;
+  height: 32px;
+  background-color: #0000FF;
+  position: absolute;
+  top: -32px;
+  left: calc(50% - 16px);
 }
 .dcs-0efdbccc-0 {
   display: inline-flex;
@@ -777,6 +799,7 @@
   border-style: solid;
   border-width: 1px;
   width: calc(100% - 2px);
+  overflow: hidden;
 }
 .dcs-13113e22-7 {
   display: flex;
@@ -982,6 +1005,8 @@
   flex-direction: column;
   justify-content: flex-start;
   border-radius: 4px;
+  overflow: hidden;
+  max-height: 60px;
 }
 .dcs-a4af2c4a-6 {
   flex-grow: 1;
@@ -993,66 +1018,81 @@
   width: 100%;
 }
 .dcs-a4af2c4a-7 {
-  flex-grow: 1;
+  display: flex;
+  width: 100%;
+  flex-direction: row;
   align-self: flex-start;
   text-align: left;
-  color: #7f7f7f;
+  max-height: 1.25em;
+  line-height: 1.25em;
 }
 .dcs-a4af2c4a-8 {
+  color: #7f7f7f;
+  font-family: monospace;
+  overflow: hidden;
+  width: 100%;
+}
+.dcs-a4af2c4a-9 {
   display: flex;
   flex-row: row;
   justify-content: flex-start;
   align-items: center;
 }
-.dcs-a4af2c4a-9 {
+.dcs-a4af2c4a-10 {
   display: flex;
   flex-grow: 1;
 }
-.dcs-a4af2c4a-10 {
+.dcs-a4af2c4a-11 {
   display: flex;
   height: 100%;
   flex-direction: column;
   flex-grow: 1;
 }
-.dcs-a4af2c4a-11 {
+.dcs-a4af2c4a-12 {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   align-items: center;
 }
-.dcs-a4af2c4a-12 {
+.dcs-a4af2c4a-13 {
+  padding-left: .25em;
+  height: 1em;
+  width: 1em;
+  cursor: pointer;
+}
+.dcs-a4af2c4a-14 {
   padding: 0px;
   cursor: pointer;
 }
-.dcs-a4af2c4a-13 {
-  margin-right: 1em;
-  border: 1px solid black;
-}
-.dcs-a4af2c4a-14 {
-  margin-right: 1em;
-  border: 1px solid black;
-}
 .dcs-a4af2c4a-15 {
+  margin-right: 1em;
+}
+.dcs-a4af2c4a-16 {
+  margin-right: 1em;
+  border-left: 1px solid black;
+  border-right: 1px solid black;
+}
+.dcs-a4af2c4a-17 {
   height: 33vh;
   min-height: 64px;
 }
-.dcs-a4af2c4a-16 {
+.dcs-a4af2c4a-18 {
   min-width: 2em;
   text-align: center;
 }
-.dcs-a4af2c4a-17 {
+.dcs-a4af2c4a-19 {
   background-color: green;
 }
-.dcs-a4af2c4a-18 {
+.dcs-a4af2c4a-20 {
   background-color: #a0a0a0;
 }
-.dcs-a4af2c4a-19 {
+.dcs-a4af2c4a-21 {
   background-color: red;
 }
-.dcs-a4af2c4a-20 {
+.dcs-a4af2c4a-22 {
 
 }
-.dcs-a4af2c4a-21 {
+.dcs-a4af2c4a-23 {
   display: none;
 }
 .dcs-a4af2c4a-5:hover {

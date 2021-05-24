@@ -274,7 +274,10 @@ daedalus=(function(){
             }
             this.props=newProps;
           }
-          appendChild(childElement){
+          appendChild(childElement,...args){
+            if(args.length>0){
+              childElement=new childElement(...args);
+            }
             if(!childElement||!childElement.type){
               throw"invalid child";
             }
@@ -2047,8 +2050,8 @@ components=(function(daedalus,resources){
     "use strict";
     const StyleSheet=daedalus.StyleSheet;
     const DomElement=daedalus.DomElement;
-    const ButtonElement=daedalus.ButtonElement;
     const TextElement=daedalus.TextElement;
+    const ButtonElement=daedalus.ButtonElement;
     const Router=daedalus.Router;
     const[SvgButtonElement,SvgElement]=(function(){
         const style={svgButton:'dcs-b308e454-0'};
@@ -2764,6 +2767,9 @@ components=(function(daedalus,resources){
     const[ProgressBar]=(function(){
         const style={progressBar:'dcs-f3332da9-0',progressBar_bar:'dcs-f3332da9-1',
                   progressBar_button:'dcs-f3332da9-2'};
+        ;
+        ;
+        ;
         class ProgressBarTrack extends DomElement {
           constructor(parent){
             super("div",{className:style.progressBar_bar},[]);
@@ -2943,12 +2949,125 @@ components=(function(daedalus,resources){
         }
         return[ErrorDrawer];
       })();
+    const[Refresh]=(function(){
+        const style={refresh:'dcs-b8b07fd0-0'};
+        class Refresh extends DomElement {
+          constructor(){
+            super("div",{className:style.refresh});
+            this.attrs={y:0,active:false,top:0};
+            this.attrs._touch={pageX:0,pageY:0};
+          }
+          connect(elem){
+            const props=['onMouseDown','onMouseMove','onMouseLeave','onMouseUp','onTouchCancel',
+                          'onTouchEnd','onTouchMove','onTouchStart'];
+            const obj={};
+            props.forEach(prop=>{
+                obj[prop]=this[prop].bind(this);
+              });
+            elem.updateProps(obj);
+          }
+          onMouseDown(event){
+            this._onTouchStart(event,event.pageY);
+          }
+          onMouseMove(event){
+            this._onTouchMove(event,event.pageY);
+          }
+          onMouseLeave(event){
+            this._onTouchEnd(event,event.pageY,true);
+          }
+          onMouseUp(event){
+            this._onTouchEnd(event,event.pageY,false);
+          }
+          onTouchStart(event){
+            if(!event.cancelable){
+              return;
+            }
+            let evt=(((((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches))||{
+                            })[0];
+            this.attrs._touch={pageX:evt.pageY,pageY:evt.pageY};
+            return this._onTouchStart(event,evt.pageY);
+          }
+          onTouchMove(event){
+            if(!event.cancelable){
+              return;
+            }
+            let evt=(((((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches))||{
+                            })[0];
+            this.attrs._touch={pageX:evt.pageY,pageY:evt.pageY};
+            return this._onTouchMove(event,evt.pageY);
+          }
+          onTouchCancel(event){
+            console.log('onTouchCancel');
+            return this._onTouchEnd(event,this.attrs._touch.pageY,true);
+          }
+          onTouchEnd(event){
+            return this._onTouchEnd(event,this.attrs._touch.pageY,false);
+          }
+          _onTouchStart(event,pageY){
+            this.attrs.y=pageY;
+            this.attrs.active=true;
+            this.attrs.moving=false;
+            return false;
+          }
+          _onTouchMove(event,pageY){
+            if(!this.attrs.active){
+              return;
+            }
+            let dy=pageY-this.attrs.y;
+            if(!this.attrs.moving){
+              if(dy>0&&window.scrollY===0){
+                this.attrs.moving=true;
+              }else{
+                return;
+              }
+            }
+            event.preventDefault();
+            let h=96;
+            if(dy>=0){
+              if(dy>=h){
+                dy=h;
+              }
+              let rot=360/h*dy;
+              this.getDomNode().style.transform=`rotate(${rot}deg)`;
+              this.getDomNode().style.top=`${dy-32}px`;
+              this.getDomNode().style.removeProperty('transition');
+            }else{
+              this.getDomNode().style.transform=`rotate(0deg)`;
+              this.getDomNode().style.top=`-32px`;
+              this.getDomNode().style.removeProperty('transition');
+            }
+            return false;
+          }
+          _onTouchEnd(event,pageY,cancel=false){
+            console.log(`touch end active: ${this.attrs.active} cancel: ${cancel} pageY: ${pageY}`);
+            
+            if(this.attrs.active){
+              let d=0.3;
+              if(!cancel){
+                let dy=pageY-this.attrs.y;
+                let h=96;
+                d=dy/h*.3;
+                if(dy>h){
+                  console.log("trigger!");
+                }
+              }
+              this.getDomNode().style.transform=`rotate(0deg)`;
+              this.getDomNode().style.top=`-32px`;
+              this.getDomNode().style.transition=`transform ${d}s ease-in-out, top ${d}s ease-in`;
+              
+            }
+            this.attrs.active=false;
+            return false;
+          }
+        }
+        return[Refresh];
+      })();
     const[]=(function(){
         return[];
       })();
     return{CheckBoxElement,ErrorDrawer,HSpacer,HStretch,MiddleText,MiddleTextLink,
-          MoreMenu,NavFooter,NavHeader,NavMenu,ProgressBar,Slider,SvgButtonElement,SvgElement,
-          SwipeHandler,TreeItem,TreeView,VSpacer};
+          MoreMenu,NavFooter,NavHeader,NavMenu,ProgressBar,Refresh,Slider,SvgButtonElement,
+          SvgElement,SwipeHandler,TreeItem,TreeView,VSpacer};
   })(daedalus,resources);
 router=(function(api,daedalus){
     "use strict";
@@ -3066,6 +3185,7 @@ audio=(function(api,daedalus){
             this.audio_instance.currentTime=time;
           }
           duration(){
+            console.log(this.audio_instance);
             return this.audio_instance.duration;
           }
           setVolume(volume){
@@ -6294,12 +6414,13 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           function(){
         const style={main:'dcs-a4af2c4a-0',grow:'dcs-a4af2c4a-1',svgDiv:'dcs-a4af2c4a-2',
                   list:'dcs-a4af2c4a-3',headerInfo:'dcs-a4af2c4a-4',listItem:'dcs-a4af2c4a-5',
-                  listItemTitle:'dcs-a4af2c4a-6',listItemEnd:'dcs-a4af2c4a-7',listItemRow:'dcs-a4af2c4a-8',
-                  listItemRowText:'dcs-a4af2c4a-9',listItemColText:'dcs-a4af2c4a-10',votePanel:'dcs-a4af2c4a-11',
-                  voteButton:'dcs-a4af2c4a-12',icon1:'dcs-a4af2c4a-13',icon2:'dcs-a4af2c4a-14',
-                  padding2:'dcs-a4af2c4a-15',voteText:'dcs-a4af2c4a-16',voteUp:'dcs-a4af2c4a-17',
-                  voteNuetral:'dcs-a4af2c4a-18',voteDown:'dcs-a4af2c4a-19',show:'dcs-a4af2c4a-20',
-                  hide:'dcs-a4af2c4a-21'};
+                  listItemTitle:'dcs-a4af2c4a-6',listItemInfo:'dcs-a4af2c4a-7',textGrey:'dcs-a4af2c4a-8',
+                  listItemRow:'dcs-a4af2c4a-9',listItemRowText:'dcs-a4af2c4a-10',listItemColText:'dcs-a4af2c4a-11',
+                  votePanel:'dcs-a4af2c4a-12',moreButton:'dcs-a4af2c4a-13',voteButton:'dcs-a4af2c4a-14',
+                  icon1:'dcs-a4af2c4a-15',icon2:'dcs-a4af2c4a-16',padding2:'dcs-a4af2c4a-17',
+                  voteText:'dcs-a4af2c4a-18',voteUp:'dcs-a4af2c4a-19',voteNuetral:'dcs-a4af2c4a-20',
+                  voteDown:'dcs-a4af2c4a-21',show:'dcs-a4af2c4a-22',hide:'dcs-a4af2c4a-23'};
+        
         ;
         class AudioDevice{
           constructor(){
@@ -6535,23 +6656,29 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                                       this)));
               this.attrs.toolbarInner.addClassName(style.main);
             }
-            this.attrs.track_info=new TrackInfoElement();
+            this.attrs.track_info=new CurrentTrackInfoElement();
             this.attrs.track_div=new DomElement("div",{className:style.headerInfo},
                           [this.attrs.track_info]);
             this.addRow(true);
             this.addRowElement(0,new components.MiddleText("Now Playing"));
             this.addRow(true);
             this.addRowElement(1,this.attrs.track_div);
+            this.attrs.txt_SongTime1=new TextElement("00:00:00");
+            this.attrs.txt_SongTime2=new TextElement("00:00:00");
             if(!isPublic){
+              this.addRow(true);
+              this.addRowElement(2,this.attrs.txt_SongTime1);
+              this.addRowElement(2,new components.HStretch());
+              this.addRowElement(2,this.attrs.txt_SongTime2);
               this.attrs.pbar_time=new components.ProgressBar((pos)=>{
-                  let inst=audio.AudioDevice.instance();
+                  let inst=AudioDevice.instance();
                   let dur=inst.duration();
                   if(!!dur){
                     inst.setCurrentTime(pos*dur);
                   }
                 });
               this.addRow(true);
-              this.addRowElement(2,this.attrs.pbar_time);
+              this.addRowElement(3,this.attrs.pbar_time);
             }
           }
           setTrack(track){
@@ -6584,6 +6711,10 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           setTime(currentTime,duration){
             try{
+              const t1=formatTime(currentTime);
+              const t2=formatTime(duration);
+              this.attrs.txt_SongTime1.setText(t1);
+              this.attrs.txt_SongTime2.setText(t2);
               this.attrs.pbar_time.setPosition(currentTime,duration);
             }catch(e){
               console.error(e);
@@ -6700,26 +6831,58 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             super("div",{className:style.list},[]);
           }
         }
-        class TrackInfoElement extends DomElement {
-          constructor(){
+        class CurrentTrackInfoElement extends DomElement {
+          constructor(showDetails=0){
             super("div",{className:style.listItemRow},[]);
+            this.attrs.showDetails=showDetails;
             const url1=null;
             const url2=null;
             this.attrs.lbl_thumb=new SvgIconElement(url1,url2,{className:style.icon1});
             
             this.appendChild(this.attrs.lbl_thumb);
             this.attrs.lbl_title=new TextElement("");
-            this.attrs.lbl_date=new TextElement("hello world");
+            const div=this.appendChild(DomElement,"div",{className:style.listItemColText});
+            
+            div.appendChild(new DomElement("div",{className:style.listItemTitle},
+                              [this.attrs.lbl_title]));
+          }
+          setItem(item){
+            const text1=item.title;
+            const url1=resources.svg.disc;
+            const url2=((((item)||{}).thumbnail)||{}).url;
+            this.attrs.item=item;
+            this.attrs.lbl_title.setText(text1);
+            this.attrs.lbl_thumb.setUrls(url1,url2);
+          }
+        }
+        class TrackInfoElement extends DomElement {
+          constructor(showDetails=0){
+            super("div",{className:style.listItemRow},[]);
+            this.attrs.showDetails=showDetails;
+            const url1=null;
+            const url2=null;
+            this.attrs.lbl_thumb=new SvgIconElement(url1,url2,{className:style.icon2});
+            
+            this.appendChild(this.attrs.lbl_thumb);
+            this.attrs.lbl_title=new TextElement("");
             this.attrs.lbl_duration=new TextElement("");
-            const div=new DomElement("div",{className:style.listItemColText});
+            const div=this.appendChild(DomElement,"div",{className:style.listItemColText});
+            
             div.appendChild(new DomElement("div",{className:style.listItemTitle},
                               [this.attrs.lbl_title,new DomElement("br"),new TextElement("\xa0")]));
             
-            div.appendChild(new DomElement("div",{className:style.listItemEnd},[this.attrs.lbl_date]));
-            
-            this.appendChild(div);
-            this.appendChild(new DomElement("div",{},[this.attrs.lbl_duration]));
-            
+            if(showDetails!==0){
+              this.attrs.lbl_date=new TextElement("");
+              const div2=div.appendChild(new DomElement("div",{className:style.listItemInfo}));
+              
+              div2.appendChild(new DomElement("div",{className:style.textGrey},[this.attrs.lbl_date]));
+              
+              div2.appendChild(new DomElement("div",{className:style.grow},[]));
+              div2.appendChild(new DomElement("div",{},[this.attrs.lbl_duration]));
+              
+            }else{
+              this.appendChild(this.attrs.lbl_duration);
+            }
           }
           setItem(item){
             const text1=item.title;
@@ -6730,18 +6893,27 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.lbl_title.setText(text1);
             this.attrs.lbl_duration.setText(text2);
             this.attrs.lbl_thumb.setUrls(url1,url2);
-            let dt=new Date(item.date_added*1000);
-            dt.setUTCSeconds(item.date_added);
-            const y=dt.getFullYear();
-            const m=dt.getMonth();
-            const d=dt.getDate();
-            const hh=dt.getHours();
-            const mm=dt.getMinutes();
-            const ss=dt.getSeconds();
-            this.attrs.lbl_date.setText(`${y}/${m}/${d} ${hh}:${mm}:${ss} [${item.uid}]`);
-            
+            console.log('x',this.attrs.showDetails,this.attrs.lbl_date);
+            if(this.attrs.showDetails!==0){
+              let t=(this.attrs.showDetails===1)?item.date_added:item.date_played;
+              
+              let dt=new Date(t*1000);
+              const y=dt.getFullYear();
+              const m=dt.getMonth()+1;
+              const d=dt.getDate();
+              const hh=dt.getHours();
+              let mm=dt.getMinutes();
+              let ss=dt.getSeconds();
+              mm=(mm<10?'0':'')+mm;
+              ss=(ss<10?'0':'')+ss;
+              this.attrs.lbl_date.setText(`${y}/${m}/${d} ${hh}:${mm}:${ss} ${item.uid}`);
+              
+            }
           }
         }
+        TrackInfoElement.D_NONE=0;
+        TrackInfoElement.D_DATE_ADDED=1;
+        TrackInfoElement.D_DATE_PLAYED=2;
         class TrackVotesElement extends DomElement {
           constructor(parent){
             super("div",{className:style.votePanel},[]);
@@ -6820,11 +6992,18 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           constructor(parent,item){
             super("div",{className:style.listItem},[]);
             this.attrs={parent,item};
-            this.attrs.info=this.appendChild(new TrackInfoElement());
+            this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_DATE_ADDED));
+            
             this.attrs.vote=this.attrs.info.insertChild(0,new TrackVotesElement(this));
             
             this.attrs.info.setItem(item);
             this.attrs.vote.setItem(item);
+            this.attrs.action=this.attrs.info.appendChild(new components.SvgButtonElement(
+                              resources.svg.more,()=>{
+                  parent.handleShowMore(this.attrs.item);
+                }));
+            this.attrs.action.updateProps({width:16,height:16,className:style.moreButton});
+            
           }
           setItem(item){
             if(item.uid!==this.attrs.item.uid||item.vote_total!==this.attrs.item.vote_total){
@@ -6842,7 +7021,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           constructor(parent,item){
             super("div",{className:style.listItem},[]);
             this.attrs={parent,item};
-            this.attrs.info=this.appendChild(new TrackInfoElement());
+            this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_DATE_PLAYED));
+            
             this.attrs.info.setItem(item);
           }
           setItem(item){
@@ -6853,29 +7033,18 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
           }
         }
-        class SearchActionsElement extends DomElement {
-          constructor(addItemCbk){
-            super("div",{className:style.listItemRow},[]);
-            this.appendChild(new DomElement("div",{className:style.grow},[]));
-            this.appendChild(new components.SvgButtonElement(resources.svg.arrow_right,
-                              addItemCbk));
-          }
-          setItem(item){
-            this.attrs.item=item;
-          }
-        }
         class SearchResultElement extends DomElement {
           constructor(parent){
             super("div",{className:style.listItem},[]);
             this.attrs.parent=parent;
-            this.attrs.info=this.appendChild(new TrackInfoElement());
-            this.attrs.action=this.appendChild(new SearchActionsElement(this.addItem.bind(
-                                  this)));
+            this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_NONE));
+            
+            this.attrs.action=this.attrs.info.appendChild(new components.SvgButtonElement(
+                              resources.svg.plus,this.addItem.bind(this)));
           }
           setItem(item){
             this.attrs.item=item;
             this.attrs.info.setItem(item);
-            this.attrs.action.setItem(item);
           }
           addItem(){
             this.attrs.parent.addTrackToPool(this.attrs.item).then(result=>{
@@ -7014,12 +7183,14 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         }
         function reconcileUpdates(page,elem,tracks,clsRowElement){
           const lst=elem.children;
+          console.log(`reconcile-b: lst.length:${lst.length} tracks.length ${tracks.length}`);
+          
           let index=0;
           for(;index<lst.length&&index<tracks.length;index++)
           {
             lst[index].setItem(tracks[index]);
           }
-          console.log(`reconcile: add ${tracks.length-index} remove ${lst.length-index}`);
+          console.log(`reconcile-u: add ${tracks.length-index} remove ${lst.length-index}`);
           
           const removeCount=lst.length-index;
           if(removeCount>0){
@@ -7029,6 +7200,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           {
             lst.push(new clsRowElement(page,tracks[index]));
           }
+          console.log(`reconcile-a: lst.length:${lst.length} tracks.length ${tracks.length}`);
+          
           elem.update();
           thumbnail_ProcessStart();
         }
@@ -7048,11 +7221,18 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             super("div",{className:style.main},[]);
             this.attrs={device:AudioDevice.instance(),header:new StationHeader(this),
                           footer:new Footer(this),padding2:new DomElement("div",{className:style.padding2},
-                              []),lst:new UpcomingTracksListElement()};
+                              []),lst:new UpcomingTracksListElement(),more:new components.MoreMenu(
+                              this.handleHideMore.bind(this)),refresh:new components.Refresh()};
+            
             this.appendChild(this.attrs.header);
             this.appendChild(this.attrs.lst);
             this.appendChild(this.attrs.padding2);
             this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.more);
+            this.appendChild(this.attrs.refresh);
+            this.attrs.more.addAction("Watch on Youtube",()=>{});
+            this.attrs.more.addAction("Remove Track",()=>{});
+            this.attrs.refresh.connect(this);
           }
           elementMounted(){
             console.log("mount user radio page");
@@ -7067,9 +7247,14 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           elementUnmounted(){
             this.attrs.device.disconnectView(this);
           }
+          handleShowMore(track){
+            this.attrs.more.show();
+          }
+          handleHideMore(){
+            this.attrs.more.hide();
+          }
           handleTrackChanged(track){
             console.log("on handle track changed");
-            console.log(track);
             this.attrs.header.setTrack(track);
             this.removeTrackByUID(track.uid);
           }
@@ -7088,9 +7273,11 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               if(child.attrs.item.uid==uid){
                 lst.splice(index,1);
                 this.attrs.lst.update();
-                break;
+                console.log(`removed track ${uid}`);
+                return;
               }
             }
+            console.error(`failed to remove track ${uid}`);
           }
           getTracks(force){
             let station=AudioDevice.instance().currentStation();
@@ -7291,11 +7478,13 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs={device:AudioDevice.instance(),header:new StationHeader(this,
                               true),footer:new Footer(this,true),padding2:new DomElement("div",
                               {className:style.padding2},[]),lst:new UpcomingTracksListElement(
-                            )};
+                            ),more:new components.MoreMenu(this.handleHideMore.bind(this))};
             this.appendChild(this.attrs.header);
             this.appendChild(this.attrs.lst);
             this.appendChild(this.attrs.padding2);
             this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.more);
+            this.attrs.more.addAction("Watch on Youtube",()=>{});
           }
           elementMounted(){
             if(this.attrs.auth_failed){
@@ -7303,6 +7492,12 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
             console.log("mount public radio page");
             this.getTracks(false);
+          }
+          handleShowMore(track){
+            this.attrs.more.show();
+          }
+          handleHideMore(){
+            this.attrs.more.hide();
           }
           getTracks(force){
             const match=router.AppRouter.match();
