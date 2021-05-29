@@ -201,7 +201,7 @@ daedalus=(function(){
           };
           console.log("signal create:"+event_name);
           if(!!element){
-            element.signals.push(signal);
+            element._$signals.push(signal);
           }
           return signal;
         }
@@ -224,25 +224,17 @@ daedalus=(function(){
               
             }
             this.type=type;
-            if(props===undefined){
-              this.props={};
-            }else{
-              this.props=props;
-            }
+            this.props=props??{};
+            this.children=children??[];
             if(this.props.id===undefined){
               this.props.id=this.constructor.name+generateElementId();
             }
-            if(children===undefined){
-              this.children=[];
-            }else{
-              this.children=children;
-            }
-            this.signals=[];
-            this.slots=[];
-            this.dirty=true;
+            this._$signals=[];
+            this._$slots=[];
+            this._$dirty=true;
             this.state={};
             this.attrs={};
-            this._fiber=null;
+            this._$fiber=null;
             Object.getOwnPropertyNames(this.__proto__).filter(key=>key.startsWith(
                               "on")).forEach(key=>{
                 this.props[key]=this[key].bind(this);
@@ -274,10 +266,7 @@ daedalus=(function(){
             }
             this.props=newProps;
           }
-          appendChild(childElement,...args){
-            if(args.length>0){
-              childElement=new childElement(...args);
-            }
+          appendChild(childElement){
             if(!childElement||!childElement.type){
               throw"invalid child";
             }
@@ -310,17 +299,19 @@ daedalus=(function(){
             this.update();
             return childElement;
           }
-          removeChild(childElement){
-            if(!childElement||!childElement.type){
-              throw"invalid child";
-            }
-            const index=this.children.indexOf(childElement);
+          removeChildAtIndex(index){
             if(index>=0){
               this.children.splice(index,1);
               this.update();
             }else{
               console.error("child not in list");
             }
+          }
+          removeChild(childElement){
+            if(!childElement||!childElement.type){
+              throw"invalid child";
+            }
+            this.removeChildAtIndex(this.children.indexOf(childElement));
           }
           removeChildren(){
             this.children.splice(0,this.children.length);
@@ -368,16 +359,16 @@ daedalus=(function(){
             console.log("signal connect:"+signal._event_name,callback);
             const ref={element:this,signal:signal,callback:callback};
             signal._slots.push(ref);
-            this.slots.push(ref);
+            this._$slots.push(ref);
           }
           disconnect(signal){
             console.log("signal disconnect:"+signal._event_name);
           }
           getDomNode(){
-            return this._fiber&&this._fiber.dom;
+            return this._$fiber&&this._$fiber.dom;
           }
           isMounted(){
-            return this._fiber!==null;
+            return this._$fiber!==null;
           }
         }
         class TextElement extends DomElement {
@@ -561,24 +552,30 @@ daedalus=(function(){
               
               this.handleChildDragCancel();
             }
+            let org_event=event;
             let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
             
             if(evt){
               event=evt[0];
             }
             this.attrs.draggingEle=child.getDomNode();
+            if(!this.attrs.draggingEle){
+              console.error("no element set for drag");
+              return false;
+            }
             this.attrs.draggingChild=child;
             this.attrs.indexStart=childIndex(this.attrs.draggingEle);
             if(this.attrs.indexStart<0){
               console.error("drag begin failed for child");
               this.attrs.draggingEle=null;
               this.attrs.indexStart=-1;
-              return;
+              return false;
             }
             const rect=this.attrs.draggingEle.getBoundingClientRect();
             this.attrs.x=event.clientX-rect.left;
             this.attrs.y=event.pageY+window.scrollY;
             this.attrs.eventSource=child;
+            return true;
           }
           handleChildDragMoveImpl(pageX,pageY){
             const rect=this.attrs.draggingEle.parentNode.getBoundingClientRect();
@@ -587,7 +584,7 @@ daedalus=(function(){
             const draggingRect=this.attrs.draggingEle.getBoundingClientRect();
             if(this.attrs.indexStart<0){
               console.error("drag move failed for child");
-              return;
+              return false;
             }
             if(!this.attrs.isDraggingStarted){
               this.attrs.isDraggingStarted=true;
@@ -612,16 +609,17 @@ daedalus=(function(){
               swap(this.attrs.placeholder,prevEle);
               const a=childIndex(prevEle)-1;
               const b=childIndex(this.attrs.draggingEle);
-              prevEle._fiber.element.setIndex(a);
-              this.attrs.draggingEle._fiber.element.setIndex(b);
+              prevEle._$fiber.element.setIndex(a);
+              this.attrs.draggingEle._$fiber.element.setIndex(b);
             }else if(nextEle&&isAbove(nextEle,this.attrs.draggingEle)){
               swap(nextEle,this.attrs.placeholder);
               swap(nextEle,this.attrs.draggingEle);
               const a=childIndex(nextEle);
               const b=childIndex(this.attrs.draggingEle);
-              nextEle._fiber.element.setIndex(a);
-              this.attrs.draggingEle._fiber.element.setIndex(b);
+              nextEle._$fiber.element.setIndex(a);
+              this.attrs.draggingEle._$fiber.element.setIndex(b);
             }
+            return true;
           }
           _handleAutoScroll(dy){
             const rate=15;
@@ -667,11 +665,13 @@ daedalus=(function(){
             }
           }
           handleChildDragMove(child,event){
-            if(!this.attrs.draggingEle||this.attrs.draggingEle!==child.getDomNode(
-                            )){
-              return;
+            if(!this.attrs.draggingEle){
+              return false;
             }
-            event.preventDefault();
+            if(this.attrs.draggingEle!==child.getDomNode()){
+              return false;
+            }
+            let org_event=event;
             let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
             
             if(evt){
@@ -687,7 +687,7 @@ daedalus=(function(){
             }
           }
           handleChildDragEnd(child,event){
-            this.handleChildDragCancel();
+            return this.handleChildDragCancel();
           }
           handleChildDragCancel(doUpdate=true){
             this.attrs.placeholder&&this.attrs.placeholder.parentNode.removeChild(
@@ -705,13 +705,14 @@ daedalus=(function(){
               clearInterval(this.attrs.swipeScrollTimer);
               this.attrs.swipeScrollTimer=null;
             }
+            const success=this.attrs.draggingEle!==null;
             this.attrs.x=null;
             this.attrs.y=null;
             this.attrs.draggingEle=null;
             this.attrs.isDraggingStarted=false;
             this.attrs.placeholder=null;
             this.attrs.indexStart=-1;
-            console.error("drag cancel");
+            return success;
           }
           updateModel(indexStart,indexEnd){
             this.children.splice(indexEnd,0,this.children.splice(indexStart,1)[0]);
@@ -1203,8 +1204,8 @@ daedalus=(function(){
           }
         }
         function render_update(element){
-          if(!element.dirty&&element._fiber!==null){
-            element.dirty=true;
+          if(!element._$dirty&&element._$fiber!==null){
+            element._$dirty=true;
             const fiber={effect:'UPDATE',children:[element],_fibers:[],alternate:null,
                           partial:true};
             updatequeue.push(fiber);
@@ -1299,7 +1300,7 @@ daedalus=(function(){
                 
                 return;
               }
-              const oldFiber=element._fiber;
+              const oldFiber=element._$fiber;
               element._delete=false;
               const oldIndex=oldFiber?oldFiber.index:index;
               if(parentFiber.partial){
@@ -1307,7 +1308,7 @@ daedalus=(function(){
               }
               let effect;
               if(!!oldFiber){
-                if(oldIndex==index&&element.dirty===false){
+                if(oldIndex==index&&element._$dirty===false){
                   return;
                 }else{
                   effect='UPDATE';
@@ -1315,10 +1316,10 @@ daedalus=(function(){
               }else{
                 effect='CREATE';
               }
-              element.dirty=false;
+              element._$dirty=false;
               const newFiber={type:element.type,effect:effect,props:{...element.props},
                               children:element.children.slice(),_fibers:[],parent:(parentFiber.partial&&oldFiber)?oldFiber.parent:parentFiber,
-                              alternate:oldFiber,dom:oldFiber?oldFiber.dom:null,signals:element.signals,
+                              alternate:oldFiber,dom:oldFiber?oldFiber.dom:null,signals:element._$signals,
                               element:element,index:index,oldIndex:oldIndex};
               if(!newFiber.parent.dom){
                 console.error(`element parent is not mounted id: ${element.props.id} effect: ${effect}`);
@@ -1335,7 +1336,7 @@ daedalus=(function(){
               if(Array.isArray(newFiber.props.className)){
                 newFiber.props.className=newFiber.props.className.join(' ');
               }
-              element._fiber=newFiber;
+              element._$fiber=newFiber;
               parentFiber._fibers.push(newFiber);
               prev.next=newFiber;
               prev=newFiber;
@@ -1344,7 +1345,7 @@ daedalus=(function(){
           if(!!oldParentFiber){
             oldParentFiber.children.forEach(child=>{
                 if(child._delete){
-                  deletions.push(child._fiber);
+                  deletions.push(child._$fiber);
                 }
               });
           }
@@ -1409,9 +1410,14 @@ daedalus=(function(){
               dom.addEventListener(event,fiber.props[key]);
             });
           Object.keys(fiber.props).filter(isProp).forEach(key=>{
-              dom[key]=fiber.props[key];
+              const propValue=fiber.props[key];
+              if(propValue===null){
+                delete dom[key];
+              }else{
+                dom[key]=propValue;
+              }
             });
-          dom._fiber=fiber;
+          dom._$fiber=fiber;
           return dom;
         }
         function updateDomNode(fiber){
@@ -1423,7 +1429,7 @@ daedalus=(function(){
             console.log("fiber does not contain a dom");
             return;
           }
-          dom._fiber=fiber;
+          dom._$fiber=fiber;
           if(fiber.oldIndex!=fiber.index&&parentDom){
             if(parentDom.children[fiber.index]!==dom){
               parentDom.removeChild(fiber.dom);
@@ -1454,7 +1460,7 @@ daedalus=(function(){
             deletions_removed.add(element);
           }
           element.children.forEach(child=>{
-              child._fiber=null;
+              child._$fiber=null;
               _removeDomNode_elementFixUp(child);
             });
         }
@@ -1467,7 +1473,7 @@ daedalus=(function(){
             console.error("failed to delete",fiber.element.type);
           }
           fiber.dom=null;
-          fiber.element._fiber=null;
+          fiber.element._$fiber=null;
           fiber.alternate=null;
           _removeDomNode_elementFixUp(fiber.element);
         }
@@ -1684,8 +1690,8 @@ Object.assign(api,(function(api,daedalus){
               });
             return tracks;
           }
-          function multiSort(tracks,order=sort_order){
-            tracks.sort((a,b)=>{
+          function multiSort(seq,order){
+            seq.sort((a,b)=>{
                 return order.map((ord)=>{
                     const av=a[ord.key];
                     const bv=b[ord.key];
@@ -1696,24 +1702,33 @@ Object.assign(api,(function(api,daedalus){
                     }
                   }).reduce((p,n)=>p?p:n,0);
               });
-            return tracks;
+            return seq;
           }
           return[multiSort,shuffle,sortTracks,track_shuffle];
         })();
       const[authenticate,env,fsGetPath,fsGetPathContent,fsGetPathContentUrl,fsGetPublicPathUrl,
               fsGetRoots,fsNoteCreate,fsNoteGetContent,fsNoteList,fsNoteSetContent,fsPathPreviewUrl,
               fsPathUrl,fsPublicUriGenerate,fsPublicUriInfo,fsPublicUriRevoke,fsSearch,
-              fsUploadFile,libraryDomainInfo,librarySearchForest,librarySong,librarySongAudioUrl,
-              queueCreate,queueGetQueue,queuePopulate,queueSetQueue,radioPublicStationAddTrack,
-              radioPublicStationPreviousTracks,radioPublicStationRelated,radioPublicStationSearch,
-              radioPublicStationTracks,radioPublicStationUpdates,radioPublicStationVote,
-              radioStationAddTrack,radioStationCurrentTrack,radioStationEnable,radioStationInfo,
-              radioStationList,radioStationNextTrack,radioStationPreviousTracks,radioStationRelated,
-              radioStationSearch,radioStationTracks,radioStationUpdates,radioStationUrl,
-              radioStationVote,radioVideoInfo,userDoc,validate_token]=(function(){
-          const env={baseUrl:(daedalus.env&&daedalus.env.baseUrl)?daedalus.env.baseUrl:""};
+              fsUploadFile,getPublicConfig,libraryDomainInfo,librarySearchForest,librarySong,
+              librarySongAudioUrl,openTab,queueCreate,queueGetQueue,queuePopulate,queueSetQueue,
+              radioPublicStationAddTrack,radioPublicStationPreviousTracks,radioPublicStationRelated,
+              radioPublicStationSearch,radioPublicStationTracks,radioPublicStationUpdates,
+              radioPublicStationVote,radioStationAddTrack,radioStationCurrentTrack,radioStationEnable,
+              radioStationInfo,radioStationList,radioStationNextTrack,radioStationPreviousTracks,
+              radioStationRelated,radioStationRemoveTrack,radioStationResetTracks,radioStationSave,
+              radioStationSearch,radioStationShutdown,radioStationTracks,radioStationUpdates,
+              radioStationUrl,radioStationVote,radioVideoInfo,userDoc,validate_token]=(
+              function(){
+          const env={baseUrl:(((((daedalus)||{}).env)||{}).baseUrl)??""};
+          env.websocket_protocol=(window.location.protocol==='http:')?'ws:':'wss:';
           
+          env.websocket_base_url=window.location.origin.replace(window.location.protocol,
+                      env.websocket_protocol);
           env.origin=window.location.origin;
+          console.log(env);
+          function getPublicConfig(){
+            return{headers:{'X-RADIO-AUTHENTICATION':getPublictoken()??""}};
+          }
           function authenticate(email,password){
             const url=env.baseUrl+'/api/user/login';
             return api.requests.post_json(url,{email,password});
@@ -1879,7 +1894,10 @@ Object.assign(api,(function(api,daedalus){
             return api.requests.get_json(url,cfg);
           }
           function radioStationUrl(station,broadcast_id){
-            const url=env.baseUrl+daedalus.util.joinpath('/radio',broadcast_id)+'?login=1';
+            console.log(daedalus.env.debug_radio,env.origin,env.baseUrl);
+            const origin=(!!daedalus.env.debug_radio)?env.origin:(env.baseUrl||env.origin);
+            
+            const url=origin+daedalus.util.joinpath('/radio',broadcast_id)+'?login=1';
             
             return url;
           }
@@ -1902,11 +1920,35 @@ Object.assign(api,(function(api,daedalus){
             const cfg=getAuthConfig();
             return api.requests.get_json(url,cfg);
           }
+          function radioStationSave(station){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "save");
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioStationShutdown(station){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "shutdown");
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
           function radioStationNextTrack(station){
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
                           "next_track");
             const cfg=getAuthConfig();
             return api.requests.get_json(url,cfg);
+          }
+          function radioStationResetTracks(station){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "reset_tracks");
+            const cfg=getAuthConfig();
+            return api.requests.get_json(url,cfg);
+          }
+          function radioStationRemoveTrack(station,uid){
+            const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
+                          "remove_track");
+            const cfg=getAuthConfig();
+            return api.requests.post_json(url,{uid},cfg);
           }
           function radioStationSearch(station,source,query){
             const params=daedalus.util.serializeParameters({source,query});
@@ -1919,7 +1961,8 @@ Object.assign(api,(function(api,daedalus){
             const params=daedalus.util.serializeParameters({source,query});
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
                           "search")+params;
-            return api.requests.get_json(url);
+            const cfg=getPublicConfig();
+            return api.requests.get_json(url,cfg);
           }
           function radioStationRelated(station,source,sid){
             const params=daedalus.util.serializeParameters({source,sid});
@@ -1932,7 +1975,8 @@ Object.assign(api,(function(api,daedalus){
             const params=daedalus.util.serializeParameters({source,sid});
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
                           "related")+params;
-            return api.requests.get_json(url);
+            const cfg=getPublicConfig();
+            return api.requests.get_json(url,cfg);
           }
           function radioStationTracks(station){
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
@@ -1951,12 +1995,14 @@ Object.assign(api,(function(api,daedalus){
             const params=daedalus.util.serializeParameters({updateId});
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
                           "updates")+params;
-            return api.requests.get_json(url);
+            const cfg=getPublicConfig();
+            return api.requests.get_json(url,cfg);
           }
           function radioPublicStationTracks(station){
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
                           "tracks");
-            return api.requests.get_json(url);
+            const cfg=getPublicConfig();
+            return api.requests.get_json(url,cfg);
           }
           function radioStationPreviousTracks(station){
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
@@ -1967,7 +2013,8 @@ Object.assign(api,(function(api,daedalus){
           function radioPublicStationPreviousTracks(station){
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
                           "previous_tracks");
-            return api.requests.get_json(url);
+            const cfg=getPublicConfig();
+            return api.requests.get_json(url,cfg);
           }
           function radioStationVote(station,uid,magnitude){
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
@@ -1978,7 +2025,8 @@ Object.assign(api,(function(api,daedalus){
           function radioPublicStationVote(station,uid,magnitude){
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
                           "vote");
-            return api.requests.post_json(url,{uid,magnitude});
+            const cfg=getPublicConfig();
+            return api.requests.post_json(url,{uid,magnitude},cfg);
           }
           function radioStationAddTrack(station,track){
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
@@ -1989,7 +2037,8 @@ Object.assign(api,(function(api,daedalus){
           function radioPublicStationAddTrack(station,track){
             const url=env.baseUrl+daedalus.util.joinpath('/api/radio/station',station,
                           "add_track");
-            return api.requests.post_json(url,track);
+            const cfg=getPublicConfig();
+            return api.requests.post_json(url,track,cfg);
           }
           function fsUploadFile(root,path,headers,params,success=null,failure=null,
                       progress=null){
@@ -1999,32 +2048,41 @@ Object.assign(api,(function(api,daedalus){
             return daedalus.uploadFile(urlbase,headers={...cfg.headers,...headers},
                           params=params,success,failure,progress);
           }
+          function openTab(url){
+            if(daedalus.platform.isAndroid){
+              Client.browseUrl(url);
+            }else{
+              window.open(url,"_blank");
+            }
+          }
           return[authenticate,env,fsGetPath,fsGetPathContent,fsGetPathContentUrl,
                       fsGetPublicPathUrl,fsGetRoots,fsNoteCreate,fsNoteGetContent,fsNoteList,
                       fsNoteSetContent,fsPathPreviewUrl,fsPathUrl,fsPublicUriGenerate,fsPublicUriInfo,
-                      fsPublicUriRevoke,fsSearch,fsUploadFile,libraryDomainInfo,librarySearchForest,
-                      librarySong,librarySongAudioUrl,queueCreate,queueGetQueue,queuePopulate,
-                      queueSetQueue,radioPublicStationAddTrack,radioPublicStationPreviousTracks,
-                      radioPublicStationRelated,radioPublicStationSearch,radioPublicStationTracks,
-                      radioPublicStationUpdates,radioPublicStationVote,radioStationAddTrack,
-                      radioStationCurrentTrack,radioStationEnable,radioStationInfo,radioStationList,
-                      radioStationNextTrack,radioStationPreviousTracks,radioStationRelated,
-                      radioStationSearch,radioStationTracks,radioStationUpdates,radioStationUrl,
+                      fsPublicUriRevoke,fsSearch,fsUploadFile,getPublicConfig,libraryDomainInfo,
+                      librarySearchForest,librarySong,librarySongAudioUrl,openTab,queueCreate,
+                      queueGetQueue,queuePopulate,queueSetQueue,radioPublicStationAddTrack,
+                      radioPublicStationPreviousTracks,radioPublicStationRelated,radioPublicStationSearch,
+                      radioPublicStationTracks,radioPublicStationUpdates,radioPublicStationVote,
+                      radioStationAddTrack,radioStationCurrentTrack,radioStationEnable,radioStationInfo,
+                      radioStationList,radioStationNextTrack,radioStationPreviousTracks,radioStationRelated,
+                      radioStationRemoveTrack,radioStationResetTracks,radioStationSave,radioStationSearch,
+                      radioStationShutdown,radioStationTracks,radioStationUpdates,radioStationUrl,
                       radioStationVote,radioVideoInfo,userDoc,validate_token];
         })();
       return{authenticate,clearPublicToken,clearUserToken,env,fsGetPath,fsGetPathContent,
               fsGetPathContentUrl,fsGetPublicPathUrl,fsGetRoots,fsNoteCreate,fsNoteGetContent,
               fsNoteList,fsNoteSetContent,fsPathPreviewUrl,fsPathUrl,fsPublicUriGenerate,
               fsPublicUriInfo,fsPublicUriRevoke,fsSearch,fsUploadFile,getAuthConfig,getAuthToken,
-              getPublictoken,getUsertoken,libraryDomainInfo,librarySearchForest,librarySong,
-              librarySongAudioUrl,multiSort,queueCreate,queueGetQueue,queuePopulate,queueSetQueue,
-              radioPublicStationAddTrack,radioPublicStationPreviousTracks,radioPublicStationRelated,
-              radioPublicStationSearch,radioPublicStationTracks,radioPublicStationUpdates,
-              radioPublicStationVote,radioStationAddTrack,radioStationCurrentTrack,radioStationEnable,
-              radioStationInfo,radioStationList,radioStationNextTrack,radioStationPreviousTracks,
-              radioStationRelated,radioStationSearch,radioStationTracks,radioStationUpdates,
-              radioStationUrl,radioStationVote,radioVideoInfo,setPublictoken,setUsertoken,
-              shuffle,sortTracks,track_shuffle,userDoc,validate_token};
+              getPublicConfig,getPublictoken,getUsertoken,libraryDomainInfo,librarySearchForest,
+              librarySong,librarySongAudioUrl,multiSort,openTab,queueCreate,queueGetQueue,
+              queuePopulate,queueSetQueue,radioPublicStationAddTrack,radioPublicStationPreviousTracks,
+              radioPublicStationRelated,radioPublicStationSearch,radioPublicStationTracks,
+              radioPublicStationUpdates,radioPublicStationVote,radioStationAddTrack,radioStationCurrentTrack,
+              radioStationEnable,radioStationInfo,radioStationList,radioStationNextTrack,
+              radioStationPreviousTracks,radioStationRelated,radioStationRemoveTrack,radioStationResetTracks,
+              radioStationSave,radioStationSearch,radioStationShutdown,radioStationTracks,
+              radioStationUpdates,radioStationUrl,radioStationVote,radioVideoInfo,setPublictoken,
+              setUsertoken,shuffle,sortTracks,track_shuffle,userDoc,validate_token};
     })(api,daedalus));
 resources=(function(daedalus){
     "use strict";
@@ -2035,8 +2093,8 @@ resources=(function(daedalus){
           "externalmedia","file","folder","genre","history","logout","media_error","media_next",
           "media_pause","media_play","media_prev","media_shuffle","menu","microphone",
           "more","music_note","new_folder","note","open","playlist","preview","rename",
-          "return","save","search","search_generic","select","settings","share","shuffle",
-          "sort","upload","volume_0","volume_1","volume_2","volume_4","checkbox_unchecked",
+          "refresh","return","save","search","search_generic","select","settings","share",
+          "shuffle","sort","upload","volume_0","volume_1","volume_2","volume_4","checkbox_unchecked",
           "checkbox_partial","checkbox_download","checkbox_checked","checkbox_synced",
           "checkbox_not_synced","plus","minus","vote_up_0","vote_up_1","vote_down_0",
           "vote_down_1"];
@@ -2046,7 +2104,7 @@ resources=(function(daedalus){
       });
     return{svg};
   })(daedalus);
-components=(function(daedalus,resources){
+components=(function(api,daedalus,resources){
     "use strict";
     const StyleSheet=daedalus.StyleSheet;
     const DomElement=daedalus.DomElement;
@@ -2412,7 +2470,7 @@ components=(function(daedalus,resources){
           }
           onClick(){
             if(this.state.url.startsWith('http')){
-              window.open(this.state.url,'_blank');
+              api.openTab(this.state.url);
             }else{
               history.pushState({},"",this.state.url);
             }
@@ -2643,7 +2701,7 @@ components=(function(daedalus,resources){
             this.attrs.callback_close();
           }
           addAction(text,callback){
-            this.attrs.impl.appendChild(new MoreMenuButton(text,()=>{
+            return this.attrs.impl.appendChild(new MoreMenuButton(text,()=>{
                   callback();
                   this.hide();
                 }));
@@ -2725,6 +2783,11 @@ components=(function(daedalus,resources){
           }
           addAction(icon,callback){
             const child=new SvgButtonElement(icon,callback);
+            this.attrs.toolbarInner.appendChild(child);
+            return child;
+          }
+          addSpacer(width){
+            const child=new HSpacer(width);
             this.attrs.toolbarInner.appendChild(child);
             return child;
           }
@@ -2861,6 +2924,7 @@ components=(function(daedalus,resources){
             const btn=this.attrs.btn.getDomNode();
             this.attrs.startx=btn.style.left;
             this.attrs.pressed=true;
+            event.stopPropagation();
           }
           trackingEnd(accept){
             const btn=this.attrs.btn.getDomNode();
@@ -2883,6 +2947,7 @@ components=(function(daedalus,resources){
             if(!event){
               return;
             }
+            event.stopPropagation();
             const btn=this.attrs.btn.getDomNode();
             const ele=this.getDomNode();
             const rect=ele.getBoundingClientRect();
@@ -2952,9 +3017,9 @@ components=(function(daedalus,resources){
     const[Refresh]=(function(){
         const style={refresh:'dcs-b8b07fd0-0'};
         class Refresh extends DomElement {
-          constructor(){
-            super("div",{className:style.refresh});
-            this.attrs={y:0,active:false,top:0};
+          constructor(cbk=null){
+            super("img",{className:style.refresh,src:resources.svg.refresh});
+            this.attrs={y:0,active:false,top:0,cbk:cbk};
             this.attrs._touch={pageX:0,pageY:0};
           }
           connect(elem){
@@ -2967,16 +3032,16 @@ components=(function(daedalus,resources){
             elem.updateProps(obj);
           }
           onMouseDown(event){
-            this._onTouchStart(event,event.pageY);
+            this._onTouchStart(event,event.pageX,event.pageY);
           }
           onMouseMove(event){
-            this._onTouchMove(event,event.pageY);
+            this._onTouchMove(event,event.pageX,event.pageY);
           }
           onMouseLeave(event){
-            this._onTouchEnd(event,event.pageY,true);
+            this._onTouchEnd(event,event.pageX,event.pageY,true);
           }
           onMouseUp(event){
-            this._onTouchEnd(event,event.pageY,false);
+            this._onTouchEnd(event,event.pageX,event.pageY,false);
           }
           onTouchStart(event){
             if(!event.cancelable){
@@ -2984,8 +3049,8 @@ components=(function(daedalus,resources){
             }
             let evt=(((((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches))||{
                             })[0];
-            this.attrs._touch={pageX:evt.pageY,pageY:evt.pageY};
-            return this._onTouchStart(event,evt.pageY);
+            this.attrs._touch={pageX:evt.pageX,pageY:evt.pageY};
+            return this._onTouchStart(event,evt.pageX,evt.pageY);
           }
           onTouchMove(event){
             if(!event.cancelable){
@@ -2993,32 +3058,40 @@ components=(function(daedalus,resources){
             }
             let evt=(((((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches))||{
                             })[0];
-            this.attrs._touch={pageX:evt.pageY,pageY:evt.pageY};
-            return this._onTouchMove(event,evt.pageY);
+            this.attrs._touch={pageX:evt.pageX,pageY:evt.pageY};
+            return this._onTouchMove(event,evt.pageX,evt.pageY);
           }
           onTouchCancel(event){
-            console.log('onTouchCancel');
-            return this._onTouchEnd(event,this.attrs._touch.pageY,true);
+            return this._onTouchEnd(event,this.attrs._touch.pageX,this.attrs._touch.pageY,
+                          true);
           }
           onTouchEnd(event){
-            return this._onTouchEnd(event,this.attrs._touch.pageY,false);
+            return this._onTouchEnd(event,this.attrs._touch.pageX,this.attrs._touch.pageY,
+                          false);
           }
-          _onTouchStart(event,pageY){
-            this.attrs.y=pageY;
-            this.attrs.active=true;
-            this.attrs.moving=false;
+          _onTouchStart(event,pageX,pageY){
+            if(window.scrollY===0){
+              this.attrs.x=pageX;
+              this.attrs.y=pageY;
+              this.attrs.active=true;
+              this.attrs.moving=false;
+            }
             return false;
           }
-          _onTouchMove(event,pageY){
+          _onTouchMove(event,pageX,pageY){
             if(!this.attrs.active){
-              return;
+              return false;
             }
+            let dx=pageX-this.attrs.x;
             let dy=pageY-this.attrs.y;
+            if(Math.abs(dx)>dy&&dy>2){
+              return this._onTouchEnd(event,pageX,pageY,true);
+            }
             if(!this.attrs.moving){
               if(dy>0&&window.scrollY===0){
                 this.attrs.moving=true;
               }else{
-                return;
+                return false;
               }
             }
             event.preventDefault();
@@ -3038,9 +3111,7 @@ components=(function(daedalus,resources){
             }
             return false;
           }
-          _onTouchEnd(event,pageY,cancel=false){
-            console.log(`touch end active: ${this.attrs.active} cancel: ${cancel} pageY: ${pageY}`);
-            
+          _onTouchEnd(event,pageX,pageY,cancel=false){
             if(this.attrs.active){
               let d=0.3;
               if(!cancel){
@@ -3048,7 +3119,7 @@ components=(function(daedalus,resources){
                 let h=96;
                 d=dy/h*.3;
                 if(dy>h){
-                  console.log("trigger!");
+                  ((this.attrs.cbk)||(()=>null))();
                 }
               }
               this.getDomNode().style.transform=`rotate(0deg)`;
@@ -3057,18 +3128,804 @@ components=(function(daedalus,resources){
               
             }
             this.attrs.active=false;
+            this.attrs.moving=false;
             return false;
           }
         }
         return[Refresh];
       })();
+    const[QrCodeElement]=(function(){
+        function QR8bitByte(data){
+          this.mode=QRMode.MODE_8BIT_BYTE;
+          this.data=data;
+        }
+        QR8bitByte.prototype={getLength:function(buffer){
+            return this.data.length;
+          },write:function(buffer){
+            for(let i=0;i<this.data.length;i++)
+            {
+              buffer.put(this.data.charCodeAt(i),8);
+            }
+          }};
+        function QRCode(typeNumber,errorCorrectLevel){
+          this.typeNumber=typeNumber;
+          this.errorCorrectLevel=errorCorrectLevel;
+          this.modules=null;
+          this.moduleCount=0;
+          this.dataCache=null;
+          this.dataList=new Array();
+        }
+        QRCode.prototype={addData:function(data){
+            let newData=new QR8bitByte(data);
+            this.dataList.push(newData);
+            this.dataCache=null;
+          },isDark:function(row,col){
+            if(row<0||this.moduleCount<=row||col<0||this.moduleCount<=col){
+              throw new Error(row+","+col);
+            }
+            return this.modules[row][col];
+          },getModuleCount:function(){
+            return this.moduleCount;
+          },make:function(){
+            if(this.typeNumber<1){
+              let typeNumber=1;
+              for(typeNumber=1;typeNumber<40;typeNumber++)
+              {
+                let rsBlocks=QRRSBlock.getRSBlocks(typeNumber,this.errorCorrectLevel);
+                
+                let buffer=new QRBitBuffer();
+                let totalDataCount=0;
+                for(let i=0;i<rsBlocks.length;i++)
+                {
+                  totalDataCount+=rsBlocks[i].dataCount;
+                }
+                for(let i=0;i<this.dataList.length;i++)
+                {
+                  let data=this.dataList[i];
+                  buffer.put(data.mode,4);
+                  buffer.put(data.getLength(),QRUtil.getLengthInBits(data.mode,typeNumber));
+                  
+                  data.write(buffer);
+                }
+                if(buffer.getLengthInBits()<=totalDataCount*8)break;
+              }
+              this.typeNumber=typeNumber;
+            }
+            this.makeImpl(false,this.getBestMaskPattern());
+          },makeImpl:function(test,maskPattern){
+            this.moduleCount=this.typeNumber*4+17;
+            this.modules=new Array(this.moduleCount);
+            for(let row=0;row<this.moduleCount;row++)
+            {
+              this.modules[row]=new Array(this.moduleCount);
+              for(let col=0;col<this.moduleCount;col++)
+              {
+                this.modules[row][col]=null;
+              }
+            }
+            this.setupPositionProbePattern(0,0);
+            this.setupPositionProbePattern(this.moduleCount-7,0);
+            this.setupPositionProbePattern(0,this.moduleCount-7);
+            this.setupPositionAdjustPattern();
+            this.setupTimingPattern();
+            this.setupTypeInfo(test,maskPattern);
+            if(this.typeNumber>=7){
+              this.setupTypeNumber(test);
+            }
+            if(this.dataCache==null){
+              this.dataCache=QRCode.createData(this.typeNumber,this.errorCorrectLevel,
+                              this.dataList);
+            }
+            this.mapData(this.dataCache,maskPattern);
+          },setupPositionProbePattern:function(row,col){
+            for(let r=-1;r<=7;r++)
+            {
+              if(row+r<=-1||this.moduleCount<=row+r)continue;
+              for(let c=-1;c<=7;c++)
+              {
+                if(col+c<=-1||this.moduleCount<=col+c)continue;
+                if((0<=r&&r<=6&&(c==0||c==6))||(0<=c&&c<=6&&(r==0||r==6))||(2<=r&&r<=4&&2<=c&&c<=4)){
+                
+                  this.modules[row+r][col+c]=true;
+                }else{
+                  this.modules[row+r][col+c]=false;
+                }
+              }
+            }
+          },getBestMaskPattern:function(){
+            let minLostPoint=0;
+            let pattern=0;
+            for(let i=0;i<8;i++)
+            {
+              this.makeImpl(true,i);
+              let lostPoint=QRUtil.getLostPoint(this);
+              if(i==0||minLostPoint>lostPoint){
+                minLostPoint=lostPoint;
+                pattern=i;
+              }
+            }
+            return pattern;
+          },createMovieClip:function(target_mc,instance_name,depth){
+            let qr_mc=target_mc.createEmptyMovieClip(instance_name,depth);
+            let cs=1;
+            this.make();
+            for(let row=0;row<this.modules.length;row++)
+            {
+              let y=row*cs;
+              for(let col=0;col<this.modules[row].length;col++)
+              {
+                let x=col*cs;
+                let dark=this.modules[row][col];
+                if(dark){
+                  qr_mc.beginFill(0,100);
+                  qr_mc.moveTo(x,y);
+                  qr_mc.lineTo(x+cs,y);
+                  qr_mc.lineTo(x+cs,y+cs);
+                  qr_mc.lineTo(x,y+cs);
+                  qr_mc.endFill();
+                }
+              }
+            }
+            return qr_mc;
+          },setupTimingPattern:function(){
+            for(let r=8;r<this.moduleCount-8;r++)
+            {
+              if(this.modules[r][6]!=null){
+                continue;
+              }
+              this.modules[r][6]=(r%2==0);
+            }
+            for(let c=8;c<this.moduleCount-8;c++)
+            {
+              if(this.modules[6][c]!=null){
+                continue;
+              }
+              this.modules[6][c]=(c%2==0);
+            }
+          },setupPositionAdjustPattern:function(){
+            let pos=QRUtil.getPatternPosition(this.typeNumber);
+            for(let i=0;i<pos.length;i++)
+            {
+              for(let j=0;j<pos.length;j++)
+              {
+                let row=pos[i];
+                let col=pos[j];
+                if(this.modules[row][col]!=null){
+                  continue;
+                }
+                for(let r=-2;r<=2;r++)
+                {
+                  for(let c=-2;c<=2;c++)
+                  {
+                    if(r==-2||r==2||c==-2||c==2||(r==0&&c==0)){
+                      this.modules[row+r][col+c]=true;
+                    }else{
+                      this.modules[row+r][col+c]=false;
+                    }
+                  }
+                }
+              }
+            }
+          },setupTypeNumber:function(test){
+            let bits=QRUtil.getBCHTypeNumber(this.typeNumber);
+            for(let i=0;i<18;i++)
+            {
+              let mod=(!test&&((bits>>i)&1)==1);
+              this.modules[Math.floor(i/3)][i%3+this.moduleCount-8-3]=mod;
+            }
+            for(let i=0;i<18;i++)
+            {
+              let mod=(!test&&((bits>>i)&1)==1);
+              this.modules[i%3+this.moduleCount-8-3][Math.floor(i/3)]=mod;
+            }
+          },setupTypeInfo:function(test,maskPattern){
+            let data=(this.errorCorrectLevel<<3)|maskPattern;
+            let bits=QRUtil.getBCHTypeInfo(data);
+            for(let i=0;i<15;i++)
+            {
+              let mod=(!test&&((bits>>i)&1)==1);
+              if(i<6){
+                this.modules[i][8]=mod;
+              }else if(i<8){
+                this.modules[i+1][8]=mod;
+              }else{
+                this.modules[this.moduleCount-15+i][8]=mod;
+              }
+            }
+            for(let i=0;i<15;i++)
+            {
+              let mod=(!test&&((bits>>i)&1)==1);
+              if(i<8){
+                this.modules[8][this.moduleCount-i-1]=mod;
+              }else if(i<9){
+                this.modules[8][15-i-1+1]=mod;
+              }else{
+                this.modules[8][15-i-1]=mod;
+              }
+            }
+            this.modules[this.moduleCount-8][8]=(!test);
+          },mapData:function(data,maskPattern){
+            let inc=-1;
+            let row=this.moduleCount-1;
+            let bitIndex=7;
+            let byteIndex=0;
+            for(let col=this.moduleCount-1;col>0;col-=2)
+            {
+              if(col==6){
+                col-=1;
+              }
+              while(true){
+                for(let c=0;c<2;c++)
+                {
+                  if(this.modules[row][col-c]==null){
+                    let dark=false;
+                    if(byteIndex<data.length){
+                      dark=(((data[byteIndex]>>>bitIndex)&1)==1);
+                    }
+                    let mask=QRUtil.getMask(maskPattern,row,col-c);
+                    if(mask){
+                      dark=!dark;
+                    }
+                    this.modules[row][col-c]=dark;
+                    bitIndex--;
+                    if(bitIndex==-1){
+                      byteIndex++;
+                      bitIndex=7;
+                    }
+                  }
+                }
+                row+=inc;
+                if(row<0||this.moduleCount<=row){
+                  row-=inc;
+                  inc=-inc;
+                  break;
+                }
+              }
+            }
+          }};
+        QRCode.PAD0=0xEC;
+        QRCode.PAD1=0x11;
+        QRCode.createData=function(typeNumber,errorCorrectLevel,dataList){
+          let rsBlocks=QRRSBlock.getRSBlocks(typeNumber,errorCorrectLevel);
+          let buffer=new QRBitBuffer();
+          for(let i=0;i<dataList.length;i++)
+          {
+            let data=dataList[i];
+            buffer.put(data.mode,4);
+            buffer.put(data.getLength(),QRUtil.getLengthInBits(data.mode,typeNumber));
+            
+            data.write(buffer);
+          }
+          let totalDataCount=0;
+          for(let i=0;i<rsBlocks.length;i++)
+          {
+            totalDataCount+=rsBlocks[i].dataCount;
+          }
+          if(buffer.getLengthInBits()>totalDataCount*8){
+            throw new Error("code length overflow. ("+buffer.getLengthInBits()+">"+totalDataCount*8+")");
+            
+          }
+          if(buffer.getLengthInBits()+4<=totalDataCount*8){
+            buffer.put(0,4);
+          }
+          while(buffer.getLengthInBits()%8!=0){
+            buffer.putBit(false);
+          }
+          while(true){
+            if(buffer.getLengthInBits()>=totalDataCount*8){
+              break;
+            }
+            buffer.put(QRCode.PAD0,8);
+            if(buffer.getLengthInBits()>=totalDataCount*8){
+              break;
+            }
+            buffer.put(QRCode.PAD1,8);
+          }
+          return QRCode.createBytes(buffer,rsBlocks);
+        };
+        QRCode.createBytes=function(buffer,rsBlocks){
+          let offset=0;
+          let maxDcCount=0;
+          let maxEcCount=0;
+          let dcdata=new Array(rsBlocks.length);
+          let ecdata=new Array(rsBlocks.length);
+          for(let r=0;r<rsBlocks.length;r++)
+          {
+            let dcCount=rsBlocks[r].dataCount;
+            let ecCount=rsBlocks[r].totalCount-dcCount;
+            maxDcCount=Math.max(maxDcCount,dcCount);
+            maxEcCount=Math.max(maxEcCount,ecCount);
+            dcdata[r]=new Array(dcCount);
+            for(let i=0;i<dcdata[r].length;i++)
+            {
+              dcdata[r][i]=0xff&buffer.buffer[i+offset];
+            }
+            offset+=dcCount;
+            let rsPoly=QRUtil.getErrorCorrectPolynomial(ecCount);
+            let rawPoly=new QRPolynomial(dcdata[r],rsPoly.getLength()-1);
+            let modPoly=rawPoly.mod(rsPoly);
+            ecdata[r]=new Array(rsPoly.getLength()-1);
+            for(let i=0;i<ecdata[r].length;i++)
+            {
+              let modIndex=i+modPoly.getLength()-ecdata[r].length;
+              ecdata[r][i]=(modIndex>=0)?modPoly.get(modIndex):0;
+            }
+          }
+          let totalCodeCount=0;
+          for(let i=0;i<rsBlocks.length;i++)
+          {
+            totalCodeCount+=rsBlocks[i].totalCount;
+          }
+          let data=new Array(totalCodeCount);
+          let index=0;
+          for(let i=0;i<maxDcCount;i++)
+          {
+            for(let r=0;r<rsBlocks.length;r++)
+            {
+              if(i<dcdata[r].length){
+                data[index++]=dcdata[r][i];
+              }
+            }
+          }
+          for(let i=0;i<maxEcCount;i++)
+          {
+            for(let r=0;r<rsBlocks.length;r++)
+            {
+              if(i<ecdata[r].length){
+                data[index++]=ecdata[r][i];
+              }
+            }
+          }
+          return data;
+        };
+        let QRMode={MODE_NUMBER:1,MODE_ALPHA_NUM:2,MODE_8BIT_BYTE:4,MODE_KANJI:8};
+        
+        let QRErrorCorrectLevel={L:1,M:0,Q:3,H:2};
+        let QRMaskPattern={PATTERN000:0,PATTERN001:1,PATTERN010:2,PATTERN011:3,PATTERN100:4,
+                  PATTERN101:5,PATTERN110:6,PATTERN111:7};
+        let QRUtil={PATTERN_POSITION_TABLE:[[],[6,18],[6,22],[6,26],[6,30],[6,34],
+                      [6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],
+                      [6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,
+                          58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],
+                      [6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[
+                          6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,
+                          56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,
+                          118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,
+                          80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[
+                          6,30,58,86,114,142,170]],G15:(1024)|(256)|(32)|(16)|(4)|(2)|(1),G18:(
+                      4096)|(2048)|(1024)|(512)|(256)|(32)|(4)|(1),G15_MASK:(16384)|(4096)|(
+                      1024)|(16)|(2),getBCHTypeInfo:function(data){
+            let d=data<<10;
+            while(QRUtil.getBCHDigit(d)-QRUtil.getBCHDigit(QRUtil.G15)>=0){
+              d^=(QRUtil.G15<<(QRUtil.getBCHDigit(d)-QRUtil.getBCHDigit(QRUtil.G15)));
+              
+            }
+            return((data<<10)|d)^QRUtil.G15_MASK;
+          },getBCHTypeNumber:function(data){
+            let d=data<<12;
+            while(QRUtil.getBCHDigit(d)-QRUtil.getBCHDigit(QRUtil.G18)>=0){
+              d^=(QRUtil.G18<<(QRUtil.getBCHDigit(d)-QRUtil.getBCHDigit(QRUtil.G18)));
+              
+            }
+            return(data<<12)|d;
+          },getBCHDigit:function(data){
+            let digit=0;
+            while(data!=0){
+              digit++;
+              data>>>=1;
+            }
+            return digit;
+          },getPatternPosition:function(typeNumber){
+            return QRUtil.PATTERN_POSITION_TABLE[typeNumber-1];
+          },getMask:function(maskPattern,i,j){
+            switch(maskPattern){
+              case QRMaskPattern.PATTERN000:return(i+j)%2==0;
+              case QRMaskPattern.PATTERN001:return i%2==0;
+              case QRMaskPattern.PATTERN010:return j%3==0;
+              case QRMaskPattern.PATTERN011:return(i+j)%3==0;
+              case QRMaskPattern.PATTERN100:return(Math.floor(i/2)+Math.floor(j/3))%2==0;
+              
+              case QRMaskPattern.PATTERN101:return(i*j)%2+(i*j)%3==0;
+              case QRMaskPattern.PATTERN110:return((i*j)%2+(i*j)%3)%2==0;
+              case QRMaskPattern.PATTERN111:return((i*j)%3+(i+j)%2)%2==0;
+              default:throw new Error("bad maskPattern:"+maskPattern);
+            }
+          },getErrorCorrectPolynomial:function(errorCorrectLength){
+            let a=new QRPolynomial([1],0);
+            for(let i=0;i<errorCorrectLength;i++)
+            {
+              a=a.multiply(new QRPolynomial([1,QRMath.gexp(i)],0));
+            }
+            return a;
+          },getLengthInBits:function(mode,type){
+            if(1<=type&&type<10){
+              switch(mode){
+                case QRMode.MODE_NUMBER:return 10;
+                case QRMode.MODE_ALPHA_NUM:return 9;
+                case QRMode.MODE_8BIT_BYTE:return 8;
+                case QRMode.MODE_KANJI:return 8;
+                default:throw new Error("mode:"+mode);
+              }
+            }else if(type<27){
+              switch(mode){
+                case QRMode.MODE_NUMBER:return 12;
+                case QRMode.MODE_ALPHA_NUM:return 11;
+                case QRMode.MODE_8BIT_BYTE:return 16;
+                case QRMode.MODE_KANJI:return 10;
+                default:throw new Error("mode:"+mode);
+              }
+            }else if(type<41){
+              switch(mode){
+                case QRMode.MODE_NUMBER:return 14;
+                case QRMode.MODE_ALPHA_NUM:return 13;
+                case QRMode.MODE_8BIT_BYTE:return 16;
+                case QRMode.MODE_KANJI:return 12;
+                default:throw new Error("mode:"+mode);
+              }
+            }else{
+              throw new Error("type:"+type);
+            }
+          },getLostPoint:function(qrCode){
+            let moduleCount=qrCode.getModuleCount();
+            let lostPoint=0;
+            for(let row=0;row<moduleCount;row++)
+            {
+              for(let col=0;col<moduleCount;col++)
+              {
+                let sameCount=0;
+                let dark=qrCode.isDark(row,col);
+                for(let r=-1;r<=1;r++)
+                {
+                  if(row+r<0||moduleCount<=row+r){
+                    continue;
+                  }
+                  for(let c=-1;c<=1;c++)
+                  {
+                    if(col+c<0||moduleCount<=col+c){
+                      continue;
+                    }
+                    if(r==0&&c==0){
+                      continue;
+                    }
+                    if(dark==qrCode.isDark(row+r,col+c)){
+                      sameCount++;
+                    }
+                  }
+                }
+                if(sameCount>5){
+                  lostPoint+=(3+sameCount-5);
+                }
+              }
+            }
+            for(let row=0;row<moduleCount-1;row++)
+            {
+              for(let col=0;col<moduleCount-1;col++)
+              {
+                let count=0;
+                if(qrCode.isDark(row,col)){
+                  count+=1;
+                }
+                if(qrCode.isDark(row+1,col)){
+                  count+=1;
+                }
+                if(qrCode.isDark(row,col+1)){
+                  count+=1;
+                }
+                if(qrCode.isDark(row+1,col+1)){
+                  count+=1;
+                }
+                if(count==0||count==4){
+                  lostPoint+=3;
+                }
+              }
+            }
+            for(let row=0;row<moduleCount;row++)
+            {
+              for(let col=0;col<moduleCount-6;col++)
+              {
+                if(qrCode.isDark(row,col)&&!qrCode.isDark(row,col+1)&&qrCode.isDark(
+                                      row,col+2)&&qrCode.isDark(row,col+3)&&qrCode.isDark(row,col+4)&&!qrCode.isDark(
+                                      row,col+5)&&qrCode.isDark(row,col+6)){
+                  lostPoint+=40;
+                }
+              }
+            }
+            for(let col=0;col<moduleCount;col++)
+            {
+              for(let row=0;row<moduleCount-6;row++)
+              {
+                if(qrCode.isDark(row,col)&&!qrCode.isDark(row+1,col)&&qrCode.isDark(
+                                      row+2,col)&&qrCode.isDark(row+3,col)&&qrCode.isDark(row+4,col)&&!qrCode.isDark(
+                                      row+5,col)&&qrCode.isDark(row+6,col)){
+                  lostPoint+=40;
+                }
+              }
+            }
+            let darkCount=0;
+            for(let col=0;col<moduleCount;col++)
+            {
+              for(let row=0;row<moduleCount;row++)
+              {
+                if(qrCode.isDark(row,col)){
+                  darkCount++;
+                }
+              }
+            }
+            let ratio=Math.abs(100*darkCount/moduleCount/moduleCount-50)/5;
+            lostPoint+=ratio*10;
+            return lostPoint;
+          }};
+        let QRMath={glog:function(n){
+            if(n<1){
+              throw new Error("glog("+n+")");
+            }
+            return QRMath.LOG_TABLE[n];
+          },gexp:function(n){
+            while(n<0){
+              n+=255;
+            }
+            while(n>=256){
+              n-=255;
+            }
+            return QRMath.EXP_TABLE[n];
+          },EXP_TABLE:new Array(256),LOG_TABLE:new Array(256)};
+        for(let i=0;i<8;i++)
+        {
+          QRMath.EXP_TABLE[i]=1<<i;
+        }
+        for(let i=8;i<256;i++)
+        {
+          QRMath.EXP_TABLE[i]=QRMath.EXP_TABLE[i-4]^QRMath.EXP_TABLE[i-5]^QRMath.EXP_TABLE[
+                    i-6]^QRMath.EXP_TABLE[i-8];
+        }
+        for(let i=0;i<255;i++)
+        {
+          QRMath.LOG_TABLE[QRMath.EXP_TABLE[i]]=i;
+        }
+        function QRPolynomial(num,shift){
+          if(num.length==undefined){
+            throw new Error(num.length+"/"+shift);
+          }
+          let offset=0;
+          while(offset<num.length&&num[offset]==0){
+            offset++;
+          }
+          this.num=new Array(num.length-offset+shift);
+          for(let i=0;i<num.length-offset;i++)
+          {
+            this.num[i]=num[i+offset];
+          }
+        }
+        QRPolynomial.prototype={get:function(index){
+            return this.num[index];
+          },getLength:function(){
+            return this.num.length;
+          },multiply:function(e){
+            let num=new Array(this.getLength()+e.getLength()-1);
+            for(let i=0;i<this.getLength();i++)
+            {
+              for(let j=0;j<e.getLength();j++)
+              {
+                num[i+j]^=QRMath.gexp(QRMath.glog(this.get(i))+QRMath.glog(e.get(
+                                          j)));
+              }
+            }
+            return new QRPolynomial(num,0);
+          },mod:function(e){
+            if(this.getLength()-e.getLength()<0){
+              return this;
+            }
+            let ratio=QRMath.glog(this.get(0))-QRMath.glog(e.get(0));
+            let num=new Array(this.getLength());
+            for(let i=0;i<this.getLength();i++)
+            {
+              num[i]=this.get(i);
+            }
+            for(let i=0;i<e.getLength();i++)
+            {
+              num[i]^=QRMath.gexp(QRMath.glog(e.get(i))+ratio);
+            }
+            return new QRPolynomial(num,0).mod(e);
+          }};
+        function QRRSBlock(totalCount,dataCount){
+          this.totalCount=totalCount;
+          this.dataCount=dataCount;
+        }
+        QRRSBlock.RS_BLOCK_TABLE=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],
+                  [1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[
+                      1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,
+                      2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,
+                      98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,
+                      38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,
+                      2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,
+                      43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,
+                      81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,
+                      36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,
+                      1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[
+                      4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,
+                      88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12],[5,122,98,1,123,99],
+                  [7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,
+                      108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,
+                      120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],
+                  [3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,
+                      40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,
+                      43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[
+                      19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],
+                  [34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],
+                  [16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,
+                      16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],
+                  [7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,
+                      4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],
+                  [22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,
+                      148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,
+                      146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,
+                      46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],
+                  [23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,
+                      1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,
+                      24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,
+                      75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],
+                  [14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,
+                      152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],
+                  [6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,
+                      64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,
+                      25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,
+                      54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,
+                      7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],
+                  [18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]];
+        QRRSBlock.getRSBlocks=function(typeNumber,errorCorrectLevel){
+          let rsBlock=QRRSBlock.getRsBlockTable(typeNumber,errorCorrectLevel);
+          if(rsBlock==undefined){
+            throw new Error("bad rs block @ typeNumber:"+typeNumber+"/errorCorrectLevel:"+errorCorrectLevel);
+            
+          }
+          let length=rsBlock.length/3;
+          let list=new Array();
+          for(let i=0;i<length;i++)
+          {
+            let count=rsBlock[i*3+0];
+            let totalCount=rsBlock[i*3+1];
+            let dataCount=rsBlock[i*3+2];
+            for(let j=0;j<count;j++)
+            {
+              list.push(new QRRSBlock(totalCount,dataCount));
+            }
+          }
+          return list;
+        };
+        QRRSBlock.getRsBlockTable=function(typeNumber,errorCorrectLevel){
+          switch(errorCorrectLevel){
+            case QRErrorCorrectLevel.L:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+0];
+            
+            case QRErrorCorrectLevel.M:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+1];
+            
+            case QRErrorCorrectLevel.Q:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+2];
+            
+            case QRErrorCorrectLevel.H:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+3];
+            
+            default:return undefined;
+          }
+        };
+        function QRBitBuffer(){
+          this.buffer=new Array();
+          this.length=0;
+        }
+        QRBitBuffer.prototype={get:function(index){
+            let bufIndex=Math.floor(index/8);
+            return((this.buffer[bufIndex]>>>(7-index%8))&1)==1;
+          },put:function(num,length){
+            for(let i=0;i<length;i++)
+            {
+              this.putBit(((num>>>(length-i-1))&1)==1);
+            }
+          },getLengthInBits:function(){
+            return this.length;
+          },putBit:function(bit){
+            let bufIndex=Math.floor(this.length/8);
+            if(this.buffer.length<=bufIndex){
+              this.buffer.push(0);
+            }
+            if(bit){
+              this.buffer[bufIndex]|=(0x80>>>(this.length%8));
+            }
+            this.length++;
+          }};
+        function createQRCode(domElement,options){
+          if(typeof options==='string'){
+            options={text:options};
+          }
+          options=options||{};
+          let default_options={render:"canvas",width:256,height:256,typeNumber:-1,
+                      correctLevel:QRErrorCorrectLevel.H,background:"#ffffff",foreground:"#000000"};
+          
+          for(let key in default_options){
+            if(!options[key]){
+              options[key]=default_options[key];
+            }
+          }
+          let createCanvas=function(){
+            let qrcode=new QRCode(options.typeNumber,options.correctLevel);
+            qrcode.addData(options.text);
+            qrcode.make();
+            let canvas=document.createElement('canvas');
+            canvas.width=options.width;
+            canvas.height=options.height;
+            let ctx=canvas.getContext('2d');
+            let tileW=options.width/qrcode.getModuleCount();
+            let tileH=options.height/qrcode.getModuleCount();
+            for(let row=0;row<qrcode.getModuleCount();row++)
+            {
+              for(let col=0;col<qrcode.getModuleCount();col++)
+              {
+                ctx.fillStyle=qrcode.isDark(row,col)?options.foreground:options.background;
+                
+                let w=(Math.ceil((col+1)*tileW)-Math.floor(col*tileW));
+                let h=(Math.ceil((row+1)*tileW)-Math.floor(row*tileW));
+                ctx.fillRect(Math.round(col*tileW),Math.round(row*tileH),w,h);
+              }
+            }
+            return canvas;
+          };
+          let createTable=function(){
+            let qrcode=new QRCode(options.typeNumber,options.correctLevel);
+            qrcode.addData(options.text);
+            qrcode.make();
+            let table=document.createElement('table');
+            table.style.width=options.width+"px";
+            table.style.height=options.height+"px";
+            table.style.border="0px";
+            table.style.borderCollapse="collapse";
+            table.style.backgroundColor=options.background;
+            let tileW=options.width/qrcode.getModuleCount();
+            let tileH=options.height/qrcode.getModuleCount();
+            for(let row=0;row<qrcode.getModuleCount();row++)
+            {
+              let _row=document.createElement('tr');
+              _row.style.height=tileH+"px";
+              table.appendChild(_row);
+              for(let col=0;col<qrcode.getModuleCount();col++)
+              {
+                let td=document.createElement('td');
+                td.style.width=tileW+"px";
+                td.style.backgroundColor=qrcode.isDark(row,col)?options.foreground:options.background;
+                
+                _row.appendChild(td);
+              }
+            }
+            return table;
+          };
+          while(domElement.hasChildNodes()){
+            domElement.removeChild(domElement.lastChild);
+          }
+          let element=options.render=="canvas"?createCanvas():createTable();
+          return domElement.appendChild(element);
+        }
+        const style={main:'dcs-6a88c127-0'};
+        class QrCodeElement extends DomElement {
+          constructor(text){
+            super("div",{className:style.main});
+            this.text=text;
+          }
+          elementMounted(){
+            const node=this.getDomNode();
+            createQRCode(node,{text:this.text});
+          }
+          setText(text){
+            this.text=text;
+            const node=this.getDomNode();
+            if(node){
+              createQRCode(node,{text:this.text});
+            }
+          }
+        }
+        return[QrCodeElement];
+      })();
     const[]=(function(){
         return[];
       })();
     return{CheckBoxElement,ErrorDrawer,HSpacer,HStretch,MiddleText,MiddleTextLink,
-          MoreMenu,NavFooter,NavHeader,NavMenu,ProgressBar,Refresh,Slider,SvgButtonElement,
-          SvgElement,SwipeHandler,TreeItem,TreeView,VSpacer};
-  })(daedalus,resources);
+          MoreMenu,NavFooter,NavHeader,NavMenu,ProgressBar,QrCodeElement,Refresh,Slider,
+          SvgButtonElement,SvgElement,SwipeHandler,TreeItem,TreeView,VSpacer};
+  })(api,daedalus,resources);
 router=(function(api,daedalus){
     "use strict";
     const AuthenticatedRouter=daedalus.AuthenticatedRouter;
@@ -3093,10 +3950,11 @@ router=(function(api,daedalus){
           userSettings:"/u/settings",userNotesEdit:"/u/notes/:noteId/edit",userNotesContent:"/u/notes/:noteId",
           userNotesList:"/u/notes",userLibraryList:"/u/library/list",userLibrarySync:"/u/library/sync",
           userLibrarySavedSearch:"/u/library/saved",userRadio:"/u/radio",userRadioStation:"/u/radio/:station",
-          userRadioStationSearch:"/u/radio/:station/search",userRadioStationHistory:"/u/radio/:station/history",
-          userWildCard:"/u/:path*",login:"/login",apiDoc:"/doc",publicFile:"/p/:uid/:filename",
-          publicRadioSearch:"/radio/:station/search",publicRadioHistory:"/radio/:station/history",
-          publicRadio:"/radio/:station",wildCard:"/:path*"};
+          userRadioStationEdit:"/u/radio/:station/edit",userRadioStationSearch:"/u/radio/:station/search",
+          userRadioStationHistory:"/u/radio/:station/history",userWildCard:"/u/:path*",
+          login:"/login",apiDoc:"/doc",publicFile:"/p/:uid/:filename",publicRadioSearch:"/radio/:station/search",
+          publicRadioHistory:"/radio/:station/history",publicRadio:"/radio/:station",
+          wildCard:"/:path*"};
     const routes={};
     Object.keys(route_urls).map(key=>{
         routes[key]=patternCompile(route_urls[key]);
@@ -4193,7 +5051,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             const uid=this.state.fileInfo.public;
             const filename=this.state.fileInfo.name;
             let url=location.origin+router.routes.publicFile({uid,filename});
-            window.open(url,'_blank');
+            api.openTab(url);
           }
           _updatePublicLinkText(){
             console.log(this.state.fileInfo.public);
@@ -5880,14 +6738,16 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 const count=this.attrs.parent.attrs.view.countSelected();
                 this.attrs.parent.attrs.view.selectAll(count==0);
               });
+            this.addSpacer(".5em");
             this.addAction(resources.svg['sort'],()=>{
                 let songList=this.attrs.parent.attrs.view.getSelectedSongs();
                 console.log("creating playlist",songList.length);
                 songList=api.sortTracks(songList).splice(0,100);
-                audio.AudioDevice.instance().queueSet();
+                audio.AudioDevice.instance().queueSet(songList);
                 audio.AudioDevice.instance().next();
                 this.attrs.parent.attrs.view.selectAll(false);
               });
+            this.addSpacer(".5em");
             this.addAction(resources.svg['media_shuffle'],()=>{
                 let songList=this.attrs.parent.attrs.view.getSelectedSongs();
                 console.log("creating playlist",songList.length);
@@ -6410,31 +7270,27 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[LibraryPage,SavedSearchPage,SyncPage];
       })();
     const[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
-          UserRadioListPage,UserRadioStationHistoryPage,UserRadioStationPage,UserRadioStationSearchPage]=(
-          function(){
+          UserRadioListPage,UserRadioStationEditPage,UserRadioStationHistoryPage,UserRadioStationPage,
+          UserRadioStationSearchPage]=(function(){
         const style={main:'dcs-a4af2c4a-0',grow:'dcs-a4af2c4a-1',svgDiv:'dcs-a4af2c4a-2',
-                  list:'dcs-a4af2c4a-3',headerInfo:'dcs-a4af2c4a-4',listItem:'dcs-a4af2c4a-5',
-                  listItemTitle:'dcs-a4af2c4a-6',listItemInfo:'dcs-a4af2c4a-7',textGrey:'dcs-a4af2c4a-8',
-                  listItemRow:'dcs-a4af2c4a-9',listItemRowText:'dcs-a4af2c4a-10',listItemColText:'dcs-a4af2c4a-11',
-                  votePanel:'dcs-a4af2c4a-12',moreButton:'dcs-a4af2c4a-13',voteButton:'dcs-a4af2c4a-14',
-                  icon1:'dcs-a4af2c4a-15',icon2:'dcs-a4af2c4a-16',padding2:'dcs-a4af2c4a-17',
-                  voteText:'dcs-a4af2c4a-18',voteUp:'dcs-a4af2c4a-19',voteNuetral:'dcs-a4af2c4a-20',
-                  voteDown:'dcs-a4af2c4a-21',show:'dcs-a4af2c4a-22',hide:'dcs-a4af2c4a-23'};
+                  header:'dcs-a4af2c4a-3',content:'dcs-a4af2c4a-4',list:'dcs-a4af2c4a-5',
+                  placeholder:'dcs-a4af2c4a-6',editIndex:'dcs-a4af2c4a-7',grip:'dcs-a4af2c4a-8',
+                  headerInfo:'dcs-a4af2c4a-9',listItem:'dcs-a4af2c4a-10',listItemTitle:'dcs-a4af2c4a-11',
+                  listItemInfo:'dcs-a4af2c4a-12',textGrey:'dcs-a4af2c4a-13',listNoItemRow:'dcs-a4af2c4a-14',
+                  listItemRow:'dcs-a4af2c4a-15',listItemRowText:'dcs-a4af2c4a-16',listItemColText:'dcs-a4af2c4a-17',
+                  votePanel:'dcs-a4af2c4a-18',moreButton:'dcs-a4af2c4a-19',voteButton:'dcs-a4af2c4a-20',
+                  icon1:'dcs-a4af2c4a-21',icon2:'dcs-a4af2c4a-22',padding2:'dcs-a4af2c4a-23',
+                  voteText:'dcs-a4af2c4a-24',voteUp:'dcs-a4af2c4a-25',voteNuetral:'dcs-a4af2c4a-26',
+                  voteDown:'dcs-a4af2c4a-27',show:'dcs-a4af2c4a-28',hide:'dcs-a4af2c4a-29',
+                  floater:'dcs-a4af2c4a-30',titleText:'dcs-a4af2c4a-31',footerHighlight:'dcs-a4af2c4a-32'};
         
         ;
         class AudioDevice{
           constructor(){
             this.connected_elements=[];
-            this.current_station=null;
             this.current_track=null;
             this.impl=null;
             this.auto_play=true;
-          }
-          setCurrentStation(station){
-            this.current_station=station;
-          }
-          currentStation(){
-            return this.current_station;
           }
           setImpl(impl){
             this.impl=impl;
@@ -6442,21 +7298,31 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           duration(){
             return this.impl.duration();
           }
+          currentTime(){
+            return this.impl.currentTime();
+          }
           setCurrentTime(seconds){
             return this.impl.setCurrentTime(seconds);
           }
           togglePlayPause(){
             if(this.current_track===null){
-              api.radioStationCurrentTrack(this.current_station).then((result)=>{
-                
+              const match=router.AppRouter.match();
+              api.radioStationCurrentTrack(match.station).then((result)=>{
                   const track=result.result;
                   if(track.source==='library'){
                     const url=api.librarySongAudioUrl(track.sid);
                     track.stream={url};
                   }
+                  console.log(track,track.sid,track.stream);
                   this.playTrack(track);
-                }).catch((error)=>{
-                  console.error(error);
+                }).catch(error=>{
+                  if(error.status===404){
+                    this.next();
+                  }else{
+                    console.log(error);
+                    components.ErrorDrawer.post("Update Error",formatError(error));
+                    
+                  }
                 });
               return;
             }
@@ -6486,16 +7352,28 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               console.log("play next track");
               AndroidNativeAudio.playNextRadioUrl();
             }else{
-              api.radioStationNextTrack(this.currentStation()).then(result=>{
+              const match=router.AppRouter.match();
+              let station=match.station;
+              api.radioStationNextTrack(station).then(result=>{
                   const track=result.result;
                   if(track.source==='library'){
                     const url=api.librarySongAudioUrl(track.sid);
                     track.stream={url};
                   }
                   this.playTrack(track);
-                  store.globals.radio_previous_tracks.unshift(track);
+                  const user_track=store.globals.radio_tracks[track.uid];
+                  if(user_track){
+                    user_track.date_played=Math.round(new Date().getTime()/1000);
+                    
+                    store.globals.radio_previous_tracks.unshift(user_track);
+                    delete store.globals.radio_tracks[user_track.uid];
+                  }else{
+                    console.error('error updating history');
+                  }
                 }).catch(error=>{
                   console.log(error);
+                  components.ErrorDrawer.post("Update Error",formatError(error));
+                  
                 });
             }
           }
@@ -6539,21 +7417,37 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           let seconds=Math.floor(secs-minutes*60)||0;
           return minutes+':'+(seconds<10?'0':'')+seconds;
         }
-        let thumbnail_work_queue=[];
-        let thumbnail_work_count=0;
-        function thumbnail_DoProcessNext(){
-          if(thumbnail_work_queue.length>0){
-            const elem=thumbnail_work_queue.shift();
-            if(elem.props.src!=elem.state.url1){
-              elem.updateProps({src:elem.state.url1});
+        function formatError(error){
+          console.log(typeof error);
+          if(typeof error==='string'||error instanceof String){
+            return error;
+          }else{
+            console.log(Object.keys(error));
+            if(error.status!==undefined&&error.statusText!==undefined){
+              return error.status+": "+error.statusText;
             }else{
-              thumbnail_ProcessNext();
+              return""+error;
             }
           }
         }
-        function thumbnail_ProcessNext(){
+        let thumbnail_work_queue=[];
+        let thumbnail_work_count=0;
+        function thumbnail_DoProcessNext(tag){
           if(thumbnail_work_queue.length>0){
-            requestIdleCallback(thumbnail_DoProcessNext);
+            const elem=thumbnail_work_queue.shift();
+            elem.attrs.tag=tag;
+            if(elem.props.src!=elem.state.url1){
+              elem.updateProps({src:elem.state.url1});
+            }else{
+              thumbnail_ProcessNext(tag);
+            }
+          }else{
+            thumbnail_work_count-=1;
+          }
+        }
+        function thumbnail_ProcessNext(tag){
+          if(thumbnail_work_queue.length>0){
+            requestIdleCallback(()=>thumbnail_DoProcessNext(tag));
           }else{
             thumbnail_work_count-=1;
           }
@@ -6561,12 +7455,12 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         function thumbnail_ProcessStart(){
           console.log("thumbnail_ProcessStart: "+thumbnail_work_queue.length);
           if(thumbnail_work_queue.length>=3){
-            requestIdleCallback(thumbnail_DoProcessNext);
-            requestIdleCallback(thumbnail_DoProcessNext);
-            requestIdleCallback(thumbnail_DoProcessNext);
+            requestIdleCallback(()=>thumbnail_DoProcessNext('A'));
+            requestIdleCallback(()=>thumbnail_DoProcessNext('B'));
+            requestIdleCallback(()=>thumbnail_DoProcessNext('C'));
             thumbnail_work_count=3;
           }else if(thumbnail_work_queue.length>0){
-            requestIdleCallback(thumbnail_DoProcessNext);
+            requestIdleCallback(()=>thumbnail_DoProcessNext('A'));
             thumbnail_work_count=1;
           }
         }
@@ -6574,13 +7468,29 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           thumbnail_work_queue=[];
           thumbnail_work_count=0;
         }
+        function radio_reset(){
+          store.globals.radio_tracks=null;
+          store.globals.radio_all_tracks=null;
+          store.globals.radio_previous_tracks=null;
+          store.globals.radio_broadcast_id=null;
+          store.globals.radio_sorted_tracks=null;
+          store.globals.radio_search_source=null;
+          store.globals.radio_search_query=null;
+          store.globals.radio_update_index=undefined;
+        }
+        class TitleTextElement extends DomElement {
+          constructor(text){
+            super("div",{className:style.titleText},[new TextElement(text)]);
+          }
+        }
         class SvgIconElementImpl extends DomElement {
           constructor(url1,url2,props){
             super("img",{width:80,height:60,...props},[]);
-            this.setUrls();
+            this.attrs.tag="?";
+            this.setUrls(url1,url2);
           }
           onLoad(event){
-            thumbnail_ProcessNext();
+            thumbnail_ProcessNext(this.attrs.tag);
           }
           onError(error){
             console.warn("error loading: ",this.props.src,JSON.stringify(error));
@@ -6588,10 +7498,11 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(this.props.src!=this.state.url2&&this.state.url2){
               this.updateProps({src:this.state.url2});
             }else{
-              thumbnail_ProcessNext();
+              thumbnail_ProcessNext(this.attrs.tag);
             }
           }
           setUrls(url1,url2){
+            this.updateProps({src:null});
             this.state={url1,url2};
             if(url1){
               thumbnail_work_queue.push(this);
@@ -6600,9 +7511,6 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         }
         class SvgIconElement extends DomElement {
           constructor(url1,url2,props){
-            if(url2===null){
-              url2=url1;
-            }
             super("div",{className:style.svgDiv},[new SvgIconElementImpl(url1,url2,
                                   props)]);
           }
@@ -6614,62 +7522,34 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           constructor(parent,isPublic){
             super("div",{className:style.header},[]);
             this.attrs.parent=parent;
+            this.attrs.isPublic=isPublic;
             if(!isPublic){
               this.addAction(resources.svg['menu'],()=>{
                   store.globals.showMenu();
                 });
-              this.addAction(resources.svg['media_play'],()=>{
+              this.attrs.act_play=this.addAction(resources.svg['media_play'],()=>{
+                
                   AudioDevice.instance().togglePlayPause();
                 });
               this.addAction(resources.svg['media_next'],()=>{
                   AudioDevice.instance().next();
                 });
-              this.addAction(resources.svg['media_next'],()=>{
-                  const device=AudioDevice.instance();
-                  device.setCurrentTime(device.duration()-2);
-                });
-            }
-            this.addAction(resources.svg['return'],()=>{
-                this.attrs.parent.getTracks(true);
-              });
-            if(!isPublic){
-              this.addToolBarElement(new DomElement("div",{className:[style.grow]}));
-              
-              this.attrs.act_clipboard=this.addAction(resources.svg['share'],()=>{
-                
-                  if(store.globals.radio_broadcast_id!==null){
-                    const url=api.radioStationUrl(null,store.globals.radio_broadcast_id);
-                    
-                    if(daedalus.platform.isAndroid){
-                      Client.setClipboardUrl("Yue Radio",url);
-                    }else{
-                      navigator.clipboard.writeText(url).then(()=>{
-                          console.log('shared');
-                        }).catch(error=>{
-                          components.ErrorDrawer.post("Share Error",""+error);
-                        });
-                    }
-                  }
-                });
-              this.attrs.act_clipboard.addClassName(style.hide);
-              this.attrs.slider=this.addToolBarElement(new components.Slider(this.handleToggleBroadcasting.bind(
-                                      this)));
+            }else{
+              this.addToolBarElement(new TitleTextElement("Radio"));
               this.attrs.toolbarInner.addClassName(style.main);
             }
             this.attrs.track_info=new CurrentTrackInfoElement();
             this.attrs.track_div=new DomElement("div",{className:style.headerInfo},
                           [this.attrs.track_info]);
             this.addRow(true);
-            this.addRowElement(0,new components.MiddleText("Now Playing"));
-            this.addRow(true);
-            this.addRowElement(1,this.attrs.track_div);
+            this.addRowElement(0,this.attrs.track_div);
             this.attrs.txt_SongTime1=new TextElement("00:00:00");
             this.attrs.txt_SongTime2=new TextElement("00:00:00");
             if(!isPublic){
               this.addRow(true);
-              this.addRowElement(2,this.attrs.txt_SongTime1);
-              this.addRowElement(2,new components.HStretch());
-              this.addRowElement(2,this.attrs.txt_SongTime2);
+              this.addRowElement(1,this.attrs.txt_SongTime1);
+              this.addRowElement(1,new components.HStretch());
+              this.addRowElement(1,this.attrs.txt_SongTime2);
               this.attrs.pbar_time=new components.ProgressBar((pos)=>{
                   let inst=AudioDevice.instance();
                   let dur=inst.duration();
@@ -6678,36 +7558,12 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   }
                 });
               this.addRow(true);
-              this.addRowElement(3,this.attrs.pbar_time);
+              this.addRowElement(2,this.attrs.pbar_time);
             }
           }
           setTrack(track){
             this.attrs.track_info.setItem(track);
-          }
-          handleToggleBroadcasting(enable){
-            const match=router.AppRouter.match();
-            api.radioStationEnable(match.station,enable).then(result=>{
-                store.globals.radio_broadcast_id=result.result.broadcast_id;
-                if(enable){
-                  this.attrs.act_clipboard.removeClassName(style.hide);
-                }else{
-                  this.attrs.act_clipboard.addClassName(style.hide);
-                }
-                if((store.globals.radio_broadcast_id!==null)^(enable===true)){
-                  this.setBroadcasting(store.globals.radio_broadcast_id!==null);
-                }
-              }).catch(error=>{
-                components.ErrorDrawer.post("Broadcast Error","unable to toggle broadcast state");
-                
-              });
-          }
-          setBroadcasting(enable){
-            this.attrs.slider.setChecked(enable);
-            if(enable){
-              this.attrs.act_clipboard.removeClassName(style.hide);
-            }else{
-              this.attrs.act_clipboard.addClassName(style.hide);
-            }
+            thumbnail_ProcessStart();
           }
           setTime(currentTime,duration){
             try{
@@ -6720,6 +7576,131 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               console.error(e);
             };
           }
+          setAudioState(state){
+            if(!this.attrs.isPublic){
+              if(state==='play'){
+                this.attrs.act_play.setUrl(resources.svg['media_pause']);
+              }else if(state==='pause'){
+                this.attrs.act_play.setUrl(resources.svg['media_play']);
+              }else if(state==='loading'){
+                this.attrs.act_play.setUrl(resources.svg['bolt']);
+              }else if(state==='waiting'){
+                this.attrs.act_play.setUrl(resources.svg['bolt']);
+              }else if(state==='stalled'){
+                this.attrs.act_play.setUrl(resources.svg['bolt']);
+              }else{
+                this.attrs.act_play.setUrl(resources.svg['media_error']);
+              }
+            }
+          }
+        }
+        class StationEditHeader extends components.NavHeader {
+          constructor(parent){
+            super("div",{className:style.header},[]);
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.attrs.act_save=this.addAction(resources.svg['save'],this.handleSaveTracks.bind(
+                              this));
+            this.attrs.act_reset=this.addAction(resources.svg['refresh'],this.handleResetTracks.bind(
+                              this));
+            this.attrs.act_shutdown=this.addAction(resources.svg['discard'],this.handleShutdown.bind(
+                              this));
+            this.addToolBarElement(new DomElement("div",{className:[style.grow]}));
+            
+            this.attrs.act_clipboard=this.addAction(resources.svg['share'],()=>{
+                if(store.globals.radio_broadcast_id!==null){
+                  const url=api.radioStationUrl(null,store.globals.radio_broadcast_id);
+                  
+                  if(daedalus.platform.isAndroid){
+                    Client.setClipboardUrl("Yue Radio",url);
+                  }else{
+                    navigator.clipboard.writeText(url).then(()=>{
+                        console.log('shared');
+                      }).catch(error=>{
+                        components.ErrorDrawer.post("Share Error",formatError(error));
+                        
+                      });
+                  }
+                }
+              });
+            this.attrs.act_save.addClassName(style.hide);
+            this.attrs.act_reset.addClassName(style.hide);
+            this.attrs.act_shutdown.addClassName(style.hide);
+            this.attrs.act_clipboard.addClassName(style.hide);
+            this.attrs.slider=this.addToolBarElement(new components.Slider(this.handleToggleBroadcasting.bind(
+                                  this)));
+            this.attrs.toolbarInner.addClassName(style.main);
+          }
+          setBroadcasting(enable){
+            this.attrs.slider.setChecked(enable);
+            if(enable){
+              this.attrs.act_clipboard.removeClassName(style.hide);
+              this.attrs.act_save.addClassName(style.hide);
+              this.attrs.act_reset.addClassName(style.hide);
+              this.attrs.act_shutdown.addClassName(style.hide);
+            }else{
+              this.attrs.act_clipboard.addClassName(style.hide);
+              this.attrs.act_save.removeClassName(style.hide);
+              this.attrs.act_reset.removeClassName(style.hide);
+              this.attrs.act_shutdown.removeClassName(style.hide);
+            }
+          }
+          handleToggleBroadcasting(enable){
+            const match=router.AppRouter.match();
+            api.radioStationEnable(match.station,enable).then(result=>{
+                store.globals.radio_broadcast_id=result.result.broadcast_id;
+                if(enable){
+                  this.attrs.act_clipboard.removeClassName(style.hide);
+                  this.attrs.act_save.addClassName(style.hide);
+                  this.attrs.act_reset.addClassName(style.hide);
+                  this.attrs.act_shutdown.addClassName(style.hide);
+                }else{
+                  this.attrs.act_clipboard.addClassName(style.hide);
+                  this.attrs.act_save.removeClassName(style.hide);
+                  this.attrs.act_reset.removeClassName(style.hide);
+                  this.attrs.act_shutdown.removeClassName(style.hide);
+                }
+                if((store.globals.radio_broadcast_id!==null)^(enable===true)){
+                  this.setBroadcasting(store.globals.radio_broadcast_id!==null);
+                }
+                this.attrs.parent.handleToggleBroadcasting(store.globals.radio_broadcast_id!==null);
+                
+              }).catch(error=>{
+                components.ErrorDrawer.post("Broadcast Error","unable to toggle broadcast state");
+                
+              });
+          }
+          handleSaveTracks(){
+            const match=router.AppRouter.match();
+            api.radioStationSave(match.station).then(result=>{
+                console.log(result);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Reset Error",formatError(error));
+              });
+          }
+          handleResetTracks(){
+            const match=router.AppRouter.match();
+            api.radioStationResetTracks(match.station).then(result=>{
+                _processUpdates_TrackReset();
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Reset Error",formatError(error));
+              });
+          }
+          handleShutdown(){
+            const match=router.AppRouter.match();
+            api.radioStationShutdown(match.station).then(result=>{
+                radio_reset();
+                router.navigate(router.routes.userRadio());
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Shutdown Error",formatError(error));
+                
+              });
+          }
         }
         class StationHistoryHeader extends components.NavHeader {
           constructor(parent,isPublic){
@@ -6729,26 +7710,17 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.addAction(resources.svg['menu'],()=>{
                   store.globals.showMenu();
                 });
-              this.addAction(resources.svg['media_play'],()=>{
-                  AudioDevice.instance().togglePlayPause();
-                });
-              this.addAction(resources.svg['media_next'],()=>{
-                  AudioDevice.instance().next();
-                });
-              this.addAction(resources.svg['media_next'],()=>{
-                  const device=AudioDevice.instance();
-                  device.setCurrentTime(device.duration()-2);
-                });
+            }else{
+              this.addToolBarElement(new TitleTextElement("Track History"));
+              this.attrs.toolbarInner.addClassName(style.main);
             }
-            this.addAction(resources.svg['return'],()=>{
-                this.attrs.parent.getTracks(true);
-              });
           }
         }
         class StationSearchHeader extends components.NavHeader {
           constructor(parent,isPublic){
             super("div",{className:style.header},[]);
             this.attrs.parent=parent;
+            this.attrs.isPublic=isPublic;
             this.attrs.txtInput=new TextInputElement("",null,(text)=>{
                 this.attrs.parent.search(this.attrs.source,text);
               });
@@ -6772,7 +7744,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 });
             }else{
               this.attrs.source="youtube";
-              this.addAction(resources.svg['externalmedia'],()=>{});
+              this.addToolBarElement(new TitleTextElement("Search Youtube"));
+              this.attrs.toolbarInner.addClassName(style.main);
             }
             this.addRow(false);
             this.addRowAction(0,resources.svg.media_error,()=>{
@@ -6787,6 +7760,20 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 this.attrs.parent.search(this.attrs.source,text);
               });
           }
+          setSource(source){
+            if(!this.attrs.isPublic){
+              this.attrs.source=source;
+              if(source==='youtube'){
+                this.attrs.act_toggle_source.setUrl(resources.svg['externalmedia']);
+                
+              }else if(source==='library'){
+                this.attrs.act_toggle_source.setUrl(resources.svg['playlist']);
+              }
+            }
+          }
+          setQuery(query){
+            this.attrs.txtInput.setText(query);
+          }
         }
         class ListHeader extends components.NavHeader {
           constructor(parent){
@@ -6797,23 +7784,32 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
         }
         class Footer extends components.NavFooter {
-          constructor(parent,isPublic){
+          constructor(parent,currentIndex,isPublic){
             super();
             this.spaceEvenly();
             this.attrs.parent=parent;
+            if(!isPublic){
+              this.addAction(resources.svg.edit,()=>{
+                  const match=router.AppRouter.match();
+                  router.navigate(router.routes.userRadioStationEdit({'station':match.station},
+                                          {}));
+                }).updateProps({'width':64});
+            }else{
+              currentIndex-=1;
+            }
             this.addAction(resources.svg.history,()=>{
                 const match=router.AppRouter.match();
                 const route_fn=(isPublic)?router.routes.publicRadioHistory:router.routes.userRadioStationHistory;
                 
                 router.navigate(route_fn({'station':match.station},{}));
-              });
-            this.addAction(resources.svg.music_note,()=>{
+              }).updateProps({'width':64});
+            this.addAction(resources.svg.microphone,()=>{
                 const match=router.AppRouter.match();
                 const route_fn=(isPublic)?router.routes.publicRadio:router.routes.userRadioStation;
                 
                 router.navigate(route_fn({'station':match.station},{}));
-              });
-            this.addAction(resources.svg.search,()=>{
+              }).updateProps({'width':64});
+            this.addAction(resources.svg.search_generic,()=>{
                 const match=router.AppRouter.match();
                 const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
                 
@@ -6823,7 +7819,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   
                 }
                 router.navigate(route_fn({'station':match.station},params));
-              });
+              }).updateProps({'width':64});
+            const child=this.attrs.toolbarInner.children[currentIndex];
+            child.addClassName(style.footerHighlight);
           }
         }
         class UpcomingTracksListElement extends DomElement {
@@ -6841,32 +7839,41 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             
             this.appendChild(this.attrs.lbl_thumb);
             this.attrs.lbl_title=new TextElement("");
-            const div=this.appendChild(DomElement,"div",{className:style.listItemColText});
+            const div=this.appendChild(new DomElement("div",{className:style.listItemColText}));
             
             div.appendChild(new DomElement("div",{className:style.listItemTitle},
                               [this.attrs.lbl_title]));
           }
           setItem(item){
             const text1=item.title;
-            const url1=resources.svg.disc;
-            const url2=((((item)||{}).thumbnail)||{}).url;
+            const url1=((((item)||{}).thumbnail)||{}).url??resources.svg.disc;
+            const url2=null;
             this.attrs.item=item;
             this.attrs.lbl_title.setText(text1);
             this.attrs.lbl_thumb.setUrls(url1,url2);
           }
         }
-        class TrackInfoElement extends DomElement {
+        class NoTrackElement extends DomElement {
           constructor(showDetails=0){
+            super("div",{className:style.listNoItemRow},[]);
+            this.appendChild(new TextElement("No element"));
+          }
+        }
+        class TrackInfoElement extends DomElement {
+          constructor(showDetails=0,showThumb=1){
             super("div",{className:style.listItemRow},[]);
             this.attrs.showDetails=showDetails;
+            this.attrs.showThumb=showThumb;
             const url1=null;
             const url2=null;
-            this.attrs.lbl_thumb=new SvgIconElement(url1,url2,{className:style.icon2});
-            
-            this.appendChild(this.attrs.lbl_thumb);
+            if(showThumb!==0){
+              this.attrs.lbl_thumb=new SvgIconElement(url1,url2,{className:style.icon2});
+              
+              this.appendChild(this.attrs.lbl_thumb);
+            }
             this.attrs.lbl_title=new TextElement("");
             this.attrs.lbl_duration=new TextElement("");
-            const div=this.appendChild(DomElement,"div",{className:style.listItemColText});
+            const div=this.appendChild(new DomElement("div",{className:style.listItemColText}));
             
             div.appendChild(new DomElement("div",{className:style.listItemTitle},
                               [this.attrs.lbl_title,new DomElement("br"),new TextElement("\xa0")]));
@@ -6887,13 +7894,14 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           setItem(item){
             const text1=item.title;
             const text2=formatTime(item.duration);
-            const url1=resources.svg.disc;
-            const url2=((((item)||{}).thumbnail)||{}).url;
+            const url1=((((item)||{}).thumbnail)||{}).url??resources.svg.disc;
+            const url2=null;
             this.attrs.item=item;
             this.attrs.lbl_title.setText(text1);
             this.attrs.lbl_duration.setText(text2);
-            this.attrs.lbl_thumb.setUrls(url1,url2);
-            console.log('x',this.attrs.showDetails,this.attrs.lbl_date);
+            if(this.attrs.showThumb!==0){
+              this.attrs.lbl_thumb.setUrls(url1,url2);
+            }
             if(this.attrs.showDetails!==0){
               let t=(this.attrs.showDetails===1)?item.date_added:item.date_played;
               
@@ -6922,7 +7930,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                               this.voteUp.bind(this)));
             this.attrs.btn_up.updateProps({width:24,height:16,className:style.voteButton});
             
-            this.attrs.lbl_vote=new TextElement();
+            this.attrs.lbl_vote=new TextElement("-");
             this.appendChild(new DomElement("div",{className:style.voteText},[this.attrs.lbl_vote]));
             
             this.attrs.btn_down=this.appendChild(new components.SvgButtonElement(
@@ -6933,7 +7941,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           setItem(item){
             this.attrs.item=item;
-            this.attrs.lbl_vote.setText(item.vote_total);
+            this.attrs.lbl_vote.setText(((item)||{}).vote_total??"*");
             if(item.vote===0){
               this.attrs.btn_up.updateProps({src:resources.svg.vote_up_0});
               this.attrs.btn_down.updateProps({src:resources.svg.vote_down_0});
@@ -6960,7 +7968,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.lbl_vote.setText(item.vote_total);
             this.attrs.parent.vote(this.attrs.item).then(result=>{}).catch(error=>{
               
-                console.error(error);
+                console.log(error);
+                components.ErrorDrawer.post("Vote Error",formatError(error));
               });
           }
           voteDown(){
@@ -6978,32 +7987,27 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.lbl_vote.setText(item.vote_total);
             this.attrs.parent.vote(this.attrs.item).then(result=>{}).catch(error=>{
               
-                console.error(error);
+                console.log(error);
+                components.ErrorDrawer.post("Vote Error",formatError(error));
               });
-          }
-          openExternal(){
-            if(this.attrs.item.source=="youtube"){
-              const url="https://www.youtube.com/watch?v="+this.attrs.item.uid;
-              window.open(url,"_blank");
-            }
           }
         }
         class UpcomingTrackElement extends DomElement {
-          constructor(parent,item){
+          constructor(page,item){
             super("div",{className:style.listItem},[]);
-            this.attrs={parent,item};
+            this.attrs={page,item};
             this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_DATE_ADDED));
             
             this.attrs.vote=this.attrs.info.insertChild(0,new TrackVotesElement(this));
             
-            this.attrs.info.setItem(item);
-            this.attrs.vote.setItem(item);
             this.attrs.action=this.attrs.info.appendChild(new components.SvgButtonElement(
                               resources.svg.more,()=>{
-                  parent.handleShowMore(this.attrs.item);
+                  page.handleShowMore(this.attrs.item);
                 }));
             this.attrs.action.updateProps({width:16,height:16,className:style.moreButton});
             
+            this.attrs.info.setItem(item);
+            this.attrs.vote.setItem(item);
           }
           setItem(item){
             if(item.uid!==this.attrs.item.uid||item.vote_total!==this.attrs.item.vote_total){
@@ -7014,7 +8018,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
           }
           vote(item){
-            return this.attrs.parent.vote(item);
+            return this.attrs.page.vote(item);
           }
         }
         class PreviousTrackElement extends DomElement {
@@ -7056,19 +8060,152 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 store.globals.radio_tracks[track.uid]=track;
                 this.attrs.parent.removeTrackBySID(track.source,track.sid);
               }).catch(error=>{
-                console.error(error);
+                console.log(error);
+                components.ErrorDrawer.post("Add Track Error",formatError(error));
+                
               });
+          }
+        }
+        class Grip extends DomElement {
+          constructor(parent,lst){
+            super("div",{className:style.grip});
+            this.attrs.parent=parent;
+            this.attrs.lst=lst;
+          }
+          onMouseDown(event){
+            if(this.attrs.lst.handleChildDragBegin(this.attrs.parent,event)){
+              let node=this.attrs.parent.getDomNode();
+              node.style.width=(node.clientWidth-4)+'px';
+              node.style.background="white";
+              this.attrs.lst.attrs.test=this.attrs.parent;
+            }
+          }
+          onTouchStart(event){
+            if(this.attrs.lst.handleChildDragBegin(this.attrs.parent,event)){
+              let node=this.attrs.parent.getDomNode();
+              node.style.width=(node.clientWidth-4)+'px';
+              node.style.background="white";
+            }
+          }
+        }
+        class EditIndexElement extends DomElement {
+          constructor(text=""){
+            super("div",{className:style.editIndex});
+            this.attrs.text=this.appendChild(new TextElement(text+"."));
+          }
+          setText(text){
+            this.attrs.text.setText(text);
+          }
+        }
+        class EditTrackElement extends DomElement {
+          constructor(page,item){
+            super("div",{className:style.listItem},[]);
+            this.attrs={page,item,parent:page.attrs.lst};
+            this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_DATE_ADDED,
+                              0));
+            this.attrs.info.setItem(item);
+            this.attrs.action=this.attrs.info.appendChild(new components.SvgButtonElement(
+                              resources.svg.more,()=>{
+                  page.handleShowMore(this.attrs.item);
+                }));
+            this.attrs.action.updateProps({width:16,height:16,className:style.moreButton});
+            
+            const grip=this.attrs.info.insertChild(0,new Grip(this,page.attrs.lst));
+            
+            this.attrs.index=this.attrs.info.insertChild(1,new EditIndexElement(this.attrs.item.index+1));
+            
+          }
+          setItem(item){
+            if(item.uid!==this.attrs.item.uid){
+              this.attrs.item=item;
+              this.attrs.index.setText(this.attrs.item.index+1);
+              this.attrs.info.setItem(item);
+            }
+          }
+          onTouchMove(event){
+            if(!event.cancelable){
+              return;
+            }
+            if(this.attrs.parent.handleChildDragMove(this,event)){
+              event.stopPropagation();
+            }
+          }
+          onTouchEnd(event){
+            this.attrs.parent.handleChildDragEnd(this,{target:this.getDomNode()});
+            
+            let node=this.getDomNode();
+            node.style.removeProperty('width');
+            node.style.removeProperty('background');
+            event.stopPropagation();
+          }
+          onTouchCancel(event){
+            this.attrs.parent.handleChildDragEnd(this,{target:this.getDomNode()});
+            
+            let node=this.getDomNode();
+            node.style.removeProperty('width');
+            node.style.removeProperty('background');
+            event.stopPropagation();
+          }
+          onMouseUp(event){
+            if(this.attrs.parent.handleChildDragEnd(this,{target:this.getDomNode(
+                                    )})){
+              let node=this.getDomNode();
+              node.style.removeProperty('width');
+              node.style.removeProperty('background');
+            }
+          }
+          setIndex(index){
+            this.attrs.item.index=index;
+            this.attrs.index.setText(index+1);
+          }
+        }
+        class TrackEditList extends daedalus.DraggableList {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.attrs.test=null;
+          }
+          updateModel(indexStart,indexEnd){
+            daedalus.util.array_move(store.globals.radio_all_tracks,indexStart,indexEnd);
+            
+          }
+          onMouseMove(event){
+            if(event.buttons!==1){
+              return;
+            }
+            if(!this.attrs.test){
+              return;
+            }
+            if(this.handleChildDragMove(this.attrs.test,event)){
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }
+          onMouseLeave(event){
+            if(!this.attrs.test){
+              return;
+            }
+            if(this.handleChildDragEnd(this.attrs.test,{target:this.attrs.test.getDomNode(
+                                    )})){
+              let node=this.attrs.test.getDomNode();
+              node.style.removeProperty('width');
+              node.style.removeProperty('background');
+              event.stopPropagation();
+            }
           }
         }
         class StationListInfoElement extends DomElement {
           constructor(item){
             super("div",{className:style.listItemRow},[]);
-            const elem=this.appendChild(new components.MiddleText(item.name));
+            const active=(item.active)?((item.broadcast_id!=='')?'***':'*'):'';
+            const text=`${active}${item.name}`;
+            const elem=this.appendChild(new components.MiddleText(text));
             elem.addClassName(style.listItemRowText);
             this.appendChild(new components.SvgButtonElement(resources.svg.arrow_right,
                               ()=>{
-                  router.navigate(router.routes.userRadioStation({'station':item.name},
-                                          {}));
+                  const route_fn=(item.broadcast_id!=='')?router.routes.userRadioStation:router.routes.userRadioStationEdit;
+                  
+                  router.navigate(route_fn({'station':item.name},{}));
                 }));
           }
         }
@@ -7077,6 +8214,26 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             super("div",{className:style.listItem},[]);
             this.appendChild(new StationListInfoElement(item));
           }
+        }
+        class Floater extends DomElement {
+          constructor(){
+            super("div",{className:[style.floater]});
+            this.appendChild(new TextElement("loading..."));
+          }
+          setVisible(visible){
+            if(visible){
+              this.removeClassName(style.hide);
+            }else{
+              this.addClassName(style.hide);
+            }
+          }
+        }
+        function getToken(){
+          let _array=new Uint8Array(16);
+          crypto.getRandomValues(_array);
+          let _string=[..._array].map(x=>x.toString(16).padStart(2,'0')).join('');
+          
+          return _string;
         }
         function checkPublicAuthentication(){
           const params=daedalus.util.parseParameters();
@@ -7088,18 +8245,21 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
             return false;
           }
-          const token1=api.getPublictoken();
-          if(token1!==null){
-            return true;
+          const stored_token=api.getPublictoken();
+          if(stored_token!==null){
+            if(stored_token.length==32){
+              return true;
+            }
           }
-          const token2=((((params)||{}).login)||{})[0];
-          if(!token2){
+          const login=((((params)||{}).login)||{})[0];
+          if(!login){
             requestIdleCallback(()=>{
                 router.navigate(router.routes.login());
               });
             return false;
           }
-          api.setPublictoken(token2);
+          let token=getToken();
+          api.setPublictoken(token);
           return true;
         }
         function getStationInfo(){
@@ -7128,6 +8288,51 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           store.globals.radio_sorted_tracks=tracks;
           return tracks;
         }
+        function getAllTracks(){
+          let tracks=Object.keys(store.globals.radio_tracks).map(k=>store.globals.radio_tracks[
+                        k]);
+          tracks=[...tracks,...store.globals.radio_previous_tracks];
+          tracks=api.multiSort(tracks,[{key:'uid',ascending:true}]);
+          let next_index=0;
+          let missing=[];
+          tracks.forEach((track,index)=>{
+              if(track.index!==undefined){
+                if(track.index>next_index){
+                  next_index=track.index;
+                }
+              }else{
+                missing.push(track);
+              }
+            });
+          next_index+=1;
+          missing.forEach((track,index)=>{
+              track.index=next_index;
+              next_index+=1;
+            });
+          tracks=api.multiSort(tracks,[{key:'index',ascending:true}]);
+          tracks.forEach((track,index)=>track.index=index);
+          store.globals.radio_all_tracks=tracks;
+          return tracks;
+        }
+        function _processUpdates_TrackAdded(track){
+          if(store.globals.radio_tracks[track.uid]!==undefined){
+            store.globals.radio_tracks[track.uid]={...store.globals.radio_tracks[
+                            track.uid],...track};
+          }else{
+            track['vote']=0;
+            track['vote_total']=1;
+            store.globals.radio_tracks[track.uid]=track;
+          }
+        }
+        function _processUpdates_TrackReset(){
+          console.log("reset length",store.globals.radio_previous_tracks.length);
+          
+          store.globals.radio_previous_tracks.forEach(track=>{
+              console.log("reset",track);
+              store.globals.radio_tracks[track.uid]=track;
+            });
+          store.globals.radio_previous_tracks=[];
+        }
         function processUpdates(updates){
           console.log(updates);
           let current_track=null;
@@ -7150,20 +8355,20 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   track['vote_total']=update.payload.total;
                 }else if(update.type==='current_track_changed'){
                   current_track=store.globals.radio_tracks[update.payload.uid];
-                  delete store.globals.radio_tracks[update.payload.uid];
-                  store.globals.radio_previous_tracks.unshift(current_track);
-                }else if(update.type==='track_removed'){
-                  delete store.globals.radio_tracks[update.payload.uid];
-                }else if(update.type==='track_added'){
-                  const track=update.payload;
-                  if(store.globals.radio_tracks[track.uid]!==undefined){
-                    store.globals.radio_tracks[track.uid]={...store.globals.radio_tracks[
-                                            track.uid],...track};
-                  }else{
-                    track['vote']=0;
-                    track['vote_total']=1;
-                    store.globals.radio_tracks[track.uid]=track;
+                  if(store.globals.radio_tracks[update.payload.uid]){
+                    delete store.globals.radio_tracks[update.payload.uid];
+                    store.globals.radio_previous_tracks.unshift(current_track);
                   }
+                }else if(update.type==='track_removed'){
+                  if(store.globals.radio_tracks[update.payload.uid]){
+                    delete store.globals.radio_tracks[update.payload.uid];
+                  }else{
+                    console.error("unable to remove track "+update.payload.uid);
+                  }
+                }else if(update.type==='track_added'){
+                  _processUpdates_TrackAdded(update.payload);
+                }else if(update.type==='track_reset'){
+                  _processUpdates_TrackReset();
                 }else{
                   console.error(`unknown type: ${update.type}`);
                 }
@@ -7177,37 +8382,29 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }else if(store.globals.radio_current_track===undefined){
             store.globals.radio_current_track=null;
           }
-          console.log("current",current_track,store.globals.radio_current_track);
-          
           getUpcomingTracks();
         }
         function reconcileUpdates(page,elem,tracks,clsRowElement){
           const lst=elem.children;
-          console.log(`reconcile-b: lst.length:${lst.length} tracks.length ${tracks.length}`);
-          
           let index=0;
           for(;index<lst.length&&index<tracks.length;index++)
           {
             lst[index].setItem(tracks[index]);
           }
-          console.log(`reconcile-u: add ${tracks.length-index} remove ${lst.length-index}`);
-          
           const removeCount=lst.length-index;
           if(removeCount>0){
-            containerList.splice(index,removeCount);
+            lst.splice(index,removeCount);
           }
           for(;index<tracks.length;index++)
           {
             lst.push(new clsRowElement(page,tracks[index]));
           }
-          console.log(`reconcile-a: lst.length:${lst.length} tracks.length ${tracks.length}`);
-          
           elem.update();
           thumbnail_ProcessStart();
         }
         function reconcileTrackUpdates(page,header,elem){
           const tracks=store.globals.radio_sorted_tracks;
-          if(store.globals.radio_current_track!==null){
+          if(store.globals.radio_current_track){
             header.setTrack(store.globals.radio_current_track);
           }
           reconcileUpdates(page,elem,tracks,UpcomingTrackElement);
@@ -7216,38 +8413,169 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           const tracks=store.globals.radio_previous_tracks;
           reconcileUpdates(page,elem,tracks,PreviousTrackElement);
         }
+        function timeoutResolver(ms){
+          return new Promise((resolve,reject)=>{
+              setTimeout(function(){
+                  resolve(true);
+                },ms);
+            });
+        }
+        function _search_parse_query(page,isPublic){
+          const match=router.AppRouter.match();
+          const params=daedalus.util.parseParameters();
+          const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
+          
+          const f=(k,d)=>{
+            const v=params[k];
+            return(v===null||v===undefined)?d:v[0];
+          };
+          let source=f("source","library");
+          let query=f("query","");
+          if(source!='youtube'&&source!='library'){
+            source='youtube';
+          }
+          page.attrs.header.setSource(source);
+          page.attrs.header.setQuery(query);
+          if(source!==store.globals.radio_search_source||query!==store.globals.radio_search_query||!store.globals.radio_search_results){
+          
+            if(query!==""){
+              page.search(source,query);
+            }else{
+              store.globals.radio_search_source=source;
+              store.globals.radio_search_query=query;
+              store.globals.radio_search_results=[];
+              page.updateSearchResults();
+              router.navigate(route_fn({station:match.station},{query,source}));
+            }
+          }
+        }
+        function _search_impl(page,isPublic,source,query){
+          if(!page.attrs.enable_search){
+            console.log("ignore search request");
+            return;
+          }
+          query=query.trim();
+          const match=router.AppRouter.match();
+          const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
+          
+          router.navigate(route_fn({station:match.station},{query,source}));
+          page.attrs.lst.removeChildren();
+          store.globals.radio_search_source=source;
+          store.globals.radio_search_query=query;
+          store.globals.radio_search_results=[];
+          if(query.length===0){
+            page.updateSearchResults();
+            return;
+          }
+          page.attrs.enable_search=false;
+          page.attrs.floater.setVisible(true);
+          const api_fn=(isPublic)?api.radioPublicStationSearch:api.radioStationSearch;
+          
+          api_fn(match.station,source,query).then(result=>{
+              page.attrs.enable_search=true;
+              page.attrs.floater.setVisible(false);
+              console.log(result);
+              store.globals.radio_search_results=result.result;
+              page.updateSearchResults();
+            }).catch(error=>{
+              page.attrs.enable_search=true;
+              page.attrs.floater.setVisible(false);
+              console.log(error);
+              components.ErrorDrawer.post("Search Error",formatError(error));
+            });
+        }
+        let update_timer=null;
+        let update_duration=1000;
+        let update_interval=15;
+        let update_counter=0;
+        let update_page=null;
+        function installUpdateTimer(page){
+          if(update_timer===null){
+            update_timer=setInterval(updateTimerTimeout,update_duration);
+          }
+          update_page=page;
+        }
+        function updateTimerTimeout(){
+          update_counter+=1;
+          if(update_counter>update_interval){
+            console.log("update page");
+            update_page.getTracks(true);
+            update_counter=0;
+          }
+        }
+        class UserRadioListPage extends DomElement {
+          constructor(){
+            super("div",{className:style.main},[]);
+            this.attrs={header:new ListHeader(this),lst:new UpcomingTracksListElement(
+                            ),refresh:new components.Refresh(()=>{
+                  this.getList();
+                })};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.refresh);
+            this.attrs.refresh.connect(this);
+          }
+          elementMounted(){
+            console.log("mount user radio list");
+            this.getList();
+          }
+          getList(){
+            api.radioStationList().then(result=>{
+                this.attrs.lst.removeChildren();
+                console.log(result);
+                result.result.forEach(item=>{
+                    this.attrs.lst.appendChild(new StationListItemElement(item));
+                    
+                  });
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("List Error",formatError(error));
+              });
+          }
+        }
         class UserRadioStationPage extends DomElement {
           constructor(){
             super("div",{className:style.main},[]);
             this.attrs={device:AudioDevice.instance(),header:new StationHeader(this),
-                          footer:new Footer(this),padding2:new DomElement("div",{className:style.padding2},
+                          footer:new Footer(this,2,false),padding2:new DomElement("div",{className:style.padding2},
                               []),lst:new UpcomingTracksListElement(),more:new components.MoreMenu(
-                              this.handleHideMore.bind(this)),refresh:new components.Refresh()};
-            
+                              this.handleHideMore.bind(this)),refresh:new components.Refresh(()=>{
+                
+                  this.getTracks(true);
+                })};
             this.appendChild(this.attrs.header);
             this.appendChild(this.attrs.lst);
             this.appendChild(this.attrs.padding2);
             this.appendChild(this.attrs.footer);
             this.appendChild(this.attrs.more);
             this.appendChild(this.attrs.refresh);
-            this.attrs.more.addAction("Watch on Youtube",()=>{});
-            this.attrs.more.addAction("Remove Track",()=>{});
+            this.attrs.act_watch=this.attrs.more.addAction("Watch on Youtube",this.handleOpenExternal.bind(
+                              this));
+            this.attrs.act_related=this.attrs.more.addAction("Browse Related",this.handleBrowseRelated.bind(
+                              this));
+            this.attrs.act_remove=this.attrs.more.addAction("Remove Track",this.handleRemoveTrack.bind(
+                              this));
             this.attrs.refresh.connect(this);
           }
           elementMounted(){
             console.log("mount user radio page");
-            const match=router.AppRouter.match();
-            this.attrs.device.setCurrentStation(match.station);
             this.attrs.device.connectView(this);
-            getStationInfo().then(result=>{
-                this.attrs.header.setBroadcasting(result.broadcast_id!==null);
-              });
+            this.attrs.header.setTime(this.attrs.device.currentTime(),this.attrs.device.duration(
+                            ));
             this.getTracks(false);
           }
           elementUnmounted(){
             this.attrs.device.disconnectView(this);
           }
           handleShowMore(track){
+            this.attrs.more_track=track;
+            if(track.source=='youtube'){
+              this.attrs.act_watch.removeClassName(style.hide);
+              this.attrs.act_related.removeClassName(style.hide);
+            }else{
+              this.attrs.act_watch.addClassName(style.hide);
+              this.attrs.act_related.addClassName(style.hide);
+            }
             this.attrs.more.show();
           }
           handleHideMore(){
@@ -7258,11 +8586,60 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.header.setTrack(track);
             this.removeTrackByUID(track.uid);
           }
+          handleAudioLoadStart(){
+            this.attrs.header.setAudioState("loading");
+          }
+          handleAudioWaiting(){
+            this.attrs.header.setAudioState("waiting");
+          }
+          handleAudioStalled(){
+            this.attrs.header.setAudioState("stalled");
+          }
+          handleAudioError(){
+            this.attrs.header.setAudioState("error");
+          }
+          handleAudioPlay(){
+            this.attrs.header.setAudioState("play");
+          }
+          handleAudioPause(){
+            this.attrs.header.setAudioState("pause");
+          }
           handleAudioTimeUpdate(event){
             this.attrs.header.setTime(event.currentTime,event.duration);
           }
           handleAudioDurationChange(event){
             this.attrs.header.setTime(event.currentTime,event.duration);
+          }
+          handleOpenExternal(){
+            if(this.attrs.more_track.source=="youtube"){
+              const url="https://www.youtube.com/watch?v="+this.attrs.more_track.sid;
+              
+              api.openTab(url);
+            }
+          }
+          handleBrowseRelated(){
+            if(this.attrs.more_track.source=="youtube"){
+              const query="related:"+this.attrs.more_track.sid;
+              const source=this.attrs.more_track.source;
+              const match=router.AppRouter.match();
+              const station=match.station;
+              router.navigate(router.routes.userRadioStationSearch({station},{source,
+                                      query}));
+            }else{
+              console.error("cannot browse related for source:"+this.attrs.more_track.source);
+              
+            }
+          }
+          handleRemoveTrack(){
+            const match=router.AppRouter.match();
+            let station=match.station;
+            api.radioStationRemoveTrack(station,this.attrs.more_track.uid).then(result=>{
+              
+                this.removeTrackByUID(this.attrs.more_track.uid);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Remove Error",formatError(error));
+              });
           }
           removeTrackByUID(uid){
             const lst=this.attrs.lst.children;
@@ -7280,16 +8657,16 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             console.error(`failed to remove track ${uid}`);
           }
           getTracks(force){
-            let station=AudioDevice.instance().currentStation();
+            const match=router.AppRouter.match();
+            let station=match.station;
             let uid=store.globals.radio_update_index;
             if(uid===undefined||station!=store.globals.radio_update_station){
               uid=-1;
             }
             console.log(`get update ${force} ${uid}`);
             if(uid>0&&force===false){
-              console.log(`${uid} ${force}`);
-              const tracks=getUpcomingTracks();
-              reconcileUpdates(this,this.attrs.lst,tracks,UpcomingTrackElement);
+              const _=getUpcomingTracks();
+              reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
               return;
             }
             api.radioStationUpdates(station,uid).then(result=>{
@@ -7298,70 +8675,141 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
               }).catch(error=>{
                 console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
               });
           }
           vote(item){
-            return api.radioStationVote(AudioDevice.instance().currentStation(),item.uid,
-                          item.vote);
+            const match=router.AppRouter.match();
+            let station=match.station;
+            return api.radioStationVote(station,item.uid,item.vote);
+          }
+        }
+        class UserRadioStationEditPage extends DomElement {
+          constructor(){
+            super("div",{className:style.main},[]);
+            this.attrs={device:AudioDevice.instance(),header:new StationEditHeader(
+                              this),footer:new Footer(this,0,false),padding2:new DomElement("div",
+                              {className:style.padding2},[]),content:new DomElement("div",{className:style.content},
+                              []),lst:new TrackEditList(),more:new components.MoreMenu(this.handleHideMore.bind(
+                                  this)),qrcode:new components.QrCodeElement("hello world")};
+            this.attrs.lst.setPlaceholderClassName(style.placeholder);
+            this.attrs.lst.addClassName(style.list);
+            this.attrs.header.addClassName(style.header);
+            this.attrs.footer.addClassName(style.header);
+            this.appendChild(this.attrs.header);
+            this.attrs.content.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.qrcode);
+            this.appendChild(this.attrs.content);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.more);
+            this.attrs.more.addAction("Remove Track",this.handleRemoveSelectedTrack.bind(
+                              this));
+            this.attrs.qrcode.addClassName(style.hide);
+          }
+          elementMounted(){
+            console.log("mount user radio edit page");
+            this.attrs.device.connectView(this);
+            getStationInfo().then(result=>{
+                this.attrs.header.setBroadcasting(result.broadcast_id!==null);
+                this.handleToggleBroadcasting(result.broadcast_id!==null);
+                this.getTracks(false);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Load Error",formatError(error));
+              });
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+          }
+          handleToggleBroadcasting(broadcasting){
+            if(broadcasting){
+              this.attrs.content.addClassName(style.hide);
+              this.attrs.qrcode.removeClassName(style.hide);
+              const url=api.radioStationUrl(null,store.globals.radio_broadcast_id);
+              
+              this.attrs.qrcode.setText(url);
+            }else{
+              this.attrs.content.removeClassName(style.hide);
+              this.attrs.qrcode.addClassName(style.hide);
+            }
+          }
+          handleShowMore(track){
+            this.attrs.selected_track=track;
+            this.attrs.more.show();
+          }
+          handleHideMore(){
+            this.attrs.more.hide();
+          }
+          handleRemoveSelectedTrack(){
+            let i=this.attrs.selected_track.index;
+            console.log(`remove ${i} ${this.attrs.selected_track.title}`);
+            let x=store.globals.radio_all_tracks.splice(i,1);
+            let y=this.attrs.lst.children.splice(i,1);
+            this.attrs.lst.update();
+            store.globals.radio_all_tracks.forEach((track,index)=>{
+                track.index=index;
+              });
+          }
+          getTracks(force){
+            const match=router.AppRouter.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
+            }
+            api.radioStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+                const tracks=getAllTracks();
+                reconcileUpdates(this,this.attrs.lst,tracks,EditTrackElement);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
+              });
           }
         }
         class UserRadioStationSearchPage extends DomElement {
           constructor(){
             super("div",{className:style.main},[]);
             this.attrs={device:AudioDevice.instance(),header:new StationSearchHeader(
-                              this),footer:new Footer(this),lst:new UpcomingTracksListElement(),
-                          padding2:new DomElement("div",{className:style.padding2},[])};
+                              this),footer:new Footer(this,3,false),lst:new UpcomingTracksListElement(
+                            ),padding2:new DomElement("div",{className:style.padding2},[]),refresh:new components.Refresh(
+                              ()=>{
+                  this.getTracks(true);
+                }),floater:new Floater(),enable_search:true};
             this.appendChild(this.attrs.header);
             this.appendChild(this.attrs.lst);
             this.appendChild(this.attrs.padding2);
             this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.refresh);
+            this.appendChild(this.attrs.floater);
+            this.attrs.floater.setVisible(false);
+            this.attrs.refresh.connect(this);
           }
           elementMounted(){
             console.log("mount user radio search");
-            const match=router.AppRouter.match();
-            this.attrs.device.setCurrentStation(match.station);
             this.attrs.device.connectView(this);
-            const params=daedalus.util.parseParameters();
-            const f=(k,d)=>{
-              const v=params[k];
-              return(v===null||v===undefined)?d:v[0];
-            };
-            const source=f("source","library");
-            const query=f("query","");
-            if(source!==store.globals.radio_search_source||query!==store.globals.radio_search_query||!store.globals.radio_search_results){
-            
-              if(query!==""){
-                this.search(source,query);
-              }
-            }
+            _search_parse_query(this,false);
             this.getTracks(false);
           }
           elementUnmounted(){
             this.attrs.device.disconnectView(this);
           }
           search(source,query){
-            console.log(source,query);
-            router.navigate(router.routes.userRadioStationSearch({station:this.attrs.device.currentStation(
-                                    )},{query,source}));
-            store.globals.radio_search_source=source;
-            store.globals.radio_search_query=query;
-            store.globals.radio_search_results=null;
-            api.radioStationSearch(AudioDevice.instance().currentStation(),source,
-                          query).then(result=>{
-                console.log(result);
-                store.globals.radio_search_results=result.result;
-                this.updateSearchResults();
-              }).catch(error=>{
-                console.log(error);
-              });
+            _search_impl(this,false,source,query);
           }
           updateSearchResults(){
             this.attrs.lst.removeChildren();
-            store.globals.radio_search_results.forEach(item=>{
-                const elem=new SearchResultElement(this);
-                elem.setItem(item);
-                this.attrs.lst.appendChild(elem);
-              });
+            if(store.globals.radio_search_results.length==0){
+              this.attrs.lst.appendChild(new NoTrackElement());
+            }else{
+              store.globals.radio_search_results.forEach(item=>{
+                  const elem=new SearchResultElement(this);
+                  elem.setItem(item);
+                  this.attrs.lst.appendChild(elem);
+                });
+            }
             thumbnail_ProcessStart();
           }
           getTracks(force){
@@ -7380,11 +8828,13 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 processUpdates(result.result);
               }).catch(error=>{
                 console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
               });
           }
           addTrackToPool(track){
-            return api.radioStationAddTrack(AudioDevice.instance().currentStation(
-                            ),track);
+            const match=router.AppRouter.match();
+            let station=match.station;
+            return api.radioStationAddTrack(station,track);
           }
           removeTrackBySID(source,sid){
             const lst=this.attrs.lst.children;
@@ -7404,17 +8854,20 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           constructor(){
             super("div",{className:style.main},[]);
             this.attrs={device:AudioDevice.instance(),header:new StationHistoryHeader(
-                              this),footer:new Footer(this),padding2:new DomElement("div",{className:style.padding2},
-                              []),lst:new UpcomingTracksListElement()};
+                              this),footer:new Footer(this,1,false),padding2:new DomElement("div",
+                              {className:style.padding2},[]),lst:new UpcomingTracksListElement(
+                            ),refresh:new components.Refresh(()=>{
+                  this.getTracks(true);
+                })};
             this.appendChild(this.attrs.header);
             this.appendChild(this.attrs.lst);
             this.appendChild(this.attrs.padding2);
             this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.refresh);
+            this.attrs.refresh.connect(this);
           }
           elementMounted(){
             console.log("mount user history");
-            const match=router.AppRouter.match();
-            this.attrs.device.setCurrentStation(match.station);
             this.attrs.device.connectView(this);
             this.getTracks(false);
           }
@@ -7427,7 +8880,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.header.setTrack(track);
           }
           getTracks(force){
-            let station=AudioDevice.instance().currentStation();
+            const match=router.AppRouter.match();
+            let station=match.station;
             let uid=store.globals.radio_update_index;
             if(uid===undefined||station!=store.globals.radio_update_station){
               uid=-1;
@@ -7443,28 +8897,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 reconcilePreviousTrackUpdates(this,this.attrs.lst);
               }).catch(error=>{
                 console.log(error);
-              });
-          }
-        }
-        class UserRadioListPage extends DomElement {
-          constructor(){
-            super("div",{className:style.main},[]);
-            this.attrs={header:new ListHeader(this),lst:new UpcomingTracksListElement(
-                            )};
-            this.appendChild(this.attrs.header);
-            this.appendChild(this.attrs.lst);
-          }
-          elementMounted(){
-            console.log("mount user radio list");
-            api.radioStationList().then(result=>{
-                this.attrs.lst.removeChildren();
-                console.log(result);
-                result.result.forEach(item=>{
-                    this.attrs.lst.appendChild(new StationListItemElement(item));
-                    
-                  });
-              }).catch(error=>{
-                console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
               });
           }
         }
@@ -7475,29 +8908,67 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.attrs.auth_failed=true;
               return;
             }
-            this.attrs={device:AudioDevice.instance(),header:new StationHeader(this,
-                              true),footer:new Footer(this,true),padding2:new DomElement("div",
-                              {className:style.padding2},[]),lst:new UpcomingTracksListElement(
-                            ),more:new components.MoreMenu(this.handleHideMore.bind(this))};
+            this.attrs={header:new StationHeader(this,true),footer:new Footer(this,
+                              2,true),padding2:new DomElement("div",{className:style.padding2},
+                              []),lst:new UpcomingTracksListElement(),more:new components.MoreMenu(
+                              this.handleHideMore.bind(this)),refresh:new components.Refresh(()=>{
+                
+                  this.getTracks(true);
+                })};
             this.appendChild(this.attrs.header);
             this.appendChild(this.attrs.lst);
             this.appendChild(this.attrs.padding2);
             this.appendChild(this.attrs.footer);
             this.appendChild(this.attrs.more);
-            this.attrs.more.addAction("Watch on Youtube",()=>{});
+            this.appendChild(this.attrs.refresh);
+            this.attrs.refresh.connect(this);
+            this.attrs.act_watch=this.attrs.more.addAction("Watch on Youtube",this.handleOpenExternal.bind(
+                              this));
+            this.attrs.act_related=this.attrs.more.addAction("Browse Related",this.handleBrowseRelated.bind(
+                              this));
+            this.attrs.more.addAction("Close",()=>{});
           }
           elementMounted(){
             if(this.attrs.auth_failed){
               return;
             }
+            installUpdateTimer(this);
             console.log("mount public radio page");
             this.getTracks(false);
           }
           handleShowMore(track){
+            this.attrs.more_track=track;
+            if(track.source=='youtube'){
+              this.attrs.act_watch.removeClassName(style.hide);
+              this.attrs.act_related.removeClassName(style.hide);
+            }else{
+              this.attrs.act_watch.addClassName(style.hide);
+              this.attrs.act_related.addClassName(style.hide);
+            }
             this.attrs.more.show();
           }
           handleHideMore(){
             this.attrs.more.hide();
+          }
+          handleOpenExternal(){
+            if(this.attrs.more_track.source=="youtube"){
+              const url="https://www.youtube.com/watch?v="+this.attrs.more_track.sid;
+              
+              api.openTab(url);
+            }
+          }
+          handleBrowseRelated(){
+            if(this.attrs.more_track.source=="youtube"){
+              const query="related:"+this.attrs.more_track.sid;
+              const source=this.attrs.more_track.source;
+              const match=router.AppRouter.match();
+              const station=match.station;
+              router.navigate(router.routes.userRadioStationSearch({station},{source,
+                                      query}));
+            }else{
+              console.error("cannot browse related for source:"+this.attrs.more_track.source);
+              
+            }
           }
           getTracks(force){
             const match=router.AppRouter.match();
@@ -7507,6 +8978,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               uid=-1;
             }
             if(uid>0&&force===false){
+              const _=getUpcomingTracks();
+              reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
               return;
             }
             console.log(`get update ${uid}`);
@@ -7516,6 +8989,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
               }).catch(error=>{
                 console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
               });
           }
           vote(item){
@@ -7530,21 +9004,45 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.attrs.auth_failed=true;
               return;
             }
-            this.attrs={device:AudioDevice.instance(),header:new StationSearchHeader(
-                              this,true),footer:new Footer(this,true),padding2:new DomElement("div",
-                              {className:style.padding2},[]),lst:new UpcomingTracksListElement(
-                            )};
+            this.attrs={header:new StationSearchHeader(this,true),footer:new Footer(
+                              this,3,true),padding2:new DomElement("div",{className:style.padding2},
+                              []),lst:new UpcomingTracksListElement(),refresh:new components.Refresh(
+                              ()=>{
+                  this.getTracks(true);
+                }),floater:new Floater(),enable_search:true};
             this.appendChild(this.attrs.header);
             this.appendChild(this.attrs.lst);
             this.appendChild(this.attrs.padding2);
             this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.refresh);
+            this.appendChild(this.attrs.floater);
+            this.attrs.refresh.connect(this);
+            this.attrs.floater.setVisible(false);
           }
           elementMounted(){
             if(this.attrs.auth_failed){
               return;
             }
+            installUpdateTimer(this);
             console.log("mount public radio search");
+            _search_parse_query(this,true);
             this.getTracks(false);
+          }
+          search(source,query){
+            _search_impl(this,true,source,query);
+          }
+          updateSearchResults(){
+            this.attrs.lst.removeChildren();
+            if(store.globals.radio_search_results.length==0){
+              this.attrs.lst.appendChild(new NoTrackElement());
+            }else{
+              store.globals.radio_search_results.forEach(item=>{
+                  const elem=new SearchResultElement(this);
+                  elem.setItem(item);
+                  this.attrs.lst.appendChild(elem);
+                });
+            }
+            thumbnail_ProcessStart();
           }
           getTracks(force){
             const match=router.AppRouter.match();
@@ -7562,7 +9060,27 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 processUpdates(result.result);
               }).catch(error=>{
                 console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
               });
+          }
+          addTrackToPool(track){
+            console.log("add public track");
+            const match=router.AppRouter.match();
+            let station=match.station;
+            return api.radioPublicStationAddTrack(station,track);
+          }
+          removeTrackBySID(source,sid){
+            const lst=this.attrs.lst.children;
+            const N=lst.length;
+            for(let index=0;index<lst.length;index++)
+            {
+              const child=lst[index];
+              if(child.attrs.item.source==source&&child.attrs.item.sid==sid){
+                lst.splice(index,1);
+                this.attrs.lst.update();
+                break;
+              }
+            }
           }
         }
         class PublicRadioStationHistoryPage extends DomElement {
@@ -7572,19 +9090,24 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.attrs.auth_failed=true;
               return;
             }
-            this.attrs={device:AudioDevice.instance(),header:new StationHistoryHeader(
-                              this,true),footer:new Footer(this,true),padding2:new DomElement("div",
-                              {className:style.padding2},[]),lst:new UpcomingTracksListElement(
-                            )};
+            this.attrs={header:new StationHistoryHeader(this,true),footer:new Footer(
+                              this,1,true),padding2:new DomElement("div",{className:style.padding2},
+                              []),lst:new UpcomingTracksListElement(),refresh:new components.Refresh(
+                              ()=>{
+                  this.getTracks(true);
+                })};
             this.appendChild(this.attrs.header);
             this.appendChild(this.attrs.lst);
             this.appendChild(this.attrs.padding2);
             this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.refresh);
+            this.attrs.refresh.connect(this);
           }
           elementMounted(){
             if(this.attrs.auth_failed){
               return;
             }
+            installUpdateTimer(this);
             console.log("mount public radio history");
             this.getTracks(false);
           }
@@ -7606,12 +9129,13 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 reconcilePreviousTrackUpdates(this,this.attrs.lst);
               }).catch(error=>{
                 console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
               });
           }
         }
         return[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
-                  UserRadioListPage,UserRadioStationHistoryPage,UserRadioStationPage,UserRadioStationSearchPage];
-        
+                  UserRadioListPage,UserRadioStationEditPage,UserRadioStationHistoryPage,
+                  UserRadioStationPage,UserRadioStationSearchPage];
       })();
     const[OpenApiDocPage]=(function(){
         const styles={main:'dcs-71d9fd06-0'};
@@ -7636,8 +9160,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
     return{FileSystemPage,LandingPage,LibraryPage,LoginPage,NoteContentPage,NoteContext,
           NoteEditPage,NotesPage,OpenApiDocPage,PlaylistPage,PublicFilePage,PublicRadioStationHistoryPage,
           PublicRadioStationPage,PublicRadioStationSearchPage,SavedSearchPage,SettingsPage,
-          StoragePage,StoragePreviewPage,SyncPage,UserRadioListPage,UserRadioStationHistoryPage,
-          UserRadioStationPage,UserRadioStationSearchPage,fmtEpochTime};
+          StoragePage,StoragePreviewPage,SyncPage,UserRadioListPage,UserRadioStationEditPage,
+          UserRadioStationHistoryPage,UserRadioStationPage,UserRadioStationSearchPage,
+          fmtEpochTime};
   })(api,audio,components,daedalus,resources,router,store);
 app=(function(api,components,daedalus,pages,resources,router,store){
     "use strict";
@@ -7648,7 +9173,8 @@ app=(function(api,components,daedalus,pages,resources,router,store){
     const AuthenticatedRouter=daedalus.AuthenticatedRouter;
     const style={body:'dcs-1e053eca-0',navMenu:'dcs-1e053eca-1',rootWebDesktop:'dcs-1e053eca-2',
           rootWebMobile:'dcs-1e053eca-3',rootMobile:'dcs-1e053eca-4',margin:'dcs-1e053eca-5',
-          fullsize:'dcs-1e053eca-6',show:'dcs-1e053eca-7',hide:'dcs-1e053eca-8'};
+          fullsize:'dcs-1e053eca-6',show:'dcs-1e053eca-7',hide:'dcs-1e053eca-8',loading:'dcs-1e053eca-9'};
+    
     function buildRouter(parent,container){
       const u=router.route_urls;
       let rt=new router.AppRouter(container);
@@ -7673,6 +9199,8 @@ app=(function(api,components,daedalus,pages,resources,router,store){
       rt.addAuthRoute(u.userLibrarySync,(cbk)=>parent.handleRoute(cbk,pages.SyncPage),
               '/login');
       rt.addAuthRoute(u.userLibrarySavedSearch,(cbk)=>parent.handleRoute(cbk,pages.SavedSearchPage),
+              '/login');
+      rt.addAuthRoute(u.userRadioStationEdit,(cbk)=>parent.handleRoute(cbk,pages.UserRadioStationEditPage),
               '/login');
       rt.addAuthRoute(u.userRadioStationSearch,(cbk)=>parent.handleRoute(cbk,pages.UserRadioStationSearchPage),
               '/login');
@@ -7706,6 +9234,14 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         });
       return rt;
     }
+    class Loading extends DomElement {
+      constructor(){
+        super("div",{className:style.loading},[new TextElement("loading...")]);
+      }
+      setText(text){
+        this.children[0].setText(text);
+      }
+    }
     class Root extends DomElement {
       constructor(){
         super("div",{},[]);
@@ -7715,7 +9251,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
                   container:new DomElement("div",{},[]),drawer:new components.ErrorDrawer(
                       resources.svg.media_error)};
         window.onresize=this.handleResize.bind(this);
-        this.attrs.loading=this.appendChild(new TextElement("loading..."));
+        this.attrs.loading=this.appendChild(new Loading());
         this.appendChild(this.attrs.drawer);
         components.ErrorDrawer.post=(title,message)=>{
           this.attrs.drawer.appendError(title,message);
@@ -7788,6 +9324,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
           this.removeChild(this.attrs.loading);
           this.attrs.loading=null;
         }
+        console.log("app build router: "+performance.now());
       }
       handleLocationChanged(){
         this.toggleShowMenuFixed();
@@ -7800,6 +9337,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         fn(this.attrs.page_cache[page]);
       }
       elementMounted(){
+        console.log("app mounted: "+performance.now());
         this.updateMargin();
         const token=api.getUsertoken();
         if(!!token){
@@ -7812,6 +9350,8 @@ app=(function(api,components,daedalus,pages,resources,router,store){
               console.error(err);
               if(daedalus.platform.isAndroid){
                 this.buildRouter();
+              }else{
+                this.attrs.loading.setText("Error");
               }
             });
         }else{

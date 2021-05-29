@@ -321,8 +321,6 @@ public class AudioManager {
         }
     }
 
-
-
     public void skipToNext() {
         if (m_queue.next()) {
             loadIndex(m_queue.getCurrentIndex());

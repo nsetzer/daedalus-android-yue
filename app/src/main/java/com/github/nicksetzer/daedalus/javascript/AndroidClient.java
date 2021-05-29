@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
@@ -92,6 +93,12 @@ public class AndroidClient {
         } catch (Exception e) {
             android.util.Log.e("daedalus-js", e.toString());
         }
+    }
+
+    @JavascriptInterface
+    public void browseUrl(final String url) {
+        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        m_activity.startActivity(browserIntent);
     }
 
     @JavascriptInterface
