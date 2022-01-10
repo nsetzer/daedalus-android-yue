@@ -1,5 +1,6 @@
 package com.github.nicksetzer.daedalus.javascript;
 
+import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.audio.AudioDownloadFile;
 import android.app.Activity;
 import android.content.ClipData;
@@ -20,15 +21,33 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.URI;
+import java.net.URL;
+import java.util.Iterator;
+import java.util.zip.GZIPInputStream;
 
 public class AndroidClient {
     private Activity m_activity;
     private AudioDownloadFile m_download;
 
+    public static boolean ready = false;
+
     public AndroidClient(Activity activity) {
         this.m_activity = activity;
+    }
+
+    @JavascriptInterface
+    public void documentLoaded() {
+        Log.error("daedalus-js", "document ready");
+        AndroidClient.ready = true;
     }
 
     @JavascriptInterface
@@ -197,5 +216,156 @@ public class AndroidClient {
     public void setClipboardUrl(final String title, final String url) {
         ClipboardManager clipboard = (ClipboardManager) m_activity.getSystemService(Context.CLIPBOARD_SERVICE);
         clipboard.setPrimaryClip(ClipData.newPlainText(title, url));
+    }
+
+    static String readResponseText(InputStream stream) throws IOException {
+        return readResponseText(stream, null);
+    }
+
+    /**
+     *
+     * @param stream
+     * @param encoding one of "gzip", "utf-8", an empty string, or null
+     * @return the entire text document from stream
+     * @throws IOException
+     */
+    static String readResponseText(InputStream stream, String encoding) throws IOException {
+        if (encoding != null && encoding.equals("gzip")) {
+            stream = new GZIPInputStream(stream);
+        }
+        BufferedReader br = new BufferedReader(new InputStreamReader(stream));
+        StringBuilder sb = new StringBuilder();
+
+        String line;
+        while ((line = br.readLine()) != null) {
+            sb.append(line + "\n");
+        }
+        br.close();
+        return sb.toString();
+    }
+
+    /**
+     * Implements an API similar to js 'fetch' for sending and receiving JSON
+     *
+     * @param url_string
+     * @param body
+     * @param parameters
+     * @return
+     */
+    @JavascriptInterface
+    public String fetch_json(final String url_string, String body, final String parameters) {
+
+        JSONObject params;
+        JSONObject headers;
+        try {
+            params = new JSONObject(parameters);
+            headers = params.getJSONObject("headers");
+            if (headers == null) {
+                headers = new JSONObject();
+            }
+        } catch (JSONException e) {
+            android.util.Log.e("daedalus-js","unable to parse parameters");
+            return "error1";
+        }
+
+        URL url;
+        try {
+            url = new URL(url_string);
+        } catch (java.net.MalformedURLException e) {
+            android.util.Log.e("daedalus-js","unable to parse url");
+            return "error2";
+        }
+
+        HttpURLConnection conn;
+        try {
+            conn = (HttpURLConnection) url.openConnection();
+        } catch (java.io.IOException e) {
+            android.util.Log.e("daedalus-js","unable to open connection");
+            return "error3";
+        }
+
+        try {
+            conn.setRequestMethod("GET");
+        } catch (java.net.ProtocolException e) {
+            android.util.Log.e("daedalus-js","unable to set method");
+            return "error4";
+        }
+
+        Iterator<String> keys = headers.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            try {
+                String value = headers.getString(key);
+                conn.setRequestProperty(key, value);
+            } catch (org.json.JSONException e) {
+                android.util.Log.e("daedalus-js","unable to set request property " + key);
+            }
+        }
+
+        conn.setReadTimeout(10000);
+        conn.setConnectTimeout(10000);
+
+        android.util.Log.e("daedalus-js-api", "protocol: " + url.getProtocol());
+        android.util.Log.e("daedalus-js-api", "method: " + conn.getRequestMethod());
+        android.util.Log.e("daedalus-js-api", "url: " + url.toString());
+
+        if (!body.isEmpty()) {
+            conn.setDoOutput(true);
+            try {
+                OutputStream os = conn.getOutputStream();
+                byte[] input = body.getBytes("utf-8");
+                os.write(input, 0, input.length);
+            } catch (java.io.IOException e) {
+                android.util.Log.e("daedalus-js","error writing output stream");
+                return "error5:" + e.getMessage();
+            }
+        }
+
+        try {
+            conn.connect();
+        } catch (Exception e) {
+            android.util.Log.e("daedalus-js-api", "failed to connect: " + e.toString());
+            return "error6";
+        }
+
+        int status;
+        try {
+            status = conn.getResponseCode();
+        } catch (java.io.IOException e) {
+            android.util.Log.e("daedalus-js-api", "unable to get response status code");
+            return "error7";
+        }
+        android.util.Log.e("daedalus-js-api", "status: " + status);
+
+        if (status != HttpURLConnection.HTTP_OK) {
+            InputStream stream = conn.getErrorStream();
+            String text;
+            try {
+                text = readResponseText(stream);
+            } catch (java.io.IOException e) {
+                android.util.Log.e("daedalus-js-api", "unable to get response error text");
+                return "error8";
+            }
+            android.util.Log.e("daedalus-js-api", "response error:" + text);
+            return "error9";
+        }
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        String contentLength = conn.getHeaderField("Content-Length");
+        int total_length = 0;
+        if (!contentLength.isEmpty()) {
+            total_length = Integer.parseInt(contentLength);
+        }
+
+        String text;
+        try {
+            text = readResponseText(conn.getInputStream());
+        } catch (java.io.IOException e) {
+            android.util.Log.e("daedalus-js-api", "unable to get response text");
+            return "error10";
+        }
+
+        return text;
     }
 }

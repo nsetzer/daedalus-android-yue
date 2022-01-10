@@ -50,7 +50,7 @@ daedalus=(function(){
           if(Object.keys(obj).length==0){
             return"";
           }
-          const strings=Object.keys(obj).reduce(function(a,k){
+          const strings=Object.keys(obj).reduce((a,k)=>{
               if(obj[k]===null||obj[k]===undefined){
 
               }else if(Array.isArray(obj[k])){
@@ -184,27 +184,8 @@ daedalus=(function(){
         return[StyleSheet,getStyleSheet,parseParameters,util];
       })();
     const[ButtonElement,DomElement,DraggableList,DraggableListItem,HeaderElement,
-          LinkElement,ListElement,ListItemElement,NumberInputElement,Signal,TextElement,
-          TextInputElement]=(function(){
-        let sigal_counter=0;
-        function Signal(element,name){
-          const event_name="onSignal_"+(sigal_counter++)+"_"+name;
-          const signal={};
-          signal._event_name=event_name;
-          signal._slots=[];
-          signal.emit=(obj=null)=>{
-            signal._slots.map(item=>{
-                requestIdleCallback(()=>{
-                    item.callback(obj);
-                  });
-              });
-          };
-          console.log("signal create:"+event_name);
-          if(!!element){
-            element._$signals.push(signal);
-          }
-          return signal;
-        }
+          LinkElement,ListElement,ListItemElement,TextElement,TextInputElement]=(function(
+            ){
         let element_uid=0;
         function generateElementId(){
           const chars='abcdefghijklmnopqrstuvwxyz';
@@ -229,8 +210,6 @@ daedalus=(function(){
             if(this.props.id===undefined){
               this.props.id=this.constructor.name+generateElementId();
             }
-            this._$signals=[];
-            this._$slots=[];
             this._$dirty=true;
             this.state={};
             this.attrs={};
@@ -268,7 +247,8 @@ daedalus=(function(){
           }
           appendChild(childElement){
             if(!childElement||!childElement.type){
-              throw"invalid child";
+              console.log({message:"invalid child",child:childElement});
+              throw"appendChild Failed: child is null or type not set";
             }
             if(typeof this.children==="string"){
               this.children=[this.children];
@@ -354,15 +334,6 @@ daedalus=(function(){
               return this.props.className.filter(x=>x===cls).length===1;
             }
             return this.props.className===cls;
-          }
-          connect(signal,callback){
-            console.log("signal connect:"+signal._event_name,callback);
-            const ref={element:this,signal:signal,callback:callback};
-            signal._slots.push(ref);
-            this._$slots.push(ref);
-          }
-          disconnect(signal){
-            console.log("signal disconnect:"+signal._event_name);
           }
           getDomNode(){
             return this._$fiber&&this._$fiber.dom;
@@ -451,28 +422,6 @@ daedalus=(function(){
                 this.attrs.submit_callback(this.getText());
               }
             }
-          }
-        }
-        class NumberInputElement extends DomElement {
-          constructor(value){
-            super("input",{value:value,type:"number"},[]);
-            this.valueChanged=Signal(this,'valueChanged');
-          }
-          onChange(event){
-            this.updateProps({value:parseInt(event.target.value,10)},false);
-            this.valueChanged.emit(this.props);
-          }
-          onPaste(event){
-            this.updateProps({value:parseInt(event.target.value,10)},false);
-            this.valueChanged.emit(this.props);
-          }
-          onKeyUp(event){
-            this.updateProps({value:parseInt(event.target.value,10)},false);
-            this.valueChanged.emit(this.props);
-          }
-          onInput(event){
-            this.updateProps({value:parseInt(event.target.value,10)},false);
-            this.valueChanged.emit(this.props);
           }
         }
         function swap(nodeA,nodeB){
@@ -735,17 +684,20 @@ daedalus=(function(){
           }
         }
         return[ButtonElement,DomElement,DraggableList,DraggableListItem,HeaderElement,
-                  LinkElement,ListElement,ListItemElement,NumberInputElement,Signal,TextElement,
-                  TextInputElement];
+                  LinkElement,ListElement,ListItemElement,TextElement,TextInputElement];
       })();
     const[]=(function(){
-        history.locationChanged=Signal(null,"locationChanged");
+        function _sendEvent(){
+          const myEvent=new CustomEvent('locationChangedEvent',{detail:{path:location.pathname},
+                          bubbles:true,cancelable:true,composed:false});
+          window.dispatchEvent(myEvent);
+        }
         history.states=[{state:{},title:null,path:window.location.href}];
         history.forward_states=[];
         history._pushState=history.pushState;
         history.pushState=(state,title,path)=>{
           history._pushState(state,title,path);
-          history.locationChanged.emit({path:location.pathname});
+          _sendEvent();
           history.forward_states=[];
           history.states.push({state,title,path});
         };
@@ -757,11 +709,11 @@ daedalus=(function(){
           history.forward_states.splice(0,0,state);
           const new_state=history.states[history.states.length-1];
           history._pushState(new_state.state,new_state.title,new_state.path);
-          history.locationChanged.emit({path:location.pathname});
+          _sendEvent();
           return true;
         };
         window.addEventListener('popstate',(event)=>{
-            history.locationChanged.emit({path:location.pathname});
+            _sendEvent();
           });
         return[];
       })();
@@ -866,11 +818,17 @@ daedalus=(function(){
             this.routes=[];
             this.current_index=-2;
             this.current_location=null;
+            this.match=null;
           }
           handleLocationChanged(location){
+            let auth=this.isAuthenticated();
             let index=0;
             while(index<this.routes.length){
               const item=this.routes[index];
+              if(!auth&&item.auth){
+                index+=1;
+                continue;
+              }
               const match=locationMatch(item.re,location);
               if(match!==null){
                 let fn=(element)=>this.setElement(index,location,match,element);
@@ -914,7 +872,7 @@ daedalus=(function(){
             this.default_callback=callback;
           }
           setMatch(match){
-
+            this.match=match;
           }
           clear(){
             this.container.children=[];
@@ -922,7 +880,11 @@ daedalus=(function(){
             this.current_location=null;
             this.container.update();
           }
+          isAuthenticated(){
+            return false;
+          }
         }
+        Router.instance=null;
         class AuthenticatedRouter extends Router {
           constructor(container,route_list,default_callback){
             super(container,route_list,default_callback);
@@ -940,7 +902,6 @@ daedalus=(function(){
               }
             }
             if(item.auth===undefined&&item.noauth===true){
-              console.log(item,has_auth);
               if(!has_auth){
                 item.callback(fn,match);
                 return true;
@@ -1186,6 +1147,13 @@ daedalus=(function(){
         return[OSName,platform];
       })();
     const[render,render_update]=(function(){
+        if(window.requestIdleCallback===undefined){
+          window.requestIdleCallback=(callback,options)=>{
+            setTimeout(()=>{
+                callback();
+              },0);
+          };
+        }
         let workstack=[];
         let deletions=[];
         let deletions_removed=new Set();
@@ -1319,8 +1287,8 @@ daedalus=(function(){
               element._$dirty=false;
               const newFiber={type:element.type,effect:effect,props:{...element.props},
                               children:element.children.slice(),_fibers:[],parent:(parentFiber.partial&&oldFiber)?oldFiber.parent:parentFiber,
-                              alternate:oldFiber,dom:oldFiber?oldFiber.dom:null,signals:element._$signals,
-                              element:element,index:index,oldIndex:oldIndex};
+                              alternate:oldFiber,dom:oldFiber?oldFiber.dom:null,element:element,
+                              index:index,oldIndex:oldIndex};
               if(!newFiber.parent.dom){
                 console.error(`element parent is not mounted id: ${element.props.id} effect: ${effect}`);
                 
@@ -1480,10 +1448,10 @@ daedalus=(function(){
         return[render,render_update];
       })();
     return{AuthenticatedRouter,ButtonElement,DomElement,DraggableList,DraggableListItem,
-          HeaderElement,LinkElement,ListElement,ListItemElement,NumberInputElement,OSName,
-          Router,Signal,StyleSheet,TextElement,TextInputElement,build_platform,downloadFile,
-          env,getStyleSheet,locationMatch,parseParameters,patternCompile,patternToRegexp,
-          platform,render,render_update,uploadFile,util};
+          HeaderElement,LinkElement,ListElement,ListItemElement,OSName,Router,StyleSheet,
+          TextElement,TextInputElement,build_platform,downloadFile,env,getStyleSheet,
+          locationMatch,parseParameters,patternCompile,patternToRegexp,platform,render,
+          render_update,uploadFile,util};
   })();
 api.requests=(function(){
     "use strict";
@@ -1527,6 +1495,12 @@ api.requests=(function(){
       }
       if(parameters.headers===undefined){
         parameters.headers={};
+      }
+      if(parameters.timeout!==undefined){
+        let controller=new AbortController();
+        setTimeout(()=>controller.abort(),parameters.timeout);
+        delete parameters.timeout;
+        parameters.signal=controller.signal;
       }
       parameters.method="POST";
       parameters.headers['Content-Type']="application/json";
@@ -1709,16 +1683,16 @@ Object.assign(api,(function(api,daedalus){
       const[authenticate,env,fsGetPath,fsGetPathContent,fsGetPathContentUrl,fsGetPublicPathUrl,
               fsGetRoots,fsNoteCreate,fsNoteGetContent,fsNoteList,fsNoteSetContent,fsPathPreviewUrl,
               fsPathUrl,fsPublicUriGenerate,fsPublicUriInfo,fsPublicUriRevoke,fsSearch,
-              fsUploadFile,getPublicConfig,libraryDomainInfo,librarySearchForest,librarySong,
-              librarySongAudioUrl,openTab,queueCreate,queueGetQueue,queuePopulate,queueSetQueue,
-              radioPublicStationAddTrack,radioPublicStationPreviousTracks,radioPublicStationRelated,
-              radioPublicStationSearch,radioPublicStationTracks,radioPublicStationUpdates,
-              radioPublicStationVote,radioStationAddTrack,radioStationCurrentTrack,radioStationEnable,
-              radioStationInfo,radioStationList,radioStationNextTrack,radioStationPreviousTracks,
-              radioStationRelated,radioStationRemoveTrack,radioStationResetTracks,radioStationSave,
-              radioStationSearch,radioStationShutdown,radioStationTracks,radioStationUpdates,
-              radioStationUrl,radioStationVote,radioVideoInfo,userDoc,validate_token]=(
-              function(){
+              fsUploadFile,getIngredients,getPublicConfig,libraryDomainInfo,librarySearchForest,
+              librarySong,librarySongAudioUrl,openTab,queueCreate,queueGetQueue,queuePopulate,
+              queueSetQueue,radioPublicStationAddTrack,radioPublicStationPreviousTracks,
+              radioPublicStationRelated,radioPublicStationSearch,radioPublicStationTracks,
+              radioPublicStationUpdates,radioPublicStationVote,radioStationAddTrack,radioStationCurrentTrack,
+              radioStationEnable,radioStationInfo,radioStationList,radioStationNextTrack,
+              radioStationPreviousTracks,radioStationRelated,radioStationRemoveTrack,radioStationResetTracks,
+              radioStationSave,radioStationSearch,radioStationShutdown,radioStationTracks,
+              radioStationUpdates,radioStationUrl,radioStationVote,radioVideoInfo,recipeGetContent,
+              recipeGetRecipes,userDoc,validate_token]=(function(){
           const env={baseUrl:(((((daedalus)||{}).env)||{}).baseUrl)??""};
           env.websocket_protocol=(window.location.protocol==='http:')?'ws:':'wss:';
           
@@ -1731,11 +1705,11 @@ Object.assign(api,(function(api,daedalus){
           }
           function authenticate(email,password){
             const url=env.baseUrl+'/api/user/login';
-            return api.requests.post_json(url,{email,password});
+            return api.requests.post_json(url,{email,password},{timeout:5000});
           }
           function validate_token(token){
             const url=env.baseUrl+'/api/user/token';
-            return api.requests.post_json(url,{token});
+            return api.requests.post_json(url,{token},{timeout:5000});
           }
           function fsGetRoots(){
             const url=env.baseUrl+'/api/fs/roots';
@@ -2048,6 +2022,17 @@ Object.assign(api,(function(api,daedalus){
             return daedalus.uploadFile(urlbase,headers={...cfg.headers,...headers},
                           params=params,success,failure,progress);
           }
+          function recipeGetContent(path){
+            const url="/api/recipe/"+path;
+            return api.requests.get_json(url,{});
+          }
+          function recipeGetRecipes(){
+            const url="/api/recipe";
+            return api.requests.get_json(url,{});
+          }
+          function getIngredients(){
+
+          }
           function openTab(url){
             if(daedalus.platform.isAndroid){
               Client.browseUrl(url);
@@ -2058,31 +2043,33 @@ Object.assign(api,(function(api,daedalus){
           return[authenticate,env,fsGetPath,fsGetPathContent,fsGetPathContentUrl,
                       fsGetPublicPathUrl,fsGetRoots,fsNoteCreate,fsNoteGetContent,fsNoteList,
                       fsNoteSetContent,fsPathPreviewUrl,fsPathUrl,fsPublicUriGenerate,fsPublicUriInfo,
-                      fsPublicUriRevoke,fsSearch,fsUploadFile,getPublicConfig,libraryDomainInfo,
-                      librarySearchForest,librarySong,librarySongAudioUrl,openTab,queueCreate,
-                      queueGetQueue,queuePopulate,queueSetQueue,radioPublicStationAddTrack,
+                      fsPublicUriRevoke,fsSearch,fsUploadFile,getIngredients,getPublicConfig,
+                      libraryDomainInfo,librarySearchForest,librarySong,librarySongAudioUrl,
+                      openTab,queueCreate,queueGetQueue,queuePopulate,queueSetQueue,radioPublicStationAddTrack,
                       radioPublicStationPreviousTracks,radioPublicStationRelated,radioPublicStationSearch,
                       radioPublicStationTracks,radioPublicStationUpdates,radioPublicStationVote,
                       radioStationAddTrack,radioStationCurrentTrack,radioStationEnable,radioStationInfo,
                       radioStationList,radioStationNextTrack,radioStationPreviousTracks,radioStationRelated,
                       radioStationRemoveTrack,radioStationResetTracks,radioStationSave,radioStationSearch,
                       radioStationShutdown,radioStationTracks,radioStationUpdates,radioStationUrl,
-                      radioStationVote,radioVideoInfo,userDoc,validate_token];
+                      radioStationVote,radioVideoInfo,recipeGetContent,recipeGetRecipes,userDoc,
+                      validate_token];
         })();
       return{authenticate,clearPublicToken,clearUserToken,env,fsGetPath,fsGetPathContent,
               fsGetPathContentUrl,fsGetPublicPathUrl,fsGetRoots,fsNoteCreate,fsNoteGetContent,
               fsNoteList,fsNoteSetContent,fsPathPreviewUrl,fsPathUrl,fsPublicUriGenerate,
               fsPublicUriInfo,fsPublicUriRevoke,fsSearch,fsUploadFile,getAuthConfig,getAuthToken,
-              getPublicConfig,getPublictoken,getUsertoken,libraryDomainInfo,librarySearchForest,
-              librarySong,librarySongAudioUrl,multiSort,openTab,queueCreate,queueGetQueue,
-              queuePopulate,queueSetQueue,radioPublicStationAddTrack,radioPublicStationPreviousTracks,
+              getIngredients,getPublicConfig,getPublictoken,getUsertoken,libraryDomainInfo,
+              librarySearchForest,librarySong,librarySongAudioUrl,multiSort,openTab,queueCreate,
+              queueGetQueue,queuePopulate,queueSetQueue,radioPublicStationAddTrack,radioPublicStationPreviousTracks,
               radioPublicStationRelated,radioPublicStationSearch,radioPublicStationTracks,
               radioPublicStationUpdates,radioPublicStationVote,radioStationAddTrack,radioStationCurrentTrack,
               radioStationEnable,radioStationInfo,radioStationList,radioStationNextTrack,
               radioStationPreviousTracks,radioStationRelated,radioStationRemoveTrack,radioStationResetTracks,
               radioStationSave,radioStationSearch,radioStationShutdown,radioStationTracks,
-              radioStationUpdates,radioStationUrl,radioStationVote,radioVideoInfo,setPublictoken,
-              setUsertoken,shuffle,sortTracks,track_shuffle,userDoc,validate_token};
+              radioStationUpdates,radioStationUrl,radioStationVote,radioVideoInfo,recipeGetContent,
+              recipeGetRecipes,setPublictoken,setUsertoken,shuffle,sortTracks,track_shuffle,
+              userDoc,validate_token};
     })(api,daedalus));
 resources=(function(daedalus){
     "use strict";
@@ -3930,18 +3917,11 @@ router=(function(api,daedalus){
     "use strict";
     const AuthenticatedRouter=daedalus.AuthenticatedRouter;
     const patternCompile=daedalus.patternCompile;
-    let current_match=null;
     class AppRouter extends AuthenticatedRouter {
       isAuthenticated(){
         return api.getUsertoken()!==null;
       }
-      setMatch(match){
-        current_match=match;
-      }
     }
-    AppRouter.match=()=>{
-      return current_match;
-    };
     function navigate(location){
       history.pushState({},"",location);
     }
@@ -3954,7 +3934,7 @@ router=(function(api,daedalus){
           userRadioStationHistory:"/u/radio/:station/history",userWildCard:"/u/:path*",
           login:"/login",apiDoc:"/doc",publicFile:"/p/:uid/:filename",publicRadioSearch:"/radio/:station/search",
           publicRadioHistory:"/radio/:station/history",publicRadio:"/radio/:station",
-          wildCard:"/:path*"};
+          recipeList:"/recipe",recipeContent:"/recipe/:path",wildCard:"/:path*"};
     const routes={};
     Object.keys(route_urls).map(key=>{
         routes[key]=patternCompile(route_urls[key]);
@@ -4732,6 +4712,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
     const TextElement=daedalus.TextElement;
     const Router=daedalus.Router;
     const TextInputElement=daedalus.TextInputElement;
+    const patternCompile=daedalus.patternCompile;
     const LinkElement=daedalus.LinkElement;
     const routes=router.routes;
     const[fmtEpochTime]=(function(){
@@ -7269,6 +7250,374 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         }
         return[LibraryPage,SavedSearchPage,SyncPage];
       })();
+    const[RecipeIndexPage,RecipePage]=(function(){
+        const style={ingredientTable:'dcs-f4bd2df9-0',ingredientQuantityHeader:'dcs-f4bd2df9-1',
+                  ingredientBorder:'dcs-f4bd2df9-2',ingredientQuantity:'dcs-f4bd2df9-3',ingredientUnit:'dcs-f4bd2df9-4',
+                  ingredientName:'dcs-f4bd2df9-5',header:'dcs-f4bd2df9-6',summary:'dcs-f4bd2df9-7',
+                  steps:'dcs-f4bd2df9-8',attributeList:'dcs-f4bd2df9-9',attributeItem:'dcs-f4bd2df9-10',
+                  attributeItemBreakfast:'dcs-f4bd2df9-11',attributeItemLunch:'dcs-f4bd2df9-12',
+                  attributeItemDinner:'dcs-f4bd2df9-13',attributeItemDessert:'dcs-f4bd2df9-14',
+                  attributeItemSnack:'dcs-f4bd2df9-15',attributeItemSide:'dcs-f4bd2df9-16',
+                  attributeItemAppetizer:'dcs-f4bd2df9-17',attributeItemMeal:'dcs-f4bd2df9-18',
+                  recipeHeader:'dcs-f4bd2df9-19',recipeTitle:'dcs-f4bd2df9-20',infoHeader:'dcs-f4bd2df9-21',
+                  infoBox:'dcs-f4bd2df9-22',infoTitle:'dcs-f4bd2df9-23',infoRowCalorie:'dcs-f4bd2df9-24',
+                  infoRowMacro:'dcs-f4bd2df9-25',infoRowMacroSub:'dcs-f4bd2df9-26',infoRowMicro:'dcs-f4bd2df9-27',
+                  infoAttribute:'dcs-f4bd2df9-28',fraction:'dcs-f4bd2df9-29',nutritionTable:'dcs-f4bd2df9-30',
+                  nutritionTableValue:'dcs-f4bd2df9-31'};
+        const attr_style={"breakfast":style.attributeItemBreakfast,"lunch":style.attributeItemLunch,
+                  "dinner":style.attributeItemDinner,"dessert":style.attributeItemDessert,
+                  "snack":style.attributeItemSnack,"appetizer":style.attributeItemAppetizer,
+                  "side":style.attributeItemSide,"meal":style.attributeItemMeal};
+        ;
+        ;
+        ;
+        ;
+        ;
+        ;
+        function fraction(initial){
+          const candidates=[2,3,4,8,16];
+          let whole=Math.floor(initial);
+          let value=initial-whole;
+          if(value<.00001){
+            return{whole,'num':0,'den':0};
+          }
+          let bound=0;
+          let den=0;
+          let min_error=1.0,error=0.0;
+          for(let i=0;i<candidates.length;i++)
+          {
+            const n=candidates[i];
+            const lower=1.0/n*Math.floor(n*value);
+            error=Math.abs(value-lower)/value;
+            if(error<min_error){
+              min_error=error;
+              bound=lower;
+              den=n;
+            }
+            const upper=1.0/n*Math.floor(n*value+1.0);
+            error=Math.abs(value-upper)/value;
+            if(error<min_error){
+              min_error=error;
+              bound=upper;
+              den=n;
+            }
+          }
+          let num=Math.round(den*bound);
+          if(num===den){
+            whole+=1;
+            num=0;
+            den=0;
+          }
+          return{whole,num,den};
+        }
+        class Fraction extends DomElement {
+          constructor(value,prefix="",suffix="",allow_empty=false){
+            super("div",{className:style.fraction},[]);
+            let frac=fraction(value);
+            if(prefix.length){
+              this.appendChild(new TextElement(prefix));
+            }
+            if(!allow_empty&&frac.whole===0&&frac.num===0&&frac.den===0){
+              this.appendChild(new TextElement("0"));
+            }else{
+              if(frac.whole!==0){
+                this.appendChild(new TextElement(frac.whole.toString()));
+              }
+              if(frac.num!==0&&frac.den!==0){
+                this.appendChild(new DomElement("sup",{},[new TextElement(frac.num.toString(
+                                                ))]));
+                this.appendChild(new TextElement("\u2044"));
+                this.appendChild(new DomElement("sub",{},[new TextElement(frac.den.toString(
+                                                ))]));
+              }
+            }
+            if(suffix.length){
+              this.appendChild(new TextElement(suffix));
+            }
+          }
+        }
+        class RecipeHeader extends DomElement {
+          constructor(text){
+            super("h2",{className:style.header},[new TextElement(text)]);
+          }
+        }
+        class RecipeIngredientHeader extends DomElement {
+          constructor(span,item){
+            super("tr",{},[]);
+            if(item.header.length>1){
+              span=1;
+            }
+            item.header.forEach((text,index)=>{
+                let child=this.appendChild(new DomElement("th",{'colSpan':span,className:style.ingredientQuantityHeader},
+                                      [new TextElement(text)]));
+                if(index+1<item.header.length){
+                  child.addClassName(style.ingredientBorder);
+                }
+              });
+            this.appendChild(new DomElement("th",{'colSpan':2,className:style.ingredientQuantityHeader},
+                              []));
+          }
+        }
+        class RecipeIngredient extends DomElement {
+          constructor(span,item){
+            super("tr",{},[]);
+            item.quantities.forEach((value,index)=>{
+                let child=this.appendChild(new DomElement("td",{className:style.ingredientQuantity},
+                                      [new Fraction(value,"","",true)]));
+                if(index+1<item.quantities.length){
+                  child.addClassName(style.ingredientBorder);
+                }
+              });
+            this.appendChild(new DomElement("td",{className:style.ingredientUnit},
+                              [new TextElement(item.unit)]));
+            this.appendChild(new DomElement("td",{className:style.ingredientName},
+                              [new TextElement(item.name)]));
+          }
+        }
+        class RecipeIngredientsTable extends DomElement {
+          constructor(items){
+            super("table",{className:style.ingredientTable},[]);
+            let span=1;
+            items.forEach(item=>{
+                if(item.quantities!==undefined){
+                  if(item.quantities.length>span){
+                    span=item.quantities.length;
+                  }
+                }
+              });
+            this.appendChild(new DomElement("tr",{},[new DomElement("th",{'colSpan':2+span},
+                                      [new TextElement("Ingredients")])]));
+            this.appendChild(new DomElement("tr",{},[new DomElement("th",{'colSpan':span},
+                                      [new TextElement("Quantity")]),new DomElement("th",{},[]),new DomElement(
+                                      "th",{},[new TextElement("Name")])]));
+            items.forEach(item=>{
+                if(item.header!==undefined){
+                  this.appendChild(new RecipeIngredientHeader(span,item));
+                }else{
+                  this.appendChild(new RecipeIngredient(span,item));
+                }
+              });
+          }
+        }
+        class RecipeNutritionFacts extends DomElement {
+          constructor(attrs,items){
+            super("div",{className:style.infoTable},[]);
+          }
+        }
+        class RecipeAttributes extends DomElement {
+          constructor(attrs){
+            super("ul",{className:style.attributeList},[]);
+            attrs.forEach(attr=>{
+                let child=this.appendChild(new DomElement("li",{className:style.attributeItem},
+                                      [new TextElement(attr)]));
+                let s=attr_style[attr];
+                if(s!==undefined){
+                  child.addClassName(s);
+                }
+              });
+          }
+        }
+        class RecipeSummary extends DomElement {
+          constructor(summary){
+            super("div",{className:style.summary},[]);
+            summary.forEach(paragraph=>{
+                this.appendChild(new DomElement("p",{},[new TextElement(paragraph)]));
+                
+              });
+          }
+        }
+        class RecipeNotes extends DomElement {
+          constructor(notes){
+            super("ul",{className:style.summary},[]);
+            this.appendChild(new DomElement("h4",{},[new TextElement("Notes")]));
+            
+            notes.forEach(note=>{
+                this.appendChild(new DomElement("li",{},[new TextElement(note)]));
+                
+              });
+          }
+        }
+        class RecipeSteps extends DomElement {
+          constructor(steps){
+            super("ol",{className:style.steps},[]);
+            this.appendChild(new DomElement("h4",{},[new TextElement("Steps")]));
+            
+            steps.forEach(step=>{
+                this.appendChild(new DomElement("li",{},[new TextElement(step)]));
+                
+              });
+          }
+        }
+        class Recipe extends DomElement {
+          constructor(recipe){
+            super("div",{},[]);
+            console.log(recipe);
+            this.top=this.appendChild(new DomElement("div",{className:style.recipeHeader},
+                              []));
+            this.top1=this.top.appendChild(new DomElement("div",{className:style.recipeTitle},
+                              []));
+            this.top1.appendChild(new RecipeHeader(recipe.title));
+            this.top1.appendChild(new RecipeAttributes(recipe.attributes));
+            if(recipe.summary.length>0){
+              this.top1.appendChild(new RecipeSummary(recipe.summary));
+            }
+            let facts=this.top.appendChild(new DomElement("div",{className:style.infoHeader}));
+            
+            this.buildNutritionFacts(facts,recipe.attributes,recipe.ingredients);
+            
+            this.appendChild(new DomElement("hr"));
+            this.appendChild(new RecipeIngredientsTable(recipe.ingredients));
+            if(recipe.notes.length>0){
+              this.appendChild(new RecipeNotes(recipe.notes));
+            }
+            if(recipe.steps.length>0){
+              this.appendChild(new RecipeSteps(recipe.steps));
+            }
+          }
+          buildNutritionFacts(parent,attrs,items){
+            let servings=1;
+            attrs.forEach(attr=>{
+                if(attr.startsWith("servings=")){
+                  servings=+attr.substr(9);
+                }
+              });
+            const facts={};
+            items.forEach(item=>{
+                if(item.info){
+                  let _servings=((((item.info)||{}).servings)||{}).value??1;
+                  for(let[key,value]of Object.entries(item.info)){
+                    if(key=="servings"){
+                      continue;
+                    }
+                    if(facts[key]===undefined){
+                      facts[key]={'value':0,'unit':value['unit']};
+                    }
+                    facts[key].value+=value.value/_servings;
+                  }
+                }
+              });
+            this.buildNutritionFacts2(parent,1,facts);
+            if(servings>1){
+              this.buildNutritionFacts2(parent,servings,facts);
+            }
+          }
+          formatNumber(value){
+            let v=value.toFixed(1);
+            if(v.endsWith('5')){
+              return v;
+            }else{
+              return Math.round(value);
+            }
+          }
+          buildNutritionFacts2(parent,servings,facts){
+            const lst=parent.appendChild(new DomElement("div",{className:style.infoBox},
+                              []));
+            lst.appendChild(new DomElement("div",{className:style.infoTitle},[new TextElement(
+                                      "Nutrition Facts")]));
+            const amount=((((facts)||{}).amount)||{}).value??0;
+            const unit=((((facts)||{}).amount)||{}).unit??"g";
+            if(servings==1){
+              lst.appendChild(new DomElement("div",{},[new TextElement("per "+(amount)+unit+" serving")]));
+              
+              lst.appendChild(new DomElement("div",{},[new TextElement("\xa0")]));
+              
+            }else{
+              lst.appendChild(new DomElement("div",{},[new TextElement("per "+(amount/servings)+unit+" serving")]));
+              
+              lst.appendChild(new DomElement("div",{},[new TextElement(servings+" servings")]));
+              
+            }
+            const keys=['calories','protein','total_fat','total_carbs','sugar','sodium',
+                          'calcium','potassium'];
+            const title=['Calories','Protein','Fat','Carbohydrates','Sugar','Sodium',
+                          'Calcium','Potassium'];
+            const styles=[style.infoRowCalorie,style.infoRowMacro,style.infoRowMacro,
+                          style.infoRowMacro,style.infoRowMacroSub,style.infoRowMicro,style.infoRowMicro,
+                          style.infoRowMicro];
+            keys.forEach((key,index)=>{
+                const value=facts[key];
+                lst.appendChild(new DomElement("div",{className:styles[index]},[new DomElement(
+                                              "div",{className:style.infoAttribute},[new TextElement(title[
+                                                        index])]),new DomElement("div",{},[new Fraction((((value)||{
+                                                                }).value??0)/servings,"",(((value)||{}).unit??""))])]));
+                
+              });
+          }
+        }
+        class RecipePage extends DomElement {
+          elementMounted(){
+            this.removeChildren();
+            const lnk=new DomElement("a",{"href":"/recipe",className:style.header},
+                          [new TextElement("Home")]);
+            this.appendChild(new DomElement("div",{},[lnk]));
+            api.recipeGetContent(Router.instance.match.path).then(result=>{
+                this.appendChild(new Recipe(result.result));
+              }).catch(error=>{
+                console.error(error);
+              });
+          }
+        }
+        class RecipeIndexPage extends DomElement {
+          elementMounted(){
+            this.removeChildren();
+            const lst=this.appendChild(new DomElement("ul",{},[]));
+            api.recipeGetRecipes().then(result=>{
+                result.result.forEach(item=>{
+                    const lnk=new DomElement("a",{"href":"/recipe/"+item.path},[new TextElement(
+                                                  item.name)]);
+                    lst.appendChild(new DomElement("li",{},[lnk]));
+                  });
+              }).catch(error=>{
+                console.error(error);
+              });
+          }
+          buildTable(){
+            const table=this.appendChild(new DomElement("table",{className:style.nutritionTable},
+                              []));
+            table.appendChild(new DomElement("tr",{},[new DomElement("th",{},[new TextElement(
+                                              'name')]),new DomElement("th",{},[new TextElement('source')]),
+                                  new DomElement("th",{},[new TextElement('quantities')]),new DomElement(
+                                      "th",{},[new TextElement('unit')]),new DomElement("th",{},[new TextElement(
+                                              'protein')]),new DomElement("th",{},[new TextElement('total_fat')]),
+                                  new DomElement("th",{},[new TextElement('total_carbs')]),new DomElement(
+                                      "th",{},[new TextElement('suger')]),new DomElement("th",{},[new TextElement(
+                                              'sodium')]),new DomElement("th",{},[new TextElement('calcium')]),
+                                  new DomElement("th",{},[new TextElement('potassium')]),new DomElement(
+                                      "th",{},[new TextElement('amount')]),new DomElement("th",{},[
+                                          new TextElement('servings')])]));
+            api.getIngredients().then(result=>{
+                result.forEach(row=>{
+                    console.log(row);
+                    table.appendChild(new DomElement("tr",{},[new DomElement("td",
+                                                      {},[new TextElement(row.name)]),new DomElement("td",{
+                                                        },[new TextElement(row.source)]),new DomElement("td",
+                                                      {className:style.nutritionTableValue},[new TextElement(
+                                                              row.quantities)]),new DomElement("td",{},[new TextElement(
+                                                              row.unit)]),new DomElement("td",{className:style.nutritionTableValue},
+                                                      [new TextElement(((row.protein)||{}).value)]),new DomElement(
+                                                      "td",{className:style.nutritionTableValue},[new TextElement(
+                                                              ((row.total_fat)||{}).value)]),new DomElement("td",
+                                                      {className:style.nutritionTableValue},[new TextElement(
+                                                              ((row.total_carbs)||{}).value)]),new DomElement("td",
+                                                      {className:style.nutritionTableValue},[new TextElement(
+                                                              ((row.suger)||{}).value)]),new DomElement("td",{className:style.nutritionTableValue},
+                                                      [new TextElement(((row.sodium)||{}).value)]),new DomElement(
+                                                      "td",{className:style.nutritionTableValue},[new TextElement(
+                                                              ((row.calcium)||{}).value)]),new DomElement("td",
+                                                      {className:style.nutritionTableValue},[new TextElement(
+                                                              ((row.potassium)||{}).value)]),new DomElement("td",
+                                                      {className:style.nutritionTableValue},[new TextElement(
+                                                              ((row.amount)||{}).value)]),new DomElement("td",{
+                                                          className:style.nutritionTableValue},[new TextElement(
+                                                              ((row.servings)||{}).value)])]));
+                  });
+              }).catch(error=>{
+                console.error(error);
+              });
+          }
+        }
+        return[RecipeIndexPage,RecipePage];
+      })();
     const[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
           UserRadioListPage,UserRadioStationEditPage,UserRadioStationHistoryPage,UserRadioStationPage,
           UserRadioStationSearchPage]=(function(){
@@ -7285,6 +7634,37 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   floater:'dcs-a4af2c4a-30',titleText:'dcs-a4af2c4a-31',footerHighlight:'dcs-a4af2c4a-32'};
         
         ;
+        class HiddenEvent{
+          constructor(){
+            let hidden,visibilityChange;
+            if(typeof document.hidden!=="undefined"){
+              hidden="hidden";
+              visibilityChange="visibilitychange";
+            }else if(typeof document.msHidden!=="undefined"){
+              hidden="msHidden";
+              visibilityChange="msvisibilitychange";
+            }else if(typeof document.webkitHidden!=="undefined"){
+              hidden="webkitHidden";
+              visibilityChange="webkitvisibilitychange";
+            }
+            this.h=hidden;
+            this.v=visibilityChange;
+            this.f=this.handleVisibilityChange.bind(this);
+          }
+          connect(){
+            document.addEventListener(this.v,this.f,false);
+          }
+          disconnect(){
+            document.removeEventListener(this.v,this.f,false);
+          }
+          handleVisibilityChange(){
+            if(document[this.h]){
+              console.log('document.hidden');
+            }else{
+              console.log('document.visible');
+            }
+          }
+        }
         class AudioDevice{
           constructor(){
             this.connected_elements=[];
@@ -7306,7 +7686,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           togglePlayPause(){
             if(this.current_track===null){
-              const match=router.AppRouter.match();
+              const match=Router.instance.match();
               api.radioStationCurrentTrack(match.station).then((result)=>{
                   const track=result.result;
                   if(track.source==='library'){
@@ -7346,13 +7726,13 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           next(){
             if(daedalus.platform.isAndroid){
-              const match=router.AppRouter.match();
+              const match=Router.instance.match();
               console.log("initialize android radio");
               AndroidNativeAudio.initRadio(api.getAuthToken(),match.station);
               console.log("play next track");
               AndroidNativeAudio.playNextRadioUrl();
             }else{
-              const match=router.AppRouter.match();
+              const match=Router.instance.match();
               let station=match.station;
               api.radioStationNextTrack(station).then(result=>{
                   const track=result.result;
@@ -7613,6 +7993,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 if(store.globals.radio_broadcast_id!==null){
                   const url=api.radioStationUrl(null,store.globals.radio_broadcast_id);
                   
+                  console.log(url);
                   if(daedalus.platform.isAndroid){
                     Client.setClipboardUrl("Yue Radio",url);
                   }else{
@@ -7648,7 +8029,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
           }
           handleToggleBroadcasting(enable){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             api.radioStationEnable(match.station,enable).then(result=>{
                 store.globals.radio_broadcast_id=result.result.broadcast_id;
                 if(enable){
@@ -7673,7 +8054,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
           }
           handleSaveTracks(){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             api.radioStationSave(match.station).then(result=>{
                 console.log(result);
               }).catch(error=>{
@@ -7682,7 +8063,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
           }
           handleResetTracks(){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             api.radioStationResetTracks(match.station).then(result=>{
                 _processUpdates_TrackReset();
               }).catch(error=>{
@@ -7691,7 +8072,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
           }
           handleShutdown(){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             api.radioStationShutdown(match.station).then(result=>{
                 radio_reset();
                 router.navigate(router.routes.userRadio());
@@ -7790,7 +8171,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.parent=parent;
             if(!isPublic){
               this.addAction(resources.svg.edit,()=>{
-                  const match=router.AppRouter.match();
+                  const match=Router.instance.match();
                   router.navigate(router.routes.userRadioStationEdit({'station':match.station},
                                           {}));
                 }).updateProps({'width':64});
@@ -7798,19 +8179,19 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               currentIndex-=1;
             }
             this.addAction(resources.svg.history,()=>{
-                const match=router.AppRouter.match();
+                const match=Router.instance.match();
                 const route_fn=(isPublic)?router.routes.publicRadioHistory:router.routes.userRadioStationHistory;
                 
                 router.navigate(route_fn({'station':match.station},{}));
               }).updateProps({'width':64});
             this.addAction(resources.svg.microphone,()=>{
-                const match=router.AppRouter.match();
+                const match=Router.instance.match();
                 const route_fn=(isPublic)?router.routes.publicRadio:router.routes.userRadioStation;
                 
                 router.navigate(route_fn({'station':match.station},{}));
               }).updateProps({'width':64});
             this.addAction(resources.svg.search_generic,()=>{
-                const match=router.AppRouter.match();
+                const match=Router.instance.match();
                 const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
                 
                 let params={};
@@ -8263,7 +8644,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           return true;
         }
         function getStationInfo(){
-          const match=router.AppRouter.match();
+          const match=Router.instance.match();
           let station=match.station;
           if(store.globals.radio_broadcast_id!==undefined){
             return new Promise((accept,reject)=>{
@@ -8421,7 +8802,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             });
         }
         function _search_parse_query(page,isPublic){
-          const match=router.AppRouter.match();
+          const match=Router.instance.match();
           const params=daedalus.util.parseParameters();
           const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
           
@@ -8455,7 +8836,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             return;
           }
           query=query.trim();
-          const match=router.AppRouter.match();
+          const match=Router.instance.match();
           const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
           
           router.navigate(route_fn({station:match.station},{query,source}));
@@ -8621,7 +9002,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(this.attrs.more_track.source=="youtube"){
               const query="related:"+this.attrs.more_track.sid;
               const source=this.attrs.more_track.source;
-              const match=router.AppRouter.match();
+              const match=Router.instance.match();
               const station=match.station;
               router.navigate(router.routes.userRadioStationSearch({station},{source,
                                       query}));
@@ -8631,7 +9012,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
           }
           handleRemoveTrack(){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             api.radioStationRemoveTrack(station,this.attrs.more_track.uid).then(result=>{
               
@@ -8657,7 +9038,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             console.error(`failed to remove track ${uid}`);
           }
           getTracks(force){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             let uid=store.globals.radio_update_index;
             if(uid===undefined||station!=store.globals.radio_update_station){
@@ -8679,7 +9060,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
           }
           vote(item){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             return api.radioStationVote(station,item.uid,item.vote);
           }
@@ -8752,7 +9133,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
           }
           getTracks(force){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             let uid=store.globals.radio_update_index;
             if(uid===undefined||station!=store.globals.radio_update_station){
@@ -8813,7 +9194,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             thumbnail_ProcessStart();
           }
           getTracks(force){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             let uid=store.globals.radio_update_index;
             if(uid===undefined||station!=store.globals.radio_update_station){
@@ -8832,7 +9213,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
           }
           addTrackToPool(track){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             return api.radioStationAddTrack(station,track);
           }
@@ -8880,7 +9261,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.header.setTrack(track);
           }
           getTracks(force){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             let uid=store.globals.radio_update_index;
             if(uid===undefined||station!=store.globals.radio_update_station){
@@ -8961,7 +9342,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(this.attrs.more_track.source=="youtube"){
               const query="related:"+this.attrs.more_track.sid;
               const source=this.attrs.more_track.source;
-              const match=router.AppRouter.match();
+              const match=Router.instance.match();
               const station=match.station;
               router.navigate(router.routes.userRadioStationSearch({station},{source,
                                       query}));
@@ -8971,7 +9352,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
           }
           getTracks(force){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             let uid=store.globals.radio_update_index;
             if(uid===undefined||station!=store.globals.radio_update_station){
@@ -8993,7 +9374,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
           }
           vote(item){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             return api.radioPublicStationVote(match.station,item.uid,item.vote);
           }
         }
@@ -9045,7 +9426,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             thumbnail_ProcessStart();
           }
           getTracks(force){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             let uid=store.globals.radio_update_index;
             if(uid===undefined||station!=store.globals.radio_update_station){
@@ -9065,7 +9446,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           addTrackToPool(track){
             console.log("add public track");
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             return api.radioPublicStationAddTrack(station,track);
           }
@@ -9112,7 +9493,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.getTracks(false);
           }
           getTracks(force){
-            const match=router.AppRouter.match();
+            const match=Router.instance.match();
             let station=match.station;
             let uid=store.globals.radio_update_index;
             if(uid===undefined||station!=store.globals.radio_update_station){
@@ -9159,9 +9540,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
       })();
     return{FileSystemPage,LandingPage,LibraryPage,LoginPage,NoteContentPage,NoteContext,
           NoteEditPage,NotesPage,OpenApiDocPage,PlaylistPage,PublicFilePage,PublicRadioStationHistoryPage,
-          PublicRadioStationPage,PublicRadioStationSearchPage,SavedSearchPage,SettingsPage,
-          StoragePage,StoragePreviewPage,SyncPage,UserRadioListPage,UserRadioStationEditPage,
-          UserRadioStationHistoryPage,UserRadioStationPage,UserRadioStationSearchPage,
+          PublicRadioStationPage,PublicRadioStationSearchPage,RecipeIndexPage,RecipePage,
+          SavedSearchPage,SettingsPage,StoragePage,StoragePreviewPage,SyncPage,UserRadioListPage,
+          UserRadioStationEditPage,UserRadioStationHistoryPage,UserRadioStationPage,UserRadioStationSearchPage,
           fmtEpochTime};
   })(api,audio,components,daedalus,resources,router,store);
 app=(function(api,components,daedalus,pages,resources,router,store){
@@ -9171,6 +9552,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
     const ButtonElement=daedalus.ButtonElement;
     const TextElement=daedalus.TextElement;
     const AuthenticatedRouter=daedalus.AuthenticatedRouter;
+    const Router=daedalus.Router;
     const style={body:'dcs-1e053eca-0',navMenu:'dcs-1e053eca-1',rootWebDesktop:'dcs-1e053eca-2',
           rootWebMobile:'dcs-1e053eca-3',rootMobile:'dcs-1e053eca-4',margin:'dcs-1e053eca-5',
           fullsize:'dcs-1e053eca-6',show:'dcs-1e053eca-7',hide:'dcs-1e053eca-8',loading:'dcs-1e053eca-9'};
@@ -9216,6 +9598,10 @@ app=(function(api,components,daedalus,pages,resources,router,store){
       
       rt.addRoute(u.publicRadio,(cbk)=>parent.handleRoute(cbk,pages.PublicRadioStationPage));
       
+      rt.addRoute(u.recipeList,(cbk)=>parent.handleRoute(cbk,pages.RecipeIndexPage));
+      
+      rt.addRoute(u.recipeContent,(cbk)=>parent.handleRoute(cbk,pages.RecipePage));
+      
       rt.addAuthRoute(u.userWildCard,(cbk)=>{
           history.pushState({},"","/u/storage/list");
         },'/login');
@@ -9232,6 +9618,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
       rt.setDefaultRoute((cbk)=>{
           parent.handleRoute(cbk,pages.LandingPage);
         });
+      Router.instance=rt;
       return rt;
     }
     class Loading extends DomElement {
@@ -9262,12 +9649,10 @@ app=(function(api,components,daedalus,pages,resources,router,store){
           setTimeout(()=>{
               history.pushState({},"",res_path);
               window.scrollTo(0,0);
-              console.log("scrolled");
             },500);
         }else{
           history.pushState({},"",res_path);
           window.scrollTo(0,0);
-          console.log("scrolled");
         }
         this.attrs.nav.hide();
       }
@@ -9317,14 +9702,15 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         this.toggleShowMenuFixed();
         this.appendChild(this.attrs.container);
         this.appendChild(this.attrs.nav);
+        window.addEventListener("locationChangedEvent",(event)=>{
+            this.handleLocationChanged();
+          });
         this.handleLocationChanged();
-        this.connect(history.locationChanged,this.handleLocationChanged.bind(this));
-        
         if(this.attrs.loading!=null){
           this.removeChild(this.attrs.loading);
           this.attrs.loading=null;
         }
-        console.log("app build router: "+performance.now());
+        console.log(`app build router: ${performance.now()}ms`);
       }
       handleLocationChanged(){
         this.toggleShowMenuFixed();
@@ -9337,7 +9723,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         fn(this.attrs.page_cache[page]);
       }
       elementMounted(){
-        console.log("app mounted: "+performance.now());
+        console.log(`app mounted: ${performance.now()}ms`);
         this.updateMargin();
         const token=api.getUsertoken();
         if(!!token){
@@ -9347,12 +9733,13 @@ app=(function(api,components,daedalus,pages,resources,router,store){
               }
               this.buildRouter();
             }).catch((err)=>{
+              console.error(err.stack);
               console.error(err);
-              if(daedalus.platform.isAndroid){
-                this.buildRouter();
-              }else{
-                this.attrs.loading.setText("Error");
+              this.attrs.loading.setText("Error");
+              if(!daedalus.platform.isAndroid){
+                api.clearUserToken();
               }
+              this.buildRouter();
             });
         }else{
           this.buildRouter();

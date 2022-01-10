@@ -19,6 +19,8 @@ function invokeAndroidEvent(name, payload) {
         console.error("unregistered event: " + name);
     }
 }
+// signal to java that the page has loaded.
+Client.documentLoaded();
 </script>
 
 <script type="text/javascript" src="file:///android_asset/site/static/index.js"></script>

@@ -289,6 +289,10 @@ public class WebActivity extends Activity {
     public void invokeJavascriptCallback(String name, String payload) {
 
         AudioWebView view = findViewById(R.id.DaedalusView);
+        if (!AndroidClient.ready) {
+            Log.error("daedalus-js", "attempt to invoke js before document is ready. signal: " + name + ":" + payload);
+            return;
+        }
 
         view.loadUrl("javascript:invokeAndroidEvent('" + name + "', '" + payload.replace("\'", "\\\'") + "')");
     }
