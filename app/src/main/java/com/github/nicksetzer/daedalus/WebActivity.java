@@ -164,6 +164,11 @@ public class WebActivity extends Activity {
         Log.info("on app resume.");
 
         invokeJavascriptCallback(AudioEvents.ONRESUME, "{}");
+
+        if (m_audioService != null) {
+            m_audioService.m_manager.sendStatus();
+        }
+
     }
 
 
@@ -290,7 +295,7 @@ public class WebActivity extends Activity {
 
         AudioWebView view = findViewById(R.id.DaedalusView);
         if (!AndroidClient.ready) {
-            Log.error("daedalus-js", "attempt to invoke js before document is ready. signal: " + name + ":" + payload);
+            Log.error("daedalus-js", "attempt to invoke js before document is ready. signal: " + name + ":" + payload + " (AndroidClient.documentLoaded not called)");
             return;
         }
 

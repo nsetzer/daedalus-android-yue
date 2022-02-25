@@ -282,6 +282,10 @@ public class AudioManager {
         m_mediaPlayer.start();
         m_service.updateNotification();
 
+        sendStatus();
+    }
+
+    public void sendStatus() {
         String event = (m_mediaPlayer.isPlaying()?AudioEvents.ONPLAY:AudioEvents.ONERROR);
         m_service.sendEvent(event, "{}");
     }

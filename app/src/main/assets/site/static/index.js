@@ -27,24 +27,31 @@ daedalus=(function(){
           return Math.random()*(max-min)+min;
         }
         function randomInt(min,max){
-          min=Math.ceil(min);
-          max=Math.floor(max);
-          return Math.floor(Math.random()*(max-min+1))+min;
+          let _rnd=Math.random();
+          let _min=Math.ceil(min);
+          let _max=Math.floor(max);
+          return Math.floor(_rnd*(_max-_min+1))+_min;
         }
         function object2style_helper(prefix,obj){
           const items=Object.keys(obj).map(key=>{
-              const type=typeof(obj[key]);
+              const val=obj[key];
+              const type=typeof(val);
               if(type==="object"){
-                return object2style_helper(prefix+key+"-",obj[key]);
+                return object2style_helper(prefix+key+"-",val);
               }else{
-                return[prefix+key+": "+obj[key]];
+                return[prefix+key+": "+val];
               }
             });
-          return[].concat.apply([],items);
+          let out=[];
+          for(let i=0;i<items.length;i++)
+          {
+            out.concat(items[i]);
+          }
+          return out;
         }
         function object2style(obj){
           const arr=object2style_helper("",obj);
-          return[].concat.apply([],arr).join(';');
+          return[].concat(arr).join(';');
         }
         function serializeParameters(obj){
           if(Object.keys(obj).length==0){
@@ -130,7 +137,7 @@ daedalus=(function(){
               let c=chars[randomInt(0,chars.length-1)];
               name+=c;
             }
-          } while (selector_names[name]!==undefined)
+          } while (name in selector_names)
           return name;
         }
         function shuffle(array){
@@ -164,12 +171,8 @@ daedalus=(function(){
           }
           const text=object2style(style);
           selector_names[name]=style;
-          if(!(css_sheet.sheet||{}).insertRule){
-            (css_sheet.styleSheet||css_sheet.sheet).addRule(selector,text);
-          }else{
-            css_sheet.sheet.insertRule(selector+"{"+text+"}",css_sheet.sheet.rules.length);
-            
-          }
+          css_sheet.sheet.insertRule(selector+" {"+text+"}",css_sheet.sheet.rules.length);
+          
           return name;
         }
         function getStyleSheet(name){
@@ -2657,7 +2660,9 @@ components=(function(api,daedalus,resources){
       })();
     const[MoreMenu]=(function(){
         const style={moreMenuShadow:'dcs-f440542e-0',moreMenu:'dcs-f440542e-1',moreMenuShow:'dcs-f440542e-2',
-                  moreMenuHide:'dcs-f440542e-3',moreMenuButton:'dcs-f440542e-4'};
+                  moreMenuHide:'dcs-f440542e-3',moreMenuButton:'dcs-f440542e-4',moreMenuSection:'dcs-f440542e-5',
+                  moreMenuSectionHeader:'dcs-f440542e-6',moreMenuSectionText:'dcs-f440542e-7'};
+        
         ;
         ;
         class MoreMenuButton extends DomElement {
@@ -2667,6 +2672,20 @@ components=(function(api,daedalus,resources){
           }
           setText(text){
             this.children[0].setText(text);
+          }
+        }
+        class MoreMenuSection extends DomElement {
+          constructor(header,text){
+            super("div",{className:[style.moreMenuSection]});
+            this.header=new TextElement(header);
+            this.text=new TextElement(text);
+            this.appendChild(new DomElement("div",{className:style.moreMenuSectionHeader},
+                              [this.header]));
+            this.appendChild(new DomElement("div",{className:style.moreMenuSectionText},
+                              [this.text]));
+          }
+          setText(text){
+            this.text.setText(text);
           }
         }
         class MoreMenuImpl extends DomElement {
@@ -2692,6 +2711,10 @@ components=(function(api,daedalus,resources){
                   callback();
                   this.hide();
                 }));
+          }
+          addSection(header,text){
+            return this.attrs.impl.appendChild(new MoreMenuSection(header,text));
+            
           }
           hide(){
             this.updateProps({className:[style.moreMenuShadow,style.moreMenuHide]});
@@ -6327,8 +6350,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                           content:new DomElement("div",{className:style.content},[]),container:new SongList(
                               this),padding1:new DomElement("div",{className:style.padding1},[]),
                           padding2:new DomElement("div",{className:style.padding2},[]),currentIndex:-1,
-                          more:new components.MoreMenu(this.handleHideSongMore.bind(this)),more_index:-1,
-                          more_song:null};
+                          more:new components.MoreMenu(this.handleHideSongMore.bind(this)),more_info:new components.MoreMenu(
+                              this.handleHideMoreInfo.bind(this)),more_index:-1,more_song:null};
+            
             this.attrs.container.setPlaceholderClassName(style.songItemPlaceholder);
             
             this.attrs.container.addClassName(style.songList);
@@ -6339,8 +6363,19 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.content.appendChild(this.attrs.container);
             this.appendChild(this.attrs.padding2);
             this.appendChild(this.attrs.more);
-            this.attrs.more.addAction("play next",this.handleMorePlaySongNext.bind(
+            this.appendChild(this.attrs.more_info);
+            this.attrs.more.addAction("Play Next",this.handleMorePlaySongNext.bind(
                               this));
+            this.attrs.more.addAction("Song Info",this.handleMoreSongInfo.bind(this));
+            
+            this.attrs.more.addAction("Search for Artist",this.handleMoreSearchArtist.bind(
+                              this));
+            this.attrs.more.addAction("Search for Album",this.handleMoreSearchAlbum.bind(
+                              this));
+            this.sec_attrs={"artist":this.attrs.more_info.addSection("Artist",""),
+                          "album":this.attrs.more_info.addSection("Album",""),"title":this.attrs.more_info.addSection(
+                              "Title",""),"play_count":this.attrs.more_info.addSection("Play Count",
+                              ""),"year":this.attrs.more_info.addSection("Year","")};
           }
           elementMounted(){
             this.attrs.device.connectView(this);
@@ -6354,6 +6389,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(daedalus.platform.isAndroid){
               registerAndroidEvent('onresume',this.handleResume.bind(this));
             }
+            let status=(this.attrs.device.isPlaying())?"playing":"paused";
+            this.attrs.header.setStatus(status);
           }
           elementUnmounted(){
             this.attrs.device.disconnectView(this);
@@ -6368,6 +6405,29 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           handleHideSongMore(){
             this.attrs.more.hide();
+          }
+          handleMoreSongInfo(){
+            for(const key in this.sec_attrs){
+              this.sec_attrs[key].setText(this.attrs.more_song[key]);
+            }
+            this.attrs.more_info.show();
+          }
+          handleHideMoreInfo(){
+            this.attrs.more_info.hide();
+          }
+          handleMoreSearchArtist(){
+            let art=this.attrs.more_song.artist.replace(/[\\]/g,'\\\\').replace(/[\"]/g,
+                          '\\"');
+            let query=`artist="${art}"`;
+            history.pushState({},"","/u/library/list?query="+escape(query));
+          }
+          handleMoreSearchAlbum(){
+            let art=this.attrs.more_song.artist.replace(/[\\]/g,'\\\\').replace(/[\"]/g,
+                          '\\"');
+            let alb=this.attrs.more_song.album.replace(/[\\]/g,'\\\\').replace(/[\"]/g,
+                          '\\"');
+            let query=`artist="${art}" album="${alb}"`;
+            history.pushState({},"","/u/library/list?query="+escape(query));
           }
           handleMorePlaySongNext(){
             const current_index=audio.AudioDevice.instance().currentSongIndex();
@@ -6466,6 +6526,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           handleResume(){
             console.log("on app resume");
+            this.attrs.container.update();
           }
         }
         return[PlaylistPage];
@@ -6656,7 +6717,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   listItem:'dcs-f089c6c5-9',listItemMid:'dcs-f089c6c5-10',listItemQuery:'dcs-f089c6c5-11',
                   listItemInner:'dcs-f089c6c5-12',show:'dcs-f089c6c5-13',hide:'dcs-f089c6c5-14'};
         
-        class Header extends components.NavHeader {
+        class LibraryHeader extends components.NavHeader {
           constructor(parent){
             super();
             this.attrs.parent=parent;
@@ -6670,7 +6731,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.addAction(resources.svg['media_prev'],()=>{
                 audio.AudioDevice.instance().prev();
               });
-            this.addAction(resources.svg['media_play'],()=>{
+            this.attrs.act_play_pause=this.addAction(resources.svg['media_play'],
+                          ()=>{
                 audio.AudioDevice.instance().togglePlayPause();
               });
             this.addAction(resources.svg['media_next'],()=>{
@@ -6710,8 +6772,15 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           showBanished(){
             return false;
           }
+          setStatus(status){
+            if(status==="playing"){
+              this.attrs.act_play_pause.setUrl(resources.svg['media_pause']);
+            }else{
+              this.attrs.act_play_pause.setUrl(resources.svg['media_play']);
+            }
+          }
         }
-        class Footer extends components.NavFooter {
+        class LibraryFooter extends components.NavFooter {
           constructor(parent){
             super();
             this.attrs.parent=parent;
@@ -6885,8 +6954,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         class LibraryPage extends DomElement {
           constructor(){
             super("div",{className:style.main},[]);
-            this.attrs={header:new Header(this),footer:new Footer(this),view:new LibraryTreeView(
-                              this,components.TreeItem.SELECTION_MODE_HIGHLIGHT),more:new components.MoreMenu(
+            this.attrs={device:audio.AudioDevice.instance(),header:new LibraryHeader(
+                              this),footer:new LibraryFooter(this),view:new LibraryTreeView(this,
+                              components.TreeItem.SELECTION_MODE_HIGHLIGHT),more:new components.MoreMenu(
                               this.handleHideFileMore.bind(this)),more_context_item:null,firstMount:true,
                           currentSearch:null};
             this.attrs.view.addClassName(style.viewPad);
@@ -6899,6 +6969,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           elementMounted(){
             console.log("mount library view");
+            this.attrs.device.connectView(this);
             let query=daedalus.util.parseParameters()['query'];
             if(query===null||query===undefined){
               query="";
@@ -6909,6 +6980,17 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.attrs.firstMount=false;
               this.attrs.header.setQuery(query);
               this.search(query);
+            }
+            if(daedalus.platform.isAndroid){
+              registerAndroidEvent('onresume',this.handleResume.bind(this));
+            }
+            let status=(this.attrs.device.isPlaying())?"playing":"paused";
+            this.attrs.header.setStatus(status);
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+            if(daedalus.platform.isAndroid){
+              registerAndroidEvent('onresume',()=>{});
             }
           }
           search(text){
@@ -6942,8 +7024,28 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.more.hide();
           }
           handleAddToQueue(){
-            audio.AudioDevice.instance().queuePlayNext(this.attrs.more_context_item);
-            
+            this.attrs.device.queuePlayNext(this.attrs.more_context_item);
+          }
+          handleResume(){
+            console.log("on app resume");
+          }
+          handleAudioPlay(event){
+            this.attrs.header.setStatus("playing");
+          }
+          handleAudioPause(event){
+            this.attrs.header.setStatus("paused");
+          }
+          handleAudioWaiting(event){
+            this.attrs.header.setStatus("waiting");
+          }
+          handleAudioStalled(event){
+            this.attrs.header.setStatus("stalled");
+          }
+          handleAudioEnded(event){
+            this.attrs.header.setStatus("ended");
+          }
+          handleAudioError(event){
+            this.attrs.header.setStatus("error");
           }
         }
         class SyncHeader extends components.NavHeader {
@@ -9724,6 +9826,9 @@ app=(function(api,components,daedalus,pages,resources,router,store){
       }
       elementMounted(){
         console.log(`app mounted: ${performance.now()}ms`);
+        if(daedalus.platform.isAndroid){
+          Client.documentLoaded();
+        }
         this.updateMargin();
         const token=api.getUsertoken();
         if(!!token){
