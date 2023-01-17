@@ -47,8 +47,11 @@ public class BTCallback extends MediaSessionCompat.Callback {
                     default:
                         break;
                 }
+            } else if (event.getAction() == KeyEvent.ACTION_UP) {
+                Log.info("extra intent received", mediaButtonIntent.toString(), "action: up");
+
             } else {
-                Log.info("intent received", mediaButtonIntent.toString(), "action:", event.getAction());
+                Log.info("extra intent received", mediaButtonIntent.toString(), "action:", event.getAction());
             }
             /*
             Log.info("received media button event: " + action);

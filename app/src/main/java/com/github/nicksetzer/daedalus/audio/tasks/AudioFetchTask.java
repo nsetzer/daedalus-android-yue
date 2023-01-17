@@ -189,10 +189,6 @@ public class AudioFetchTask implements Runnable {
                     }
                     remoteTrack.put("valid", 1);
 
-                    if (remoteTrack.getString("artist").toLowerCase().equals("lisago")) {
-                        Log.i("daedalus-js-api", remoteTrack.toString());
-                    }
-
                     npk.put("uid", remoteTrack.get("id"));
 
                     m_upserted.add(remoteTrack.getString("id"));

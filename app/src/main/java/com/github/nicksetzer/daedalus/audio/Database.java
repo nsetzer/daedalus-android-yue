@@ -3,9 +3,11 @@ package com.github.nicksetzer.daedalus.audio;
 import android.content.Context;
 import android.database.Cursor;
 
+import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.metallurgy.orm.DatabaseConnection;
 import com.github.nicksetzer.metallurgy.orm.EntityTable;
 import com.github.nicksetzer.metallurgy.orm.NaturalPrimaryKey;
+import com.github.nicksetzer.metallurgy.orm.Statement;
 import com.github.nicksetzer.metallurgy.orm.TableSchema;
 
 import org.json.JSONException;
@@ -23,6 +25,7 @@ public class Database {
     public EntityTable m_testsTable;
     public SongsTable m_songsTable;
     public EntityTable m_usersTable;
+    public SettingsTable m_settingsTable;
     public EntityTable m_filesTable;
     public EntityTable m_recordsTable;
 
@@ -30,17 +33,23 @@ public class Database {
         m_context = context;
 
         TableSchema tests = _initTestSchema();
+        TableSchema settings = _initSettingsSchema();
         TableSchema users = _initUserSchema();
         TableSchema songs = _initSongsSchema();
         TableSchema files = _initFilesSchema();
         TableSchema history_records = _initHistoryRecordsSchema();
 
         m_path = m_context.getExternalFilesDir(null)+ "/app-v" + m_schema_version + ".sqlite";
-        m_schema = new TableSchema[]{tests, users, songs, files, history_records};
+        m_schema = new TableSchema[]{tests, users, settings, songs, files, history_records};
         m_db = new DatabaseConnection(m_path, m_schema);
+
+
+
+        Log.warn("db location: " + m_path);
 
         m_testsTable = new EntityTable(m_db, tests);
         m_usersTable = new EntityTable(m_db, users);
+        m_settingsTable = new SettingsTable(m_db, settings);
         m_songsTable = new SongsTable(m_db, songs);
         m_filesTable = new EntityTable(m_db, files);
         m_recordsTable = new EntityTable(m_db, history_records);
@@ -67,6 +76,15 @@ public class Database {
         users.addColumn("apikey", "VARCHAR");
         return users;
     }
+
+    private TableSchema _initSettingsSchema() {
+        TableSchema settings = new TableSchema("settings");
+        settings.addColumn("spk", "INTEGER PRIMARY KEY AUTOINCREMENT");
+        settings.addColumn("key", "VARCHAR");
+        settings.addColumn("value", "VARCHAR");
+        return settings;
+    }
+
 
     /**
      *
@@ -148,7 +166,10 @@ public class Database {
     }
 
     public void connect() {
+        Log.info("connecting to database");
         m_db.connect();
+
+        //m_db.execute(new Statement("DROP TABLE settings"));
 
 
         //test();

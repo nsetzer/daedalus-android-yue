@@ -3,6 +3,7 @@ package com.github.nicksetzer.daedalus.audio;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.database.Cursor;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.support.v4.media.MediaMetadataCompat;
@@ -10,8 +11,11 @@ import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
 import com.github.nicksetzer.daedalus.Log;
-import com.github.nicksetzer.daedalus.api.YueApi;
 import com.github.nicksetzer.daedalus.audio.tasks.RadioNextTrackTask;
+import com.github.nicksetzer.metallurgy.orm.EntityTable;
+import com.github.nicksetzer.metallurgy.orm.NaturalPrimaryKey;
+import com.github.nicksetzer.metallurgy.orm.Statement;
+import com.github.nicksetzer.metallurgy.orm.StatementBuilder;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -23,8 +27,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringWriter;
-
-import androidx.media.MediaBrowserServiceCompat;
 
 /*
 TODO: update the media session queue.
@@ -52,6 +54,9 @@ public class AudioManager {
 
     private String m_token = null;
     private String m_station = null;
+
+    private String m_currentUrl = null;
+    private int m_pausedTimeMs = -1;
 
     AudioQueue m_queue;
 
@@ -99,6 +104,24 @@ public class AudioManager {
                 // what:
                 //MediaPlayer.MEDIA_ERROR_UNKNOWN
                 //MediaPlayer.MEDIA_ERROR_SERVER_DIED
+                String s_what = "";
+                switch (what) {
+                    case MediaPlayer.MEDIA_ERROR_UNKNOWN:
+                        s_what = "unknown";
+                        break;
+                    case MediaPlayer.MEDIA_ERROR_UNSUPPORTED:
+                        s_what = "unsupported";
+                        break;
+                    case -38:
+                        loadResume();
+                        s_what = "state error";
+                        break;
+                    default:
+                        s_what = "other";
+                        break;
+                }
+                s_what += " (" + what + ")";
+
 
                 // extra:
                 //MediaPlayer.MEDIA_ERROR_IO
@@ -107,7 +130,7 @@ public class AudioManager {
                 //MediaPlayer.MEDIA_ERROR_TIMED_OUT
                 //MEDIA_ERROR_SYSTEM
                 String payload = "{\"what\": " + what + ", \"extra\": " + extra + "}";
-                Log.error("sending error to javascript: " + payload);
+                Log.error("sending error to javascript: " + s_what + " extra=" + extra);
                 m_service.sendEvent(AudioEvents.ONERROR, payload);
 
                 return true; // true when error is handled
@@ -120,6 +143,9 @@ public class AudioManager {
                 // do stuff here
                 if (m_autoPlay) {
                     m_mediaPlayer.start();
+                    if (m_pausedTimeMs >= 0) {
+                        m_mediaPlayer.seekTo(m_pausedTimeMs);
+                    }
                     m_service.updateNotification();
                     m_service.sendEvent(AudioEvents.ONPLAY, "{}");
                 }
@@ -143,6 +169,8 @@ public class AudioManager {
 
 
         loadQueueData();
+
+        loadMediaPlayerState();
 
         android.util.Log.e("daedalus-js", "media session created");
     }
@@ -189,11 +217,15 @@ public class AudioManager {
     }
 
     public void updateQueueData(int index, final String data) {
-
+        // update the queue to contain the new sequence of tracks
+        // if index >=0 then update the current index to index
+        //
         m_queue.setData(data);
 
         if (m_queue.length() > 0) {
-            m_queue.setCurrentIndex(index);
+            if (index >= 0 && m_queue.getCurrentIndex() != index) {
+                m_queue.setCurrentIndex(index);
+            }
         } else {
             m_queue.setCurrentIndex(-1);
         }
@@ -202,6 +234,8 @@ public class AudioManager {
     }
 
     public void loadUrl(final String url) {
+        m_currentUrl = null;
+        m_pausedTimeMs = -1;
 
         if (url == null) {
             android.util.Log.e("daedalus-js", "null url given");
@@ -218,9 +252,26 @@ public class AudioManager {
             m_mediaPlayer.setDataSource(url);
             m_mediaPlayer.prepareAsync();
 
+            m_currentUrl = url;
+
         } catch(IOException e) {
             android.util.Log.e("daedalus-js", e.toString());
         }
+    }
+
+    public void loadResume() {
+        if (playback_mode != 0) {
+            Log.warn("unable to resume in current playback_mode=" + playback_mode);
+            return;
+        }
+
+
+        m_autoPlay = true;
+        int index = m_queue.getCurrentIndex();
+        Log.info("resume playback for index=" + index);
+        loadUrl( m_queue.getUrl(index));
+
+        m_service.updateNotification();
     }
 
     public void loadRadioUrl(final String url) {
@@ -255,6 +306,8 @@ public class AudioManager {
 
     public void loadIndex(int index) {
         m_queue.setCurrentIndex(index);
+        SettingsTable tab = m_service.m_database.m_settingsTable;
+        tab.setInt("current_index", index);
         playback_mode = 0;
         m_autoPlay = true;
         loadUrl( m_queue.getUrl(index));
@@ -279,6 +332,25 @@ public class AudioManager {
     }
 
     public void play() {
+
+        /*
+            playback can fail with an error (-32, 0) if the media has been paused
+            for a long time. there is no way to query the current state,
+            but m_currentUrl will be set in this case. Since the MediaPlayer state cannot
+            be queried, catch the error and call loadResume instead of preemptivley
+            trying to reload the current track.
+
+            seems like simulating paused for a long time can be done by closing
+            the app then swiping the notification while paused. using
+            bluetooth to resume playback will then continue to play from the same spot
+
+         */
+        if (m_currentUrl == null) {
+            Log.warn("mediaplayer play: no current url");
+        } else {
+            Log.info("mediaplayer play");
+        }
+
         m_mediaPlayer.start();
         m_service.updateNotification();
 
@@ -291,11 +363,17 @@ public class AudioManager {
     }
 
     public void pause() {
+        Log.info("mediaplayer pause");
         m_mediaPlayer.pause();
         m_service.updateNotification();
 
         String event = (m_mediaPlayer.isPlaying()?AudioEvents.ONERROR:AudioEvents.ONPAUSE);
         m_service.sendEvent(event, "{}");
+
+        // todo: implement resume by calling start() followed by seekto(saved_position)
+        m_pausedTimeMs = m_mediaPlayer.getCurrentPosition();
+
+        saveMediaPlayerState();
     }
 
     public void stop() {
@@ -438,4 +516,46 @@ public class AudioManager {
         }
     }
 
+    private void loadMediaPlayerState() {
+        EntityTable tab = m_service.m_database.m_settingsTable;
+        Cursor cursor = null;
+        JSONObject obj = null;
+        int current_index = -1;
+        int current_time = -1;
+
+        long count = tab.count();
+
+        try {
+            current_index = ((SettingsTable) tab).getInt("current_index");
+        } catch (SettingsTable.MissingValue e) {
+            current_index = -1;
+        }
+
+        try {
+            current_time = ((SettingsTable) tab).getInt("current_time");
+        } catch (SettingsTable.MissingValue e) {
+            current_time = -1;
+        }
+
+        Log.info("load state: count=" + count + " index=" + current_index + " time_ms=" + current_time);
+
+        if (current_index >= 0 && current_index < m_queue.length()) {
+            m_queue.setCurrentIndex(current_index);
+            m_autoPlay = false;
+            loadUrl( m_queue.getUrl(current_index));
+        }
+    }
+
+
+    private void saveMediaPlayerState() {
+
+        int index = m_queue.getCurrentIndex();
+        Log.info("save state: index=" + index + " time_ms=" + m_pausedTimeMs);
+        SettingsTable tab = m_service.m_database.m_settingsTable;
+        //tab.delete_all_rows();
+        tab.setInt("current_index", index);
+        tab.setInt("current_time", m_pausedTimeMs);
+
+
+    }
 }

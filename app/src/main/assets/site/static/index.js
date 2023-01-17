@@ -74,9 +74,12 @@ daedalus=(function(){
           return'?'+strings.join('&');
         }
         function parseParameters(text=undefined){
-          let match,search=/([^&=]+)=?([^&]*)/g,decode=s=>decodeURIComponent(s.replace(
-                          /\+/g," ")),query=(text===undefined)?window.location.search.substring(
-                      1):text;
+          let match;
+          let search=/([^&=]+)=?([^&]*)/g;
+          let decode=s=>decodeURIComponent(s.replace(/\+/g," "));
+          let search_term=(new URL(window.location.protocol+"//"+window.location.hostname+window.daedalus_location)).search;
+          
+          let query=(text===undefined)?search_term.substring(1):text;
           let urlParams={};
           while(match=search.exec(query)){
             let value=decode(match[2]);
@@ -222,11 +225,11 @@ daedalus=(function(){
                 this.props[key]=this[key].bind(this);
               });
           }
-          _update(element){
+          _update(element,debug=false){
 
           }
-          update(){
-            this._update(this);
+          update(debug=false){
+            this._update(this,debug);
           }
           updateState(state,doUpdate){
             const newState={...this.state,...state};
@@ -309,11 +312,17 @@ daedalus=(function(){
           }
           addClassName(cls){
             let props;
-            if(!this.props.className){
+            if(this.props.className==undefined||this.props.className==null){
               props={className:cls};
             }else if(Array.isArray(this.props.className)){
+              if(this.hasClassName(cls)){
+                return;
+              }
               props={className:[cls,...this.props.className]};
             }else{
+              if(this.props.className===cls){
+                return;
+              }
               props={className:[cls,this.props.className]};
             }
             this.updateProps(props);
@@ -321,7 +330,7 @@ daedalus=(function(){
           removeClassName(cls){
             let props;
             if(Array.isArray(this.props.className)){
-              props={className:this.props.className.filter(x=>x!==cls)};
+              props={className:this.props.className.filter(x=>(x!==cls))};
               if(props.className.length===this.props.className.length){
                 return;
               }
@@ -334,11 +343,14 @@ daedalus=(function(){
           hasClassName(cls){
             let props;
             if(Array.isArray(this.props.className)){
-              return this.props.className.filter(x=>x===cls).length===1;
+              return this.props.className.filter(x=>x===cls).length>0;
             }
             return this.props.className===cls;
           }
           getDomNode(){
+            if(this._$fiber==null){
+              console.log(this);
+            }
             return this._$fiber&&this._$fiber.dom;
           }
           isMounted(){
@@ -371,7 +383,7 @@ daedalus=(function(){
             }
           }
         }
-        LinkElement.style={link:'dcs-1b463782-0'};
+        LinkElement.style={link:'dcs-14b6e0af-0'};
         class ListElement extends DomElement {
           constructor(){
             super("ul",{},[]);
@@ -456,7 +468,7 @@ daedalus=(function(){
           }
           return count;
         }
-        const placeholder='dcs-1b463782-1';
+        const placeholder='dcs-14b6e0af-1';
         class DraggableListItem extends DomElement {
           constructor(){
             super("div",{},[]);
@@ -690,17 +702,18 @@ daedalus=(function(){
                   LinkElement,ListElement,ListItemElement,TextElement,TextInputElement];
       })();
     const[]=(function(){
-        function _sendEvent(){
-          const myEvent=new CustomEvent('locationChangedEvent',{detail:{path:location.pathname},
+        window.daedalus_location="/";
+        function _sendEvent(path){
+          const myEvent=new CustomEvent('locationChangedEvent',{detail:{path:path},
                           bubbles:true,cancelable:true,composed:false});
+          window.daedalus_location=path;
           window.dispatchEvent(myEvent);
         }
-        history.states=[{state:{},title:null,path:window.location.href}];
+        history.states=[{state:{},title:null,path:window.daedalus_location}];
         history.forward_states=[];
         history._pushState=history.pushState;
         history.pushState=(state,title,path)=>{
-          history._pushState(state,title,path);
-          _sendEvent();
+          _sendEvent(path);
           history.forward_states=[];
           history.states.push({state,title,path});
         };
@@ -711,12 +724,11 @@ daedalus=(function(){
           const state=history.states.pop();
           history.forward_states.splice(0,0,state);
           const new_state=history.states[history.states.length-1];
-          history._pushState(new_state.state,new_state.title,new_state.path);
-          _sendEvent();
+          _sendEvent(new_state.path);
           return true;
         };
         window.addEventListener('popstate',(event)=>{
-            _sendEvent();
+            history.goBack();
           });
         return[];
       })();
@@ -832,7 +844,8 @@ daedalus=(function(){
                 index+=1;
                 continue;
               }
-              const match=locationMatch(item.re,location);
+              const match=locationMatch(item.re,(new URL(window.location.protocol+"//"+window.location.hostname+location)).pathname);
+              
               if(match!==null){
                 let fn=(element)=>this.setElement(index,location,match,element);
                 if(this.doRoute(item,fn,match)){
@@ -1145,8 +1158,7 @@ daedalus=(function(){
           }};
         const platform={OSName,browser:browserName,fullVersion,majorVersion,appName:navigator.appName,
                   userAgent:navigator.userAgent,platform:build_platform||'web',isAndroid:build_platform==='android',
-                  isMobile:(!!isMobile.any())};
-        console.log(platform);
+                  isQt:build_platform==='qt',isMobile:(!!isMobile.any())};
         return[OSName,platform];
       })();
     const[render,render_update]=(function(){
@@ -1174,11 +1186,11 @@ daedalus=(function(){
             setTimeout(workLoop,0);
           }
         }
-        function render_update(element){
+        function render_update(element,debug=false){
           if(!element._$dirty&&element._$fiber!==null){
             element._$dirty=true;
             const fiber={effect:'UPDATE',children:[element],_fibers:[],alternate:null,
-                          partial:true};
+                          partial:true,debug:debug};
             updatequeue.push(fiber);
           }
           if(!workLoopActive){
@@ -1261,10 +1273,14 @@ daedalus=(function(){
                 child._delete=true;
               });
           }
+          if(parentFiber.debug){
+            console.log("do reconcileChildren");
+          }
           let prev=parentFiber;
           while(prev.next){
             prev=prev.next;
           }
+          let children_out_of_order=false;
           parentFiber.children.forEach((element,index)=>{
               if(!element||!element.type){
                 console.error(`${parentFiber.element.props.id}: undefined child element at index ${index} `);
@@ -1291,7 +1307,10 @@ daedalus=(function(){
               const newFiber={type:element.type,effect:effect,props:{...element.props},
                               children:element.children.slice(),_fibers:[],parent:(parentFiber.partial&&oldFiber)?oldFiber.parent:parentFiber,
                               alternate:oldFiber,dom:oldFiber?oldFiber.dom:null,element:element,
-                              index:index,oldIndex:oldIndex};
+                              index:index,oldIndex:oldIndex,debug:((parentFiber)||{}).debug};
+              if(index!==oldIndex){
+                children_out_of_order=true;
+              }
               if(!newFiber.parent.dom){
                 console.error(`element parent is not mounted id: ${element.props.id} effect: ${effect}`);
                 
@@ -1313,6 +1332,14 @@ daedalus=(function(){
               prev=newFiber;
               workstack.push(newFiber);
             });
+          if(children_out_of_order===true){
+            const newFiber={type:parentFiber.type,effect:"SORT_CHILDREN",props:parentFiber.props,
+                          children:parentFiber.children.slice(),_fibers:[],parent:parentFiber.parent,
+                          dom:parentFiber.dom,debug:parentFiber.debug};
+            prev.next=newFiber;
+            prev=newFiber;
+            workstack.push(newFiber);
+          }
           if(!!oldParentFiber){
             oldParentFiber.children.forEach(child=>{
                 if(child._delete){
@@ -1347,6 +1374,9 @@ daedalus=(function(){
             console.warn(`element has no parent. effect: ${fiber.effect}`);
             return;
           }
+          if(((fiber)||{}).debug){
+            console.log("commitWork: "+fiber.effect);
+          }
           if(fiber.effect==='CREATE'){
             const length=parentDom.children.length;
             const position=fiber.index;
@@ -1354,6 +1384,9 @@ daedalus=(function(){
               parentDom.appendChild(fiber.dom);
             }else{
               parentDom.insertBefore(fiber.dom,parentDom.children[position]);
+            }
+            if(fiber.element.type=="input"){
+              console.log("mount",fiber.element._$fiber);
             }
             if(fiber.element.elementMounted){
               requestIdleCallback(fiber.element.elementMounted.bind(fiber.element));
@@ -1364,7 +1397,19 @@ daedalus=(function(){
             updateDomNode(fiber);
           }else if(fiber.effect==='DELETE'){
             fiber.alternate.alternate=null;
+            if(fiber.element.type=="input"){
+              console.log("delete",fiber);
+            }
             removeDomNode(fiber);
+          }else if(fiber.effect==='SORT_CHILDREN'){
+            Array.from(fiber.dom.childNodes).forEach((node,idx)=>{
+                let expected_index=node._$fiber.index;
+                if(node._$fiber.index!==idx){
+                  fiber.dom.removeChild(node);
+                  fiber.dom.insertBefore(node,fiber.dom.children[expected_index]);
+                  
+                }
+              });
           }
         }
         const isEvent=key=>key.startsWith("on");
@@ -1401,6 +1446,9 @@ daedalus=(function(){
             return;
           }
           dom._$fiber=fiber;
+          if(fiber.debug){
+            console.log("update",fiber.oldIndex,fiber.index);
+          }
           if(fiber.oldIndex!=fiber.index&&parentDom){
             if(parentDom.children[fiber.index]!==dom){
               parentDom.removeChild(fiber.dom);
@@ -1500,6 +1548,7 @@ api.requests=(function(){
         parameters.headers={};
       }
       if(parameters.timeout!==undefined){
+        console.log(`setting timeout ${parameters.timeout}`);
         let controller=new AbortController();
         setTimeout(()=>controller.abort(),parameters.timeout);
         delete parameters.timeout;
@@ -1531,16 +1580,18 @@ api.requests=(function(){
 Object.assign(api,(function(api,daedalus){
       "use strict";
       const[clearPublicToken,clearUserToken,getAuthConfig,getAuthToken,getPublictoken,
-              getUsertoken,setPublictoken,setUsertoken]=(function(){
+              getUsertoken,hasUsertoken,setPublictoken,setUsertoken]=(function(){
           let user_token=null;
           function getUsertoken(){
-            if(user_token===null){
-              const token=LocalStorage.getItem("user_token");
-              if(token&&token.length>0){
-                user_token=token;
-              }
-            }
-            return user_token;
+            return new Promise((accept,reject)=>{
+                if(user_token===null){
+                  const token=LocalStorage.getItem("user_token");
+                  if(token&&token.length>0){
+                    user_token=token;
+                  }
+                }
+                accept(user_token);
+              });
           }
           function setUsertoken(token){
             LocalStorage.setItem("user_token",token);
@@ -1549,6 +1600,9 @@ Object.assign(api,(function(api,daedalus){
           function clearUserToken(){
             LocalStorage.removeItem("user_token");
             user_token=null;
+          }
+          function hasUsertoken(){
+            return!!user_token;
           }
           function getAuthConfig(){
             return{credentials:'include',headers:{Authorization:user_token}};
@@ -1575,7 +1629,7 @@ Object.assign(api,(function(api,daedalus){
             public_token=null;
           }
           return[clearPublicToken,clearUserToken,getAuthConfig,getAuthToken,getPublictoken,
-                      getUsertoken,setPublictoken,setUsertoken];
+                      getUsertoken,hasUsertoken,setPublictoken,setUsertoken];
         })();
       const[multiSort,shuffle,sortTracks,track_shuffle]=(function(){
           function shuffle(a){
@@ -2062,7 +2116,7 @@ Object.assign(api,(function(api,daedalus){
               fsGetPathContentUrl,fsGetPublicPathUrl,fsGetRoots,fsNoteCreate,fsNoteGetContent,
               fsNoteList,fsNoteSetContent,fsPathPreviewUrl,fsPathUrl,fsPublicUriGenerate,
               fsPublicUriInfo,fsPublicUriRevoke,fsSearch,fsUploadFile,getAuthConfig,getAuthToken,
-              getIngredients,getPublicConfig,getPublictoken,getUsertoken,libraryDomainInfo,
+              getIngredients,getPublicConfig,getPublictoken,getUsertoken,hasUsertoken,libraryDomainInfo,
               librarySearchForest,librarySong,librarySongAudioUrl,multiSort,openTab,queueCreate,
               queueGetQueue,queuePopulate,queueSetQueue,radioPublicStationAddTrack,radioPublicStationPreviousTracks,
               radioPublicStationRelated,radioPublicStationSearch,radioPublicStationTracks,
@@ -2076,8 +2130,16 @@ Object.assign(api,(function(api,daedalus){
     })(api,daedalus));
 resources=(function(daedalus){
     "use strict";
-    const platform_prefix=daedalus.platform.isAndroid?"file:///android_asset/site/static/icon/":"/static/icon/";
-    
+    function getPlatformPrefix(){
+      if(daedalus.platform.isAndroid){
+        return"file:///android_asset/site/static/icon/";
+      }else if(daedalus.platform.isQt){
+        return"./static/icon/";
+      }else{
+        return"/static/icon/";
+      }
+    }
+    const platform_prefix=getPlatformPrefix();
     const svg_icon_names=["album","arrow_left","arrow_right","arrow_up","arrow_down",
           "bolt","create","discard","disc","documents","dot","download","edit","equalizer",
           "externalmedia","file","folder","genre","history","logout","media_error","media_next",
@@ -2102,7 +2164,7 @@ components=(function(api,daedalus,resources){
     const ButtonElement=daedalus.ButtonElement;
     const Router=daedalus.Router;
     const[SvgButtonElement,SvgElement]=(function(){
-        const style={svgButton:'dcs-b308e454-0'};
+        const style={svgButton:'dcs-1115aa73-0'};
         ;
         class SvgElement extends DomElement {
           constructor(url,props){
@@ -2199,7 +2261,7 @@ components=(function(api,daedalus,resources){
         return[SwipeHandler];
       })();
     const[HSpacer,HStretch,VSpacer]=(function(){
-        const style={HStretch:'dcs-50305fc2-0'};
+        const style={HStretch:'dcs-0f7b85d8-0'};
         class HSpacer extends DomElement {
           constructor(width){
             super("div",{},[]);
@@ -2256,7 +2318,7 @@ components=(function(api,daedalus,resources){
         return[HSpacer,HStretch,VSpacer];
       })();
     const[CheckBoxElement]=(function(){
-        const style={chkbox:'dcs-6e53eb54-0'};
+        const style={chkbox:'dcs-2dacdfbc-0'};
         class CheckBoxElement extends SvgElement {
           constructor(callback,initialCheckState){
             super(null,{width:20,height:32,className:style.chkbox});
@@ -2286,11 +2348,11 @@ components=(function(api,daedalus,resources){
         return[CheckBoxElement];
       })();
     const[NavMenu]=(function(){
-        const style={navMenuShadow:'dcs-eef822cd-0',navMenuShadowHide:'dcs-eef822cd-1',
-                  alignRight:'dcs-eef822cd-2',navMenuShadowShow:'dcs-eef822cd-3',navMenu:'dcs-eef822cd-4',
-                  navMenuActionContainer:'dcs-eef822cd-5',navMenuHide:'dcs-eef822cd-6',navMenuShow:'dcs-eef822cd-7',
-                  navMenuShowFixed:'dcs-eef822cd-8',navMenuHideFixed:'dcs-eef822cd-9',svgDiv:'dcs-eef822cd-10',
-                  actionItem:'dcs-eef822cd-11',subActionItem:'dcs-eef822cd-12',header:'dcs-eef822cd-13'};
+        const style={navMenuShadow:'dcs-1d21fab3-0',navMenuShadowHide:'dcs-1d21fab3-1',
+                  alignRight:'dcs-1d21fab3-2',navMenuShadowShow:'dcs-1d21fab3-3',navMenu:'dcs-1d21fab3-4',
+                  navMenuActionContainer:'dcs-1d21fab3-5',navMenuHide:'dcs-1d21fab3-6',navMenuShow:'dcs-1d21fab3-7',
+                  navMenuShowFixed:'dcs-1d21fab3-8',navMenuHideFixed:'dcs-1d21fab3-9',svgDiv:'dcs-1d21fab3-10',
+                  actionItem:'dcs-1d21fab3-11',subActionItem:'dcs-1d21fab3-12',header:'dcs-1d21fab3-13'};
         
         ;
         ;
@@ -2425,8 +2487,8 @@ components=(function(api,daedalus,resources){
         return[NavMenu];
       })();
     const[MiddleText,MiddleTextLink]=(function(){
-        const style={ellideMiddle:'dcs-e3dda9fe-0',ellideMiddleDiv1:'dcs-e3dda9fe-1',
-                  ellideMiddleDiv2:'dcs-e3dda9fe-2',ellideMiddleLink:'dcs-e3dda9fe-3'};
+        const style={ellideMiddle:'dcs-620f3e39-0',ellideMiddleDiv1:'dcs-620f3e39-1',
+                  ellideMiddleDiv2:'dcs-620f3e39-2',ellideMiddleLink:'dcs-620f3e39-3'};
         class MiddleText extends DomElement {
           constructor(text){
             super("div",{className:[style.textSpacer]},[]);
@@ -2469,10 +2531,10 @@ components=(function(api,daedalus,resources){
         return[MiddleText,MiddleTextLink];
       })();
     const[TreeItem,TreeView]=(function(){
-        const style={treeView:'dcs-bbed1375-0',treeItem:'dcs-bbed1375-1',treeItemObjectContainer:'dcs-bbed1375-2',
-                  treeItemChildContainer:'dcs-bbed1375-3',treeItem0:'dcs-bbed1375-4',treeItemN:'dcs-bbed1375-5',
-                  listItemMid:'dcs-bbed1375-6',listItemEnd:'dcs-bbed1375-7',listItemSelected:'dcs-bbed1375-8',
-                  treeFooter:'dcs-bbed1375-9'};
+        const style={treeView:'dcs-eea1a2c8-0',treeItem:'dcs-eea1a2c8-1',treeItemObjectContainer:'dcs-eea1a2c8-2',
+                  treeItemChildContainer:'dcs-eea1a2c8-3',treeItem0:'dcs-eea1a2c8-4',treeItemN:'dcs-eea1a2c8-5',
+                  listItemMid:'dcs-eea1a2c8-6',listItemEnd:'dcs-eea1a2c8-7',listItemSelected:'dcs-eea1a2c8-8',
+                  treeFooter:'dcs-eea1a2c8-9'};
         ;
         class SvgMoreElement extends SvgElement {
           constructor(callback){
@@ -2555,7 +2617,6 @@ components=(function(api,daedalus,resources){
             }
           }
           handleToggleSelection(){
-            console.log("..");
             let next=(this.attrs.selected!=UNSELECTED)?UNSELECTED:SELECTED;
             this.setSelected(next);
             if(this.attrs.depth>0&&this.attrs.parent!=null){
@@ -2659,9 +2720,9 @@ components=(function(api,daedalus,resources){
         return[TreeItem,TreeView];
       })();
     const[MoreMenu]=(function(){
-        const style={moreMenuShadow:'dcs-f440542e-0',moreMenu:'dcs-f440542e-1',moreMenuShow:'dcs-f440542e-2',
-                  moreMenuHide:'dcs-f440542e-3',moreMenuButton:'dcs-f440542e-4',moreMenuSection:'dcs-f440542e-5',
-                  moreMenuSectionHeader:'dcs-f440542e-6',moreMenuSectionText:'dcs-f440542e-7'};
+        const style={moreMenuShadow:'dcs-15cdb49b-0',moreMenu:'dcs-15cdb49b-1',moreMenuShow:'dcs-15cdb49b-2',
+                  moreMenuHide:'dcs-15cdb49b-3',moreMenuButton:'dcs-15cdb49b-4',moreMenuSection:'dcs-15cdb49b-5',
+                  moreMenuSectionHeader:'dcs-15cdb49b-6',moreMenuSectionText:'dcs-15cdb49b-7'};
         
         ;
         ;
@@ -2728,12 +2789,12 @@ components=(function(api,daedalus,resources){
         return[MoreMenu];
       })();
     const[NavFooter,NavHeader]=(function(){
-        const style={header:'dcs-b0bc04f9-0',footer:'dcs-b0bc04f9-1',headerDiv:'dcs-b0bc04f9-2',
-                  toolbar:'dcs-b0bc04f9-3',toolbarInner:'dcs-b0bc04f9-4',toolbarFooter:'dcs-b0bc04f9-5',
-                  toolbarFooterInnerV1:'dcs-b0bc04f9-6',toolbarFooterInnerV2:'dcs-b0bc04f9-7',
-                  toolbar2:'dcs-b0bc04f9-8',toolbarInner2:'dcs-b0bc04f9-9',footerText:'dcs-b0bc04f9-10',
-                  toolbar2Start:'dcs-b0bc04f9-11',toolbar2Center:'dcs-b0bc04f9-12',grow:'dcs-b0bc04f9-13',
-                  pad:'dcs-b0bc04f9-14'};
+        const style={header:'dcs-6e832ea3-0',footer:'dcs-6e832ea3-1',headerDiv:'dcs-6e832ea3-2',
+                  toolbar:'dcs-6e832ea3-3',toolbarInner:'dcs-6e832ea3-4',toolbarFooter:'dcs-6e832ea3-5',
+                  toolbarFooterInnerV1:'dcs-6e832ea3-6',toolbarFooterInnerV2:'dcs-6e832ea3-7',
+                  toolbar2:'dcs-6e832ea3-8',toolbarInner2:'dcs-6e832ea3-9',footerText:'dcs-6e832ea3-10',
+                  toolbar2Start:'dcs-6e832ea3-11',toolbar2Center:'dcs-6e832ea3-12',grow:'dcs-6e832ea3-13',
+                  pad:'dcs-6e832ea3-14'};
         class NavHeader extends DomElement {
           constructor(){
             super("div",{className:style.header},[]);
@@ -2811,7 +2872,7 @@ components=(function(api,daedalus,resources){
         return[NavFooter,NavHeader];
       })();
     const[Slider]=(function(){
-        const style={slider:'dcs-c2096b8d-0',sliderInput:'dcs-c2096b8d-1',sliderSpan:'dcs-c2096b8d-2'};
+        const style={slider:'dcs-a98c7ce9-0',sliderInput:'dcs-a98c7ce9-1',sliderSpan:'dcs-a98c7ce9-2'};
         
         ;
         ;
@@ -2838,8 +2899,8 @@ components=(function(api,daedalus,resources){
         return[Slider];
       })();
     const[ProgressBar]=(function(){
-        const style={progressBar:'dcs-f3332da9-0',progressBar_bar:'dcs-f3332da9-1',
-                  progressBar_button:'dcs-f3332da9-2'};
+        const style={progressBar:'dcs-ad0cbf76-0',progressBar_bar:'dcs-ad0cbf76-1',
+                  progressBar_button:'dcs-ad0cbf76-2'};
         ;
         ;
         ;
@@ -2976,9 +3037,9 @@ components=(function(api,daedalus,resources){
         return[ProgressBar];
       })();
     const[ErrorDrawer]=(function(){
-        const style={drawer:'dcs-d9d8fbb3-0',headerDiv:'dcs-d9d8fbb3-1',lhs:'dcs-d9d8fbb3-2',
-                  title:'dcs-d9d8fbb3-3',message:'dcs-d9d8fbb3-4',button:'dcs-d9d8fbb3-5',
-                  hide:'dcs-d9d8fbb3-6'};
+        const style={drawer:'dcs-9969ddfa-0',headerDiv:'dcs-9969ddfa-1',lhs:'dcs-9969ddfa-2',
+                  title:'dcs-9969ddfa-3',message:'dcs-9969ddfa-4',button:'dcs-9969ddfa-5',
+                  hide:'dcs-9969ddfa-6'};
         class ErrorDrawer extends DomElement {
           constructor(icon){
             super("div",{className:style.drawer},[]);
@@ -3025,7 +3086,7 @@ components=(function(api,daedalus,resources){
         return[ErrorDrawer];
       })();
     const[Refresh]=(function(){
-        const style={refresh:'dcs-b8b07fd0-0'};
+        const style={refresh:'dcs-060f84ad-0'};
         class Refresh extends DomElement {
           constructor(cbk=null){
             super("img",{className:style.refresh,src:resources.svg.refresh});
@@ -3909,7 +3970,7 @@ components=(function(api,daedalus,resources){
           let element=options.render=="canvas"?createCanvas():createTable();
           return domElement.appendChild(element);
         }
-        const style={main:'dcs-6a88c127-0'};
+        const style={main:'dcs-ef48f9f1-0'};
         class QrCodeElement extends DomElement {
           constructor(text){
             super("div",{className:style.main});
@@ -3942,7 +4003,7 @@ router=(function(api,daedalus){
     const patternCompile=daedalus.patternCompile;
     class AppRouter extends AuthenticatedRouter {
       isAuthenticated(){
-        return api.getUsertoken()!==null;
+        return api.hasUsertoken();
       }
     }
     function navigate(location){
@@ -3974,8 +4035,14 @@ audio=(function(api,daedalus){
     const StyleSheet=daedalus.StyleSheet;
     const DomElement=daedalus.DomElement;
     const TextElement=daedalus.TextElement;
-    const[AudioDevice,NativeDeviceImpl,RemoteDeviceImpl]=(function(){
+    const[AudioDevice,NativeDeviceImpl,QDeviceImpl,RemoteDeviceImpl]=(function(){
+      
         let device_instance=null;
+        function mapSongToObj(song){
+          return{url:api.librarySongAudioUrl(song.id),artist:song.artist,album:song.album,
+                      title:song.title,length:song.length,file_path:song.file_path,spk:song.spk,
+                      id:song.id};
+        }
         class RemoteDeviceImpl{
           constructor(parent){
             this.parent=parent;
@@ -4095,11 +4162,6 @@ audio=(function(api,daedalus){
             this.parent.next();
           }
         }
-        function mapSongToObj(song){
-          return{url:api.librarySongAudioUrl(song.id),artist:song.artist,album:song.album,
-                      title:song.title,length:song.length,file_path:song.file_path,spk:song.spk,
-                      id:song.id};
-        }
         class NativeDeviceImpl{
           constructor(device){
             this.device=device;
@@ -4117,6 +4179,11 @@ audio=(function(api,daedalus){
             bind('trackchanged');
             this._currentTime=0;
             this._duration=0;
+          }
+          getCurrentIndex(){
+            return new Promise((accept,reject)=>{
+                accept(AndroidNativeAudio.getCurrentIndex());
+              });
           }
           setQueue(queue){
             return new Promise((accept,reject)=>{
@@ -4155,21 +4222,27 @@ audio=(function(api,daedalus){
             return api.queueCreate(query,50);
           }
           loadUrl(url){
+            console.log("native load url");
             AndroidNativeAudio.loadRadioUrl(url);
           }
           playUrl(url){
+            console.log("native play url");
             AndroidNativeAudio.playRadioUrl(url);
           }
           playSong(index,song){
+            console.log("native play song");
             AndroidNativeAudio.loadIndex(index);
           }
           play(){
+            console.log("native play");
             AndroidNativeAudio.play();
           }
           pause(){
+            console.log("native pause");
             AndroidNativeAudio.pause();
           }
           stop(){
+            console.error("native stop");
             AndroidNativeAudio.stop();
             this.device._sendEvent('handleAudioSongChanged',null);
           }
@@ -4236,6 +4309,162 @@ audio=(function(api,daedalus){
             this.device._sendEvent('handleTrackChanged',payload);
           }
         }
+        class QDeviceImpl{
+          constructor(parent){
+            this.parent=parent;
+            this.audio_instance=new Audio();
+            this.auto_play=false;
+            const bind=(x)=>{
+              this.audio_instance['on'+x]=this['on'+x].bind(this);
+            };
+            bind('play');
+            bind('loadstart');
+            bind('playing');
+            bind('pause');
+            bind('durationchange');
+            bind('timeupdate');
+            bind('waiting');
+            bind('stalled');
+            bind('ended');
+            bind('error');
+          }
+          setQueue(queue){
+            return new Promise((accept,reject)=>{
+                const lst=queue.map(song=>{
+                    return song.id;
+                  });
+                const data=JSON.stringify(lst);
+                window.channel.objects.backend.setQueue(data).then(result=>{
+                    console.log("queue set");
+                    this.parent._sendEvent('handleAudioQueueChanged',queue);
+                    accept(true);
+                  }).catch(error=>{
+                    console.log(error);
+                    reject();
+                  });
+              });
+          }
+          updateQueue(index,queue){
+            return new Promise((accept,reject)=>{
+                const lst=queue.map(song=>{
+                    return song.id;
+                  });
+                const data=JSON.stringify(lst);
+                window.channel.objects.backend.updateQueue(index,data).then(result=>{
+                  
+                    accept(true);
+                  }).catch(error=>{
+                    console.log(error);
+                    reject();
+                  });
+              });
+          }
+          loadQueue(){
+            return new Promise((accept,reject)=>{
+                window.channel.objects.backend.getQueue().then(data=>{
+                    let tracks=JSON.parse(data);
+                    accept({result:tracks});
+                  }).catch(error=>{
+                    console.log(error);
+                    reject();
+                  });
+              });
+          }
+          createQueue(query){
+            return api.queueCreate(query,50);
+          }
+          loadUrl(url){
+            this.audio_instance.src=url;
+            this.audio_instance.volume=.75;
+            this.auto_play=false;
+          }
+          playUrl(url){
+            this.audio_instance.src=url;
+            this.audio_instance.volume=.75;
+            this.auto_play=true;
+          }
+          playSong(index,song){
+            if(!!song.file_path){
+              const url=song.file_path;
+              this.playUrl(url);
+            }else{
+              const url=api.librarySongAudioUrl(song.id);
+              this.playUrl(url);
+            }
+          }
+          play(){
+            this.audio_instance.play();
+          }
+          stop(){
+            if(this.isPlaying()){
+              this.pause();
+            }
+            this.parent._sendEvent('handleAudioSongChanged',null);
+          }
+          pause(){
+            if(this.isPlaying()){
+              this.audio_instance.pause();
+            }
+          }
+          currentTime(){
+            return this.audio_instance.currentTime;
+          }
+          setCurrentTime(time){
+            this.audio_instance.currentTime=time;
+          }
+          duration(){
+            console.log(this.audio_instance);
+            return this.audio_instance.duration;
+          }
+          setVolume(volume){
+            this.audio_instance.volume=volume;
+          }
+          isPlaying(){
+            return this.audio_instance&&this.audio_instance.currentTime>0&&!this.audio_instance.paused&&!this.audio_instance.ended&&this.audio_instance.readyState>2;
+            
+          }
+          onplay(event){
+            this.parent._sendEvent('handleAudioPlay',{});
+          }
+          onloadstart(event){
+            console.log('audio on load start');
+            if(this.auto_play){
+              this.audio_instance.play();
+            }
+            this.parent._sendEvent('handleAudioLoadStart',{});
+          }
+          onplaying(event){
+            this.parent._sendEvent('handleAudioPlay',{});
+          }
+          onpause(event){
+            this.parent._sendEvent('handleAudioPause',{});
+          }
+          ondurationchange(event){
+            this.parent._sendEvent('handleAudioDurationChange',{currentTime:this.audio_instance.currentTime,
+                              duration:this.audio_instance.duration});
+          }
+          ontimeupdate(event){
+            this.parent._sendEvent('handleAudioTimeUpdate',{currentTime:this.audio_instance.currentTime,
+                              duration:this.audio_instance.duration});
+          }
+          onwaiting(event){
+            this.parent._sendEvent('handleAudioWaiting',{});
+          }
+          onstalled(event){
+            this.parent._sendEvent('handleAudioStalled',{});
+          }
+          onended(event){
+            window.channel.objects.backend.songFinished(this.parent.current_song.id).then(
+                          _=>{
+                this.parent._sendEvent('handleAudioEnded',event);
+                this.parent.next();
+              });
+          }
+          onerror(event){
+            this.parent._sendEvent('handleAudioError',event);
+            this.parent.next();
+          }
+        }
         class AudioDevice{
           constructor(){
             this.connected_elements=[];
@@ -4272,16 +4501,23 @@ audio=(function(api,daedalus){
           }
           queueLoad(){
             this.impl.loadQueue().then(result=>{
-                console.log(result);
                 this.queue=result.result;
-                this._sendEvent('handleAudioQueueChanged',this.queue);
+                if(daedalus.platform.isAndroid){
+                  this.impl.getCurrentIndex().then(result=>{
+                      this.current_index=result;
+                      this._sendEvent('handleAudioQueueChanged',this.queue);
+                    }).catch(error=>{
+                      console.error("error getting index");
+                    });
+                }else{
+                  this._sendEvent('handleAudioQueueChanged',this.queue);
+                }
               }).catch(error=>{
                 console.log(error);
                 this.queue=[];
                 this.current_index=-1;
                 this._sendEvent('handleAudioQueueChanged',this.queue);
               });
-            this.stop();
           }
           queueCreate(query){
             this.impl.createQueue(query).then(result=>{
@@ -4543,6 +4779,8 @@ audio=(function(api,daedalus){
             let impl;
             if(daedalus.platform.isAndroid){
               impl=new NativeDeviceImpl(device_instance);
+            }else if(daedalus.platform.isQt){
+              impl=new QDeviceImpl(device_instance);
             }else{
               impl=new RemoteDeviceImpl(device_instance);
             }
@@ -4550,7 +4788,7 @@ audio=(function(api,daedalus){
           }
           return device_instance;
         };
-        return[AudioDevice,NativeDeviceImpl,RemoteDeviceImpl];
+        return[AudioDevice,NativeDeviceImpl,QDeviceImpl,RemoteDeviceImpl];
       })();
     const[BrownNoiseContext,NoiseContext,OceanNoiseContext,PinkNoiseContext,WhiteNoiseContext]=(
           function(){
@@ -4725,7 +4963,7 @@ audio=(function(api,daedalus){
         return[];
       })();
     return{AudioDevice,BrownNoiseContext,NativeDeviceImpl,NoiseContext,OceanNoiseContext,
-          PinkNoiseContext,RemoteDeviceImpl,WhiteNoiseContext};
+          PinkNoiseContext,QDeviceImpl,RemoteDeviceImpl,WhiteNoiseContext};
   })(api,daedalus);
 pages=(function(api,audio,components,daedalus,resources,router,store){
     "use strict";
@@ -4758,7 +4996,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[fmtEpochTime];
       })();
     const[LandingPage]=(function(){
-        const styles={main:'dcs-0efdbccc-0',btn_center:'dcs-0efdbccc-1'};
+        const styles={main:'dcs-204dd050-0',btn_center:'dcs-204dd050-1'};
         class LandingPage extends DomElement {
           constructor(){
             super("div",{className:styles.main},[]);
@@ -4773,47 +5011,63 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[LandingPage];
       })();
     const[LoginPage]=(function(){
-        const style={main:'dcs-835de489-0',btn_center:'dcs-835de489-1',edit:'dcs-835de489-2',
-                  warning:'dcs-835de489-3',hide:'dcs-835de489-4'};
+        const style={main:'dcs-795f0492-0',btn_center:'dcs-795f0492-1',edit:'dcs-795f0492-2',
+                  edit2:'dcs-795f0492-3',btnt:'dcs-795f0492-4',warning:'dcs-795f0492-5',hbox:'dcs-795f0492-6',
+                  hide:'dcs-795f0492-7'};
         class LoginPage extends DomElement {
           constructor(){
             super("div",{className:style.main},[]);
-            this.attrs={btn1:new ButtonElement("Login",this.handleLoginClicked.bind(
-                                  this)),btn2:new ButtonElement("Cancel",()=>{
-                  history.pushState({},"","/");
-                }),edit_username:new TextInputElement(""),edit_password:new TextInputElement(
-                              ""),warning:new DomElement("div",{className:style.warning},[new TextElement(
-                                      "Invalid Username or Password")])};
-            this.attrs.btn1.addClassName(style.btn_center);
-            this.attrs.btn2.addClassName(style.btn_center);
-            this.attrs.edit_username.addClassName(style.edit);
-            this.attrs.edit_password.addClassName(style.edit);
-            this.attrs.edit_username.updateProps({placeholder:'Username'});
-            this.attrs.edit_password.updateProps({placeholder:'Password',type:'password'});
+            this.btn1=new ButtonElement("Login",this.handleLoginClicked.bind(this));
             
-            this.attrs.warning.addClassName(style.hide);
-            this.appendChild(this.attrs.edit_username);
-            this.appendChild(this.attrs.edit_password);
-            this.appendChild(this.attrs.warning);
-            this.appendChild(this.attrs.btn1);
-            this.appendChild(this.attrs.btn2);
+            this.btn2=new ButtonElement("Cancel",()=>{
+                history.pushState({},"","/");
+              });
+            this.edit_username=new TextInputElement("");
+            this.edit_password=new TextInputElement("");
+            this.btn_toggle_visible=new ButtonElement("\uD83D\uDC41",this.onTogglePasswordVisible.bind(
+                              this));
+            this.warning=new DomElement("div",{className:style.warning},[new TextElement(
+                                  "Invalid Username or Password")]);
+            this.hbox_username=new DomElement("div",{className:style.hbox},[this.edit_username]);
+            
+            this.hbox_password=new DomElement("div",{className:style.hbox},[this.edit_password,
+                              this.btn_toggle_visible]);
+            this.btn1.addClassName(style.btn_center);
+            this.btn2.addClassName(style.btn_center);
+            this.edit_username.addClassName(style.edit);
+            this.edit_password.addClassName(style.edit2);
+            this.btn_toggle_visible.addClassName(style.btnt);
+            this.edit_username.updateProps({placeholder:'Username'});
+            this.edit_password.updateProps({placeholder:'Password',type:'password'});
+            
+            this.warning.addClassName(style.hide);
+            this.appendChild(this.hbox_username);
+            this.appendChild(this.hbox_password);
+            this.appendChild(this.warning);
+            this.appendChild(this.btn1);
+            this.appendChild(this.btn2);
           }
           handleLoginClicked(){
-            const username=this.attrs.edit_username.getText();
-            const password=this.attrs.edit_password.getText();
+            const username=this.edit_username.getText();
+            const password=this.edit_password.getText();
             api.authenticate(username,password).then((data)=>{
                 if(data.token){
                   api.setUsertoken(data.token);
-                  this.attrs.warning.addClassName(style.hide);
+                  this.warning.addClassName(style.hide);
                   history.pushState({},"",routes.userLibraryList());
                 }else{
-                  this.attrs.warning.removeClassName(style.hide);
+                  this.warning.removeClassName(style.hide);
                   console.error(data.error);
                 }
               }).catch((err)=>{
-                this.attrs.warning.removeClassName(style.hide);
+                this.warning.removeClassName(style.hide);
                 console.error(err);
               });
+          }
+          onTogglePasswordVisible(){
+            let type=(this.edit_password.props.type=="password")?"text":"password";
+            
+            this.edit_password.updateProps({type});
           }
         }
         return[LoginPage];
@@ -4821,17 +5075,17 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
     const[FileSystemPage,PublicFilePage,StoragePage,StoragePreviewPage]=(function(
             ){
         const thumbnailFormats={jpg:true,png:true,webm:true,mp4:true,gif:true};
-        const style={item_file:'dcs-8547c91b-0',list:'dcs-8547c91b-1',listItem:'dcs-8547c91b-2',
-                  listItemMain:'dcs-8547c91b-3',listItemDir:'dcs-8547c91b-4',listItemMid:'dcs-8547c91b-5',
-                  listItemEnd:'dcs-8547c91b-6',listItemText:'dcs-8547c91b-7',icon1:'dcs-8547c91b-8',
-                  icon2:'dcs-8547c91b-9',fileDetailsShow:'dcs-8547c91b-10',fileDetailsHide:'dcs-8547c91b-11',
-                  encryption:{"system":'dcs-8547c91b-12',"server":'dcs-8547c91b-13',"client":'dcs-8547c91b-14',
-                      "none":'dcs-8547c91b-15'},svgDiv:'dcs-8547c91b-16',text:'dcs-8547c91b-17',
-                  textSpacer:'dcs-8547c91b-18',callbackLink:'dcs-8547c91b-19',center:'dcs-8547c91b-20',
-                  paddedText:'dcs-8547c91b-21',navBar:'dcs-8547c91b-22',searchShow:'dcs-8547c91b-23',
-                  searchHide:'dcs-8547c91b-24',grow:'dcs-8547c91b-25',objectContainer:'dcs-8547c91b-26',
-                  zoomOut:'dcs-8547c91b-27',zoomIn:'dcs-8547c91b-28',maxWidth:'dcs-8547c91b-29',
-                  main2:'dcs-8547c91b-30',show:'dcs-8547c91b-31',hide:'dcs-8547c91b-32'};
+        const style={item_file:'dcs-6f774f69-0',list:'dcs-6f774f69-1',listItem:'dcs-6f774f69-2',
+                  listItemMain:'dcs-6f774f69-3',listItemDir:'dcs-6f774f69-4',listItemMid:'dcs-6f774f69-5',
+                  listItemEnd:'dcs-6f774f69-6',listItemText:'dcs-6f774f69-7',icon1:'dcs-6f774f69-8',
+                  icon2:'dcs-6f774f69-9',fileDetailsShow:'dcs-6f774f69-10',fileDetailsHide:'dcs-6f774f69-11',
+                  encryption:{"system":'dcs-6f774f69-12',"server":'dcs-6f774f69-13',"client":'dcs-6f774f69-14',
+                      "none":'dcs-6f774f69-15'},svgDiv:'dcs-6f774f69-16',text:'dcs-6f774f69-17',
+                  textSpacer:'dcs-6f774f69-18',callbackLink:'dcs-6f774f69-19',center:'dcs-6f774f69-20',
+                  paddedText:'dcs-6f774f69-21',navBar:'dcs-6f774f69-22',searchShow:'dcs-6f774f69-23',
+                  searchHide:'dcs-6f774f69-24',grow:'dcs-6f774f69-25',objectContainer:'dcs-6f774f69-26',
+                  zoomOut:'dcs-6f774f69-27',zoomIn:'dcs-6f774f69-28',maxWidth:'dcs-6f774f69-29',
+                  main2:'dcs-6f774f69-30',show:'dcs-6f774f69-31',hide:'dcs-6f774f69-32'};
         
         ;
         ;
@@ -5622,6 +5876,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.addAction(resources.svg['menu'],()=>{
                 store.globals.showMenu();
               });
+            this.addAction(resources.svg['plus'],()=>{
+                this.attrs.parent.handleCreate();
+              });
           }
         }
         class ListFooter extends components.NavFooter {
@@ -5681,6 +5938,14 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               }).catch(error=>{
                 console.log(error);
               });
+          }
+          handleCreate(){
+            const dt=new Date();
+            const y=dt.getFullYear();
+            const m=("0"+(dt.getMonth()+1)).slice(-2);
+            const d=("0"+dt.getDate()).slice(-2);
+            const fname=`${y}-${m}-${d}.txt`;
+            router.navigate(router.routes.userNotesEdit({noteId:fname},{}));
           }
         }
         class ContentHeader extends components.NavHeader {
@@ -6522,6 +6787,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(miss>0||del>0){
               this.attrs.container.update();
             }
+            const song=this.attrs.device.currentSong();
+            this.attrs.header.setSong(song);
             console.log(`miss rate hit: ${hit} miss: ${miss} del: ${del}`);
           }
           handleResume(){
@@ -6532,7 +6799,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[PlaylistPage];
       })();
     const[SettingsPage]=(function(){
-        const style={main:'dcs-6349d093-0',settingsItem:'dcs-6349d093-1',settingsRowItem:'dcs-6349d093-2'};
+        const style={main:'dcs-07e42eba-0',settingsItem:'dcs-07e42eba-1',settingsRowItem:'dcs-07e42eba-2'};
         
         class SettingsItem extends DomElement {
           constructor(title){
@@ -6746,7 +7013,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
             this.addRowElement(0,this.attrs.txtInput);
             this.attrs.txtInput.addClassName(style.grow);
-            if(daedalus.platform.isAndroid){
+            if(daedalus.platform.isAndroid||daedalus.platform.isQt){
               this.attrs.chk=new SearchModeCheckBox(this.handleCheck.bind(this),1);
               
               this.addRowElement(0,new components.HSpacer("1em"));
@@ -7006,6 +7273,21 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   
                   let forest=JSON.parse(payload);
                   this.attrs.view.setForest(forest);
+                }else if(daedalus.platform.isQt){
+                  let syncState=1;
+                  let showBanished=false;
+                  window.channel.objects.backend.buildForest(text,syncState,showBanished).then(
+                                      result=>{
+                      result=JSON.parse(result);
+                      if(result.status=="ok"){
+                        this.attrs.view.setForest(result.result);
+                      }else{
+                        components.ErrorDrawer.post("Query Error",result.status);
+                        
+                      }
+                    }).catch(error=>{
+                      console.log(error);
+                    });
                 }else{
                   api.librarySearchForest(text,showBanished).then(result=>{
                       this.attrs.view.setForest(result.result);
@@ -7067,17 +7349,24 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
             this.addAction(resources.svg['sort'],()=>{
                 if(daedalus.platform.isAndroid){
-                  if(Client){
-                    if(!Client.isWifiConnected()){
-                      components.ErrorDrawer.post("Connection Status","Wifi Not Connected");
-                      
-                    }
+                  if(!Client.isWifiConnected()){
+                    components.ErrorDrawer.post("Connection Status","Wifi Not Connected");
+                    
                   }
                   AndroidNativeAudio.beginFetch(""+api.getAuthToken());
+                }else if(daedalus.platform.isQt){
+                  window.channel.objects.backend.taskQuery().then(result=>{
+                      let state=JSON.parse(result);
+                      if(!state.busy){
+                        console.log("begin sync");
+                        window.channel.objects.backend.beginFetch(""+api.getAuthToken(
+                                                    ));
+                      }else{
+                        components.ErrorDrawer.post("Task Error","Task in progress");
+                        
+                      }
+                    });
                 }
-              });
-            this.addAction(resources.svg['search_generic'],()=>{
-                this.attrs.parent.search();
               });
             this.addAction(resources.svg['save'],()=>{
                 this.attrs.parent.handleSyncSave();
@@ -7086,12 +7375,45 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 if(daedalus.platform.isAndroid){
                   console.log("begin sync");
                   AndroidNativeAudio.beginSync(""+api.getAuthToken());
+                }else if(daedalus.platform.isQt){
+                  window.channel.objects.backend.taskQuery().then(result=>{
+                      let state=JSON.parse(result);
+                      if(!state.busy){
+                        console.log("begin sync");
+                        window.channel.objects.backend.beginSync(""+api.getAuthToken(
+                                                    ));
+                      }else{
+                        components.ErrorDrawer.post("Task Error","Task in progress");
+                        
+                      }
+                    });
                 }
               });
+            if(daedalus.platform.isQt){
+              this.addAction(resources.svg['upload'],()=>{
+                  if(daedalus.platform.isAndroid){
+                    console.log("begin upload history");
+                    AndroidNativeAudio.beginUploadHistory(""+api.getAuthToken());
+                    
+                  }else if(daedalus.platform.isQt){
+                    window.channel.objects.backend.taskQuery().then(result=>{
+                        let state=JSON.parse(result);
+                        if(!state.busy){
+                          console.log("begin upload history");
+                          window.channel.objects.backend.beginUploadHistory(""+api.getAuthToken(
+                                                        ));
+                        }else{
+                          components.ErrorDrawer.post("Task Error","Task in progress");
+                          
+                        }
+                      });
+                  }
+                });
+            }
             this.addRow(false);
             this.addRowElement(0,this.attrs.txtInput);
             this.attrs.txtInput.addClassName(style.grow);
-            if(daedalus.platform.isAndroid){
+            if(daedalus.platform.isAndroid||daedalus.platform.isQt){
               this.attrs.chk=new SearchModeCheckBox(this.handleCheck.bind(this),0);
               
               this.addRowElement(0,new components.HSpacer("1em"));
@@ -7112,6 +7434,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           handleCheck(){
             this.attrs.chk.setCheckState((this.attrs.chk.attrs.checkState+1)%3);
+            console.log("check state",this.attrs.chk.attrs.checkState);
           }
           syncState(){
             return this.attrs.chk.attrs.checkState;
@@ -7157,8 +7480,31 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                                   this));
               registerAndroidEvent('onresume',this.handleResume.bind(this));
               this.updateInfo();
+            }else if(daedalus.platform.isQt){
+              window.channel.objects.backend.fetchProgress.connect((count,total)=>{
+                
+                  this.handleFetchProgress({count,total});
+                });
+              window.channel.objects.backend.fetchComplete.connect(()=>{
+                  this.handleFetchComplete({});
+                });
+              window.channel.objects.backend.syncProgress.connect((index,total,message)=>{
+                
+                  this.handleSyncProgress({index,total,message});
+                });
+              window.channel.objects.backend.syncComplete.connect(()=>{
+                  this.handleSyncComplete({});
+                });
+              window.channel.objects.backend.uploadProgress.connect((count,total)=>{
+                
+                  this.handleUploadProgress({count,total,message});
+                });
+              window.channel.objects.backend.uploadComplete.connect(()=>{
+                  this.handleUploadComplete({});
+                });
+              this.updateInfo();
             }
-            if(Client){
+            if(daedalus.platform.isAndroid){
               if(!Client.isWifiConnected()){
                 components.ErrorDrawer.post("Connection Status","Wifi Not Connected");
                 
@@ -7177,7 +7523,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
           }
           handleHideFileMore(){
-
+            this.attrs.more.hide();
           }
           search(text){
             this.attrs.view.reset();
@@ -7189,6 +7535,21 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   
                   let forest=JSON.parse(payload);
                   this.attrs.view.setForest(forest);
+                }else if(daedalus.platform.isQt){
+                  let syncState=this.attrs.header.syncState();
+                  let showBanished=false;
+                  window.channel.objects.backend.buildForest(text,syncState,showBanished).then(
+                                      result=>{
+                      result=JSON.parse(result);
+                      if(result.status=="ok"){
+                        this.attrs.view.setForest(result.result);
+                      }else{
+                        components.ErrorDrawer.post("Query Error",result.status);
+                        
+                      }
+                    }).catch(error=>{
+                      console.log(error);
+                    });
                 }else{
                   let showBanished=false;
                   api.librarySearchForest(text,showBanished).then(result=>{
@@ -7202,20 +7563,20 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           handleSyncSave(){
             let items=this.attrs.view.getSelectedSongs();
-            console.log(JSON.stringify(items));
-            console.log(`selected ${items.length} items`);
+            console.log(`sync save selected ${items.length} items`);
             let data={};
             for(let i=0;i<items.length;i++)
             {
               let item=items[i];
               data[item.spk]=item.sync;
             }
-            console.log(JSON.stringify(data));
-            console.log(`selected ${data.length} items`);
             if(items.length>0){
               if(daedalus.platform.isAndroid){
                 let payload=JSON.stringify(data);
                 AndroidNativeAudio.updateSyncStatus(payload);
+              }else if(daedalus.platform.isQt){
+                let payload=JSON.stringify(data);
+                window.channel.objects.backend.updateSyncStatus(payload);
               }else{
                 console.log(data);
               }
@@ -7228,6 +7589,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           handleFetchComplete(payload){
             console.log("fetch complete: "+JSON.stringify(payload));
+            this.attrs.header.updateStatus(`fetch complete`);
             this.updateInfo();
           }
           handleSyncProgress(payload){
@@ -7235,8 +7597,16 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             
           }
           handleSyncComplete(payload){
-            console.log("fetch complete: "+JSON.stringify(payload));
+            console.log("sync complete: "+JSON.stringify(payload));
             this.attrs.header.updateStatus("sync complete");
+            this.updateInfo();
+          }
+          handleUploadProgress(payload){
+            this.attrs.header.updateStatus(`upload ${payload.index}/${payload.total}`);
+            
+          }
+          handleUploadComplete(payload){
+            this.attrs.header.updateStatus("upload complete");
             this.updateInfo();
           }
           handleSyncStatusUpdated(payload){
@@ -7256,6 +7626,14 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               const info=JSON.parse(AndroidNativeAudio.getSyncInfo());
               this.attrs.footer_lbl1.setText(`records: ${info.record_count} synced: ${info.synced_tracks}`);
               
+            }else if(daedalus.platform.isQt){
+              const data=window.channel.objects.backend.getSyncInfo().then(result=>{
+                
+                  console.log(result);
+                  const info=JSON.parse(result);
+                  this.attrs.footer_lbl1.setText(`records: ${info.record_count} synced: ${info.synced_tracks} history: ${info.history_count}`);
+                  
+                });
             }
           }
         }
@@ -7305,13 +7683,15 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             };
           }
         }
+        const qt=!!(daedalus.platform.isQt);
         const savedSearches=[{name:"stoner best",query:"stoner rating >= 5"},{name:"grunge best",
                       query:"grunge rating >= 5"},{name:"english best",query:"language = english rating >= 5"},
                   {name:"visual best",query:"\"visual kei\" rating >= 5"},{name:"jrock best",
                       query:"language = japanese rating >= 2"},{name:"stone temple pilots",
-                      query:"\"stone temple pilots\" not STPLIGHT"},{name:"soundwitch",query:"soundwitch"},
-                  {name:"Gothic Emily",query:"\"gothic emily\""},{name:"Driving Hits Volume 1",
-                      query:"\":DRV\" && p lt -14d"},{name:"Driving Hits Volume 2",query:"\":VL2\" && p lt -14d"},
+                      query:qt?"\"stone temple pilots\" !STPLIGHT":"\"stone temple pilots\" not STPLIGHT"},
+                  {name:"soundwitch",query:"soundwitch"},{name:"Gothic Emily",query:"\"gothic emily\""},
+                  {name:"Driving Hits Volume 1",query:qt?"\":DRV\" && pcnt < -14d":"\":DRV\" && p lt -14d"},
+                  {name:"Driving Hits Volume 2",query:qt?"\":VL2\" && pcnt < -14d":"\":VL2\" && p lt -14d"},
                   {name:"Driving Hits Volume 3",query:"(comment=\":DRV\" or comment=\":VL2\") && p lt -14d"}];
         
         class SavedSearchList extends DomElement {
@@ -7352,20 +7732,31 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         }
         return[LibraryPage,SavedSearchPage,SyncPage];
       })();
-    const[RecipeIndexPage,RecipePage]=(function(){
+    const[InfoOilPage,RecipeIndexPage,RecipePage]=(function(){
         const style={ingredientTable:'dcs-f4bd2df9-0',ingredientQuantityHeader:'dcs-f4bd2df9-1',
                   ingredientBorder:'dcs-f4bd2df9-2',ingredientQuantity:'dcs-f4bd2df9-3',ingredientUnit:'dcs-f4bd2df9-4',
                   ingredientName:'dcs-f4bd2df9-5',header:'dcs-f4bd2df9-6',summary:'dcs-f4bd2df9-7',
-                  steps:'dcs-f4bd2df9-8',attributeList:'dcs-f4bd2df9-9',attributeItem:'dcs-f4bd2df9-10',
-                  attributeItemBreakfast:'dcs-f4bd2df9-11',attributeItemLunch:'dcs-f4bd2df9-12',
-                  attributeItemDinner:'dcs-f4bd2df9-13',attributeItemDessert:'dcs-f4bd2df9-14',
-                  attributeItemSnack:'dcs-f4bd2df9-15',attributeItemSide:'dcs-f4bd2df9-16',
-                  attributeItemAppetizer:'dcs-f4bd2df9-17',attributeItemMeal:'dcs-f4bd2df9-18',
-                  recipeHeader:'dcs-f4bd2df9-19',recipeTitle:'dcs-f4bd2df9-20',infoHeader:'dcs-f4bd2df9-21',
-                  infoBox:'dcs-f4bd2df9-22',infoTitle:'dcs-f4bd2df9-23',infoRowCalorie:'dcs-f4bd2df9-24',
-                  infoRowMacro:'dcs-f4bd2df9-25',infoRowMacroSub:'dcs-f4bd2df9-26',infoRowMicro:'dcs-f4bd2df9-27',
-                  infoAttribute:'dcs-f4bd2df9-28',fraction:'dcs-f4bd2df9-29',nutritionTable:'dcs-f4bd2df9-30',
-                  nutritionTableValue:'dcs-f4bd2df9-31'};
+                  noteList:'dcs-f4bd2df9-8',noteItem:'dcs-f4bd2df9-9',steps:'dcs-f4bd2df9-10',
+                  select:'dcs-f4bd2df9-11',text_input:'dcs-f4bd2df9-12',attributeList:'dcs-f4bd2df9-13',
+                  attributeItem:'dcs-f4bd2df9-14',attributeItemBreakfast:'dcs-f4bd2df9-15',
+                  attributeItemLunch:'dcs-f4bd2df9-16',attributeItemDinner:'dcs-f4bd2df9-17',
+                  attributeItemDessert:'dcs-f4bd2df9-18',attributeItemSnack:'dcs-f4bd2df9-19',
+                  attributeItemSide:'dcs-f4bd2df9-20',attributeItemAppetizer:'dcs-f4bd2df9-21',
+                  attributeItemMeal:'dcs-f4bd2df9-22',recipeHeader:'dcs-f4bd2df9-23',recipeTitle:'dcs-f4bd2df9-24',
+                  divRecipeBody:'dcs-f4bd2df9-25',infoHeader:'dcs-f4bd2df9-26',infoBox:'dcs-f4bd2df9-27',
+                  infoTitle:'dcs-f4bd2df9-28',infoRowCalorie:'dcs-f4bd2df9-29',infoRowMacro:'dcs-f4bd2df9-30',
+                  infoRowMacroSub:'dcs-f4bd2df9-31',infoRowMicro:'dcs-f4bd2df9-32',infoAttribute:'dcs-f4bd2df9-33',
+                  fraction:'dcs-f4bd2df9-34',nutritionTable:'dcs-f4bd2df9-35',nutritionTableValue:'dcs-f4bd2df9-36',
+                  oilTable:'dcs-f4bd2df9-37',oilTableRowName:'dcs-f4bd2df9-38',oilTableRowData:'dcs-f4bd2df9-39',
+                  oilTableRowSmokePoint1:'dcs-f4bd2df9-40',oilTableRowSmokePoint2:'dcs-f4bd2df9-41',
+                  oilTableRowSmokePoint3:'dcs-f4bd2df9-42',oilTableRowSmokePoint4:'dcs-f4bd2df9-43',
+                  oilTableRowSmokePoint5:'dcs-f4bd2df9-44',oilTableRowPrice1:'dcs-f4bd2df9-45',
+                  oilTableRowPrice2:'dcs-f4bd2df9-46',oilTableRowPrice3:'dcs-f4bd2df9-47',
+                  oilTableRowPrice4:'dcs-f4bd2df9-48',oilTableRowPrice5:'dcs-f4bd2df9-49',
+                  oilTableRowScoreF:'dcs-f4bd2df9-50',oilTableRowScoreD:'dcs-f4bd2df9-51',
+                  oilTableRowScoreC:'dcs-f4bd2df9-52',oilTableRowScoreB:'dcs-f4bd2df9-53',
+                  oilTableRowScoreA:'dcs-f4bd2df9-54',oilTableRowScoreS:'dcs-f4bd2df9-55',
+                  hide:'dcs-f4bd2df9-56',logo:'dcs-f4bd2df9-57'};
         const attr_style={"breakfast":style.attributeItemBreakfast,"lunch":style.attributeItemLunch,
                   "dinner":style.attributeItemDinner,"dessert":style.attributeItemDessert,
                   "snack":style.attributeItemSnack,"appetizer":style.attributeItemAppetizer,
@@ -7376,6 +7767,16 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         ;
         ;
         ;
+        ;
+        ;
+        ;
+        ;
+        ;
+        class PageBreak extends DomElement {
+          constructor(){
+            super("div",{className:"pagebreak"});
+          }
+        }
         function fraction(initial){
           const candidates=[2,3,4,8,16];
           let whole=Math.floor(initial);
@@ -7415,6 +7816,10 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         class Fraction extends DomElement {
           constructor(value,prefix="",suffix="",allow_empty=false){
             super("div",{className:style.fraction},[]);
+            this.setValue(value,prefix,suffix,allow_empty);
+          }
+          setValue(value,prefix="",suffix="",allow_empty=false){
+            this.removeChildren();
             let frac=fraction(value);
             if(prefix.length){
               this.appendChild(new TextElement(prefix));
@@ -7449,31 +7854,81 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(item.header.length>1){
               span=1;
             }
-            item.header.forEach((text,index)=>{
-                let child=this.appendChild(new DomElement("th",{'colSpan':span,className:style.ingredientQuantityHeader},
-                                      [new TextElement(text)]));
-                if(index+1<item.header.length){
-                  child.addClassName(style.ingredientBorder);
-                }
-              });
+            this.data=item;
+            this.cell=this.appendChild(new DomElement("td",{className:style.ingredientQuantityHeader},
+                              [new TextElement(item.header[0])]));
             this.appendChild(new DomElement("th",{'colSpan':2,className:style.ingredientQuantityHeader},
                               []));
           }
+          setSelectionIndex(index){
+            if(index<this.data.header.length){
+              this.cell.children[0].setText(this.data.header[index]);
+            }
+          }
+          setScaleFactor(scale){
+
+          }
         }
-        class RecipeIngredient extends DomElement {
+        class RecipeIngredientRow extends DomElement {
           constructor(span,item){
             super("tr",{},[]);
-            item.quantities.forEach((value,index)=>{
-                let child=this.appendChild(new DomElement("td",{className:style.ingredientQuantity},
-                                      [new Fraction(value,"","",true)]));
-                if(index+1<item.quantities.length){
-                  child.addClassName(style.ingredientBorder);
-                }
-              });
+            this.data=item;
+            this.selection_index=0;
+            this.scale_factor=1;
+            this.cell=this.appendChild(new DomElement("td",{className:style.ingredientQuantity},
+                              [new Fraction(item.quantities[0],"","",true)]));
             this.appendChild(new DomElement("td",{className:style.ingredientUnit},
                               [new TextElement(item.unit)]));
             this.appendChild(new DomElement("td",{className:style.ingredientName},
                               [new TextElement(item.name)]));
+          }
+          setSelectionIndex(index){
+            if(index<this.data.quantities.length){
+              this.selection_index=index;
+              this.cell.children[0].setValue(this.scale_factor*this.data.quantities[
+                                this.selection_index],"","",true);
+            }
+          }
+          setScaleFactor(scale){
+            this.scale_factor=scale;
+            this.cell.children[0].setValue(this.scale_factor*this.data.quantities[
+                            this.selection_index],"","",true);
+          }
+        }
+        class RecipeIngredientSelect extends DomElement {
+          constructor(options,cbk){
+            super("select",{className:style.select},[]);
+            this.options=options;
+            this.cbk=cbk;
+            options.forEach(opt=>{
+                this.appendChild(new DomElement("option",{value:opt},[new TextElement(
+                                              opt)]));
+              });
+          }
+          onChange(event){
+            const value=this.getDomNode().value;
+            const index=this.options.indexOf(value);
+            console.log("change",value,index);
+            this.cbk(index);
+          }
+        }
+        class RecipeIngredientScale extends DomElement {
+          constructor(options,cbk){
+            super("input",{type:"number",step:".1",className:style.text_input,"required":"1",
+                              "pattern":"(\d*\.\d+|\d+)"},[]);
+            this.appendChild(new TextElement("1"));
+            this.options=options;
+            this.cbk=cbk;
+          }
+          elementMounted(){
+            this.getDomNode().defaultValue=1;
+          }
+          onInput(event){
+            const value=parseFloat(this.getDomNode().value);
+            if(value!==NaN){
+              console.log("input",value);
+              this.cbk(value);
+            }
           }
         }
         class RecipeIngredientsTable extends DomElement {
@@ -7489,21 +7944,41 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
             this.appendChild(new DomElement("tr",{},[new DomElement("th",{'colSpan':2+span},
                                       [new TextElement("Ingredients")])]));
-            this.appendChild(new DomElement("tr",{},[new DomElement("th",{'colSpan':span},
-                                      [new TextElement("Quantity")]),new DomElement("th",{},[]),new DomElement(
-                                      "th",{},[new TextElement("Name")])]));
+            this.options=["small","medium","large"];
+            this.appendChild(new DomElement("tr",{},[new DomElement("td",{'colSpan':2},
+                                      [new TextElement("Scale")]),new DomElement("td",{'colSpan':span},
+                                      [new RecipeIngredientScale(this.options,scale=>this.handleScaleChanged(
+                                                  scale))])]));
+            this.appendChild(new DomElement("tr",{},[new DomElement("th",{'colSpan':2},
+                                      [new TextElement("Quantity")]),new DomElement("th",{},[new TextElement(
+                                              "Name")])]));
+            this.rows=[];
             items.forEach(item=>{
-                if(item.header!==undefined){
-                  this.appendChild(new RecipeIngredientHeader(span,item));
+                if(item.options!==undefined){
+                  this.appendChild(new DomElement("tr",{},[new DomElement("td",{'colSpan':2,
+                                                      className:style.ingredientName},[new TextElement(item.title)]),
+                                              new DomElement("td",{'colSpan':span,className:style.ingredientName},
+                                                  [new RecipeIngredientSelect(item.options,index=>this.handleOptionChanged(
+                                                              index))])]));
+                }else if(item.header!==undefined){
+                  let row=this.appendChild(new RecipeIngredientHeader(span,item));
+                  
+                  this.rows.push(row);
                 }else{
-                  this.appendChild(new RecipeIngredient(span,item));
+                  let row=this.appendChild(new RecipeIngredientRow(span,item));
+                  this.rows.push(row);
                 }
               });
           }
-        }
-        class RecipeNutritionFacts extends DomElement {
-          constructor(attrs,items){
-            super("div",{className:style.infoTable},[]);
+          handleScaleChanged(index){
+            this.rows.forEach(row=>{
+                row.setScaleFactor(index);
+              });
+          }
+          handleOptionChanged(index){
+            this.rows.forEach(row=>{
+                row.setSelectionIndex(index);
+              });
           }
         }
         class RecipeAttributes extends DomElement {
@@ -7530,20 +8005,16 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         }
         class RecipeNotes extends DomElement {
           constructor(notes){
-            super("ul",{className:style.summary},[]);
-            this.appendChild(new DomElement("h4",{},[new TextElement("Notes")]));
-            
+            super("ul",{className:style.noteList},[]);
             notes.forEach(note=>{
-                this.appendChild(new DomElement("li",{},[new TextElement(note)]));
-                
+                this.appendChild(new DomElement("li",{className:style.noteItem},[
+                                          new TextElement(note)]));
               });
           }
         }
         class RecipeSteps extends DomElement {
           constructor(steps){
             super("ol",{className:style.steps},[]);
-            this.appendChild(new DomElement("h4",{},[new TextElement("Steps")]));
-            
             steps.forEach(step=>{
                 this.appendChild(new DomElement("li",{},[new TextElement(step)]));
                 
@@ -7563,55 +8034,60 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(recipe.summary.length>0){
               this.top1.appendChild(new RecipeSummary(recipe.summary));
             }
-            let facts=this.top.appendChild(new DomElement("div",{className:style.infoHeader}));
+            this.info_box=this.top.appendChild(new DomElement("div",{className:style.infoHeader}));
             
-            this.buildNutritionFacts(facts,recipe.attributes,recipe.ingredients);
+            this.buildNutritionFacts(this.info_box,recipe.attributes,recipe.ingredients);
             
             this.appendChild(new DomElement("hr"));
             this.appendChild(new RecipeIngredientsTable(recipe.ingredients));
-            if(recipe.notes.length>0){
-              this.appendChild(new RecipeNotes(recipe.notes));
-            }
-            if(recipe.steps.length>0){
-              this.appendChild(new RecipeSteps(recipe.steps));
-            }
+            this.steps=this.appendChild(new DomElement("div",{className:style.divRecipeBody}));
+            
+            recipe.steps.forEach(steps=>{
+                this.steps.appendChild(new DomElement("h4",{},[new TextElement(steps.header)]));
+                
+                if(steps.notes.length>0){
+                  this.steps.appendChild(new RecipeNotes(steps.notes));
+                }
+                if(steps.steps.length>0){
+                  this.steps.appendChild(new RecipeSteps(steps.steps));
+                }
+              });
+            this.appendChild(new PageBreak());
           }
           buildNutritionFacts(parent,attrs,items){
+            parent.removeChildren();
             let servings=1;
             attrs.forEach(attr=>{
                 if(attr.startsWith("servings=")){
                   servings=+attr.substr(9);
                 }
               });
+            const selection_index=0;
+            const scale_factor=1;
             const facts={};
             items.forEach(item=>{
                 if(item.info){
                   let _servings=((((item.info)||{}).servings)||{}).value??1;
-                  for(let[key,value]of Object.entries(item.info)){
+                  for(let[key,value]of Object.entries(item.info[selection_index])){
+                  
                     if(key=="servings"){
                       continue;
                     }
                     if(facts[key]===undefined){
                       facts[key]={'value':0,'unit':value['unit']};
                     }
-                    facts[key].value+=value.value/_servings;
+                    facts[key].value+=value.value*scale_factor/_servings;
                   }
                 }
               });
-            this.buildNutritionFacts2(parent,1,facts);
-            if(servings>1){
-              this.buildNutritionFacts2(parent,servings,facts);
+            if(Object.keys(facts).length>0){
+              this.buildNutritionFactsTable(parent,1,facts);
+              if(servings>1){
+                this.buildNutritionFactsTable(parent,servings,facts);
+              }
             }
           }
-          formatNumber(value){
-            let v=value.toFixed(1);
-            if(v.endsWith('5')){
-              return v;
-            }else{
-              return Math.round(value);
-            }
-          }
-          buildNutritionFacts2(parent,servings,facts){
+          buildNutritionFactsTable(parent,servings,facts){
             const lst=parent.appendChild(new DomElement("div",{className:style.infoBox},
                               []));
             lst.appendChild(new DomElement("div",{className:style.infoTitle},[new TextElement(
@@ -7649,11 +8125,12 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         class RecipePage extends DomElement {
           elementMounted(){
             this.removeChildren();
-            const lnk=new DomElement("a",{"href":"/recipe",className:style.header},
-                          [new TextElement("Home")]);
+            const lnk=new LinkElement("Home","/recipe");
             this.appendChild(new DomElement("div",{},[lnk]));
             api.recipeGetContent(Router.instance.match.path).then(result=>{
-                this.appendChild(new Recipe(result.result));
+                result.result.forEach(recipe=>{
+                    this.appendChild(new Recipe(recipe));
+                  });
               }).catch(error=>{
                 console.error(error);
               });
@@ -7665,8 +8142,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             const lst=this.appendChild(new DomElement("ul",{},[]));
             api.recipeGetRecipes().then(result=>{
                 result.result.forEach(item=>{
-                    const lnk=new DomElement("a",{"href":"/recipe/"+item.path},[new TextElement(
-                                                  item.name)]);
+                    const lnk=new LinkElement(item.name,"/recipe/"+item.path);
                     lst.appendChild(new DomElement("li",{},[lnk]));
                   });
               }).catch(error=>{
@@ -7689,7 +8165,6 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                                           new TextElement('servings')])]));
             api.getIngredients().then(result=>{
                 result.forEach(row=>{
-                    console.log(row);
                     table.appendChild(new DomElement("tr",{},[new DomElement("td",
                                                       {},[new TextElement(row.name)]),new DomElement("td",{
                                                         },[new TextElement(row.source)]),new DomElement("td",
@@ -7718,22 +8193,198 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               });
           }
         }
-        return[RecipeIndexPage,RecipePage];
+        class SvgImage extends DomElement {
+          constructor(path){
+            super("img",{'src':path,className:style.logo},[]);
+          }
+        }
+        class SortableTable extends DomElement {
+          constructor(headers,className=null){
+            super("table",{className:className},[]);
+            this.appendChild(new DomElement("tr",{},headers.map((name,index)=>{
+                    return new SortableTableHeader(name,()=>{
+                        this.sortColumn(index);
+                      });
+                  })));
+            this.current_sort_index=0;
+          }
+          addRow(row,rowStyle){
+            let child=this.appendChild(new SortableTableRow(row.map((item,index)=>{
+                  
+                    let col=new SortableTableCell(item.value,item.display);
+                    col.props.className=item.style;
+                    return col;
+                  })));
+            child.props.className=rowStyle;
+          }
+          initSortColumn(column){
+            this.current_sort_index=column+1;
+            this.sortColumn(column);
+          }
+          sortColumn(column){
+            let tmp=this.children.slice(1);
+            console.log(`sort by ${column} rev=${(this.current_sort_index-1)===column}`);
+            
+            tmp.sort((a,b)=>{
+                let v1=a.children[column].value;
+                let v2=b.children[column].value;
+                if(typeof v1==='string'||v1 instanceof String){
+                  return v1.localeCompare(v2);
+                }else{
+                  return v1-v2;
+                }
+              });
+            if(this.current_sort_index!==(column+1)){
+              this.current_sort_index=column+1;
+            }else{
+              tmp.reverse();
+              this.current_sort_index=-this.current_sort_index;
+            }
+            this.children[0].children.forEach((child,index)=>{
+                child.setSortDirection(Math.sign(this.current_sort_index)*(index==(
+                                          column)));
+              });
+            tmp.unshift(this.children[0]);
+            this.children=tmp;
+            this.update();
+          }
+        }
+        class SortableTableHeader extends DomElement {
+          constructor(name,cbk){
+            super("th",{},[new DomElement("div",{},[new TextElement(name)]),new DomElement(
+                                  "div",{className:style.hide},[new TextElement("\u25B2")]),new DomElement(
+                                  "div",{className:style.hide},[new TextElement("\u25BC")])]);
+            this.cbk=cbk;
+          }
+          setSortDirection(asc){
+            if(asc>0){
+              this.children[1].removeClassName(style.hide);
+              this.children[2].addClassName(style.hide);
+            }else if(asc<0){
+              this.children[1].addClassName(style.hide);
+              this.children[2].removeClassName(style.hide);
+            }else{
+              this.children[1].addClassName(style.hide);
+              this.children[2].addClassName(style.hide);
+            }
+          }
+          onClick(event){
+            this.cbk();
+          }
+        }
+        class SortableTableRow extends DomElement {
+          constructor(children){
+            super("tr",{},children);
+          }
+        }
+        class SortableTableCell extends DomElement {
+          constructor(value,display){
+            super("td",{},[new TextElement(display)]);
+            this.value=value;
+          }
+        }
+        function emoji_u(codeUnit){
+          return'\\u'+codeUnit.toString(16).toUpperCase();
+        }
+        function emoji(codePoint){
+          return String.fromCodePoint(codePoint);
+        }
+        class InfoOilPage extends DomElement {
+          elementMounted(){
+            this.removeChildren();
+            this.appendChild(new DomElement("div",{},[new LinkElement("Home","/recipe")]));
+            
+            this.appendChild(new DomElement("div",{},[new DomElement("h2",{},[new TextElement(
+                                              "Oil")])]));
+            let s=emoji(0x1F951);
+            s+=emoji(0x1F96F);
+            s+=emoji(0x1FAD2);
+            s+=emoji(0x1F33D);
+            s+=emoji(0x1F95C);
+            s+=emoji(0x1F9C8);
+            this.appendChild(new DomElement("div",{},[new DomElement("h2",{},[new TextElement(
+                                              s)])]));
+            this.appendChild(new DomElement("div",{},[new SvgImage("/static/usda-symbol.svg")]));
+            
+            let scheme1=[style.oilTableRowSmokePoint1,style.oilTableRowSmokePoint2,
+                          style.oilTableRowSmokePoint3,style.oilTableRowSmokePoint4,style.oilTableRowSmokePoint5];
+            
+            let scheme2=[style.oilTableRowPrice5,style.oilTableRowPrice4,style.oilTableRowPrice3,
+                          style.oilTableRowPrice2,style.oilTableRowPrice1];
+            api.getInfoOil().then(result=>{
+                const header=result.result[0];
+                const data=result.result.slice(1);
+                this.table=this.appendChild(new SortableTable(header,style.oilTable));
+                
+                data.forEach((row,index)=>{
+                    const rowdata=row.map((item,index)=>{
+                        let display=item;
+                        let _style=(index===0)?style.oilTableRowName:style.oilTableRowData;
+                        
+                        if(index>0&&index<row.length-3&&item!==null){
+                          display=item.toFixed(1)+"%";
+                        }else if(index==row.length-1){
+                          if(item>=4.366){
+                            display="S";
+                            _style=[_style,style.oilTableRowScoreS];
+                          }else if(item>=4.082){
+                            display="A";
+                            _style=[_style,style.oilTableRowScoreA];
+                          }else if(item>=3.623){
+                            display="B";
+                            _style=[_style,style.oilTableRowScoreB];
+                          }else if(item>=3.175){
+                            display="C";
+                            _style=[_style,style.oilTableRowScoreC];
+                          }else if(item>=2.722){
+                            display="D";
+                            _style=[_style,style.oilTableRowScoreD];
+                          }else{
+                            display="F";
+                            _style=[_style,style.oilTableRowScoreF];
+                          }
+                        }else if(index==row.length-2){
+                          if(item==0){
+                            display="";
+                          }else{
+                            display=`$ ${item.toFixed(2)}`;
+                            let j=Math.floor(Math.max(0,Math.min(4,(item-1.0)/25*5)));
+                            
+                            _style=[_style,scheme2[j]];
+                          }
+                        }else if(index==row.length-3){
+                          let j=Math.floor(Math.max(0,Math.min(4,(item-100)/200*5)));
+                          
+                          _style=[_style,scheme1[j]];
+                        }
+                        return{style:_style,value:item,display:display};
+                      });
+                    this.table.addRow(rowdata,style.oilTableRow);
+                  });
+                this.table.initSortColumn(9);
+                this.appendChild(new DomElement("div",{},[new TextElement("blah")]));
+                
+              }).catch(error=>{
+                console.error(error);
+              });
+          }
+        }
+        return[InfoOilPage,RecipeIndexPage,RecipePage];
       })();
     const[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
           UserRadioListPage,UserRadioStationEditPage,UserRadioStationHistoryPage,UserRadioStationPage,
           UserRadioStationSearchPage]=(function(){
-        const style={main:'dcs-a4af2c4a-0',grow:'dcs-a4af2c4a-1',svgDiv:'dcs-a4af2c4a-2',
-                  header:'dcs-a4af2c4a-3',content:'dcs-a4af2c4a-4',list:'dcs-a4af2c4a-5',
-                  placeholder:'dcs-a4af2c4a-6',editIndex:'dcs-a4af2c4a-7',grip:'dcs-a4af2c4a-8',
-                  headerInfo:'dcs-a4af2c4a-9',listItem:'dcs-a4af2c4a-10',listItemTitle:'dcs-a4af2c4a-11',
-                  listItemInfo:'dcs-a4af2c4a-12',textGrey:'dcs-a4af2c4a-13',listNoItemRow:'dcs-a4af2c4a-14',
-                  listItemRow:'dcs-a4af2c4a-15',listItemRowText:'dcs-a4af2c4a-16',listItemColText:'dcs-a4af2c4a-17',
-                  votePanel:'dcs-a4af2c4a-18',moreButton:'dcs-a4af2c4a-19',voteButton:'dcs-a4af2c4a-20',
-                  icon1:'dcs-a4af2c4a-21',icon2:'dcs-a4af2c4a-22',padding2:'dcs-a4af2c4a-23',
-                  voteText:'dcs-a4af2c4a-24',voteUp:'dcs-a4af2c4a-25',voteNuetral:'dcs-a4af2c4a-26',
-                  voteDown:'dcs-a4af2c4a-27',show:'dcs-a4af2c4a-28',hide:'dcs-a4af2c4a-29',
-                  floater:'dcs-a4af2c4a-30',titleText:'dcs-a4af2c4a-31',footerHighlight:'dcs-a4af2c4a-32'};
+        const style={main:'dcs-fa9decf8-0',grow:'dcs-fa9decf8-1',svgDiv:'dcs-fa9decf8-2',
+                  header:'dcs-fa9decf8-3',content:'dcs-fa9decf8-4',list:'dcs-fa9decf8-5',
+                  placeholder:'dcs-fa9decf8-6',editIndex:'dcs-fa9decf8-7',grip:'dcs-fa9decf8-8',
+                  headerInfo:'dcs-fa9decf8-9',listItem:'dcs-fa9decf8-10',listItemTitle:'dcs-fa9decf8-11',
+                  listItemInfo:'dcs-fa9decf8-12',textGrey:'dcs-fa9decf8-13',listNoItemRow:'dcs-fa9decf8-14',
+                  listItemRow:'dcs-fa9decf8-15',listItemRowText:'dcs-fa9decf8-16',listItemColText:'dcs-fa9decf8-17',
+                  votePanel:'dcs-fa9decf8-18',moreButton:'dcs-fa9decf8-19',voteButton:'dcs-fa9decf8-20',
+                  icon1:'dcs-fa9decf8-21',icon2:'dcs-fa9decf8-22',padding2:'dcs-fa9decf8-23',
+                  voteText:'dcs-fa9decf8-24',voteUp:'dcs-fa9decf8-25',voteNuetral:'dcs-fa9decf8-26',
+                  voteDown:'dcs-fa9decf8-27',show:'dcs-fa9decf8-28',hide:'dcs-fa9decf8-29',
+                  floater:'dcs-fa9decf8-30',titleText:'dcs-fa9decf8-31',footerHighlight:'dcs-fa9decf8-32'};
         
         ;
         class HiddenEvent{
@@ -9621,7 +10272,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   UserRadioStationPage,UserRadioStationSearchPage];
       })();
     const[OpenApiDocPage]=(function(){
-        const styles={main:'dcs-71d9fd06-0'};
+        const styles={main:'dcs-ebf574b0-0'};
         class OpenApiDocPage extends DomElement {
           constructor(){
             super("div",{className:styles.main},[]);
@@ -9640,12 +10291,12 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
     const[]=(function(){
         return[];
       })();
-    return{FileSystemPage,LandingPage,LibraryPage,LoginPage,NoteContentPage,NoteContext,
-          NoteEditPage,NotesPage,OpenApiDocPage,PlaylistPage,PublicFilePage,PublicRadioStationHistoryPage,
-          PublicRadioStationPage,PublicRadioStationSearchPage,RecipeIndexPage,RecipePage,
-          SavedSearchPage,SettingsPage,StoragePage,StoragePreviewPage,SyncPage,UserRadioListPage,
-          UserRadioStationEditPage,UserRadioStationHistoryPage,UserRadioStationPage,UserRadioStationSearchPage,
-          fmtEpochTime};
+    return{FileSystemPage,InfoOilPage,LandingPage,LibraryPage,LoginPage,NoteContentPage,
+          NoteContext,NoteEditPage,NotesPage,OpenApiDocPage,PlaylistPage,PublicFilePage,
+          PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
+          RecipeIndexPage,RecipePage,SavedSearchPage,SettingsPage,StoragePage,StoragePreviewPage,
+          SyncPage,UserRadioListPage,UserRadioStationEditPage,UserRadioStationHistoryPage,
+          UserRadioStationPage,UserRadioStationSearchPage,fmtEpochTime};
   })(api,audio,components,daedalus,resources,router,store);
 app=(function(api,components,daedalus,pages,resources,router,store){
     "use strict";
@@ -9774,7 +10425,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         this.attrs.nav.addSubAction(resources.svg.bolt,"Dynamic Playlist",()=>{
             this.doNavigate("/u/library/saved");
           });
-        if(daedalus.platform.isAndroid){
+        if(daedalus.platform.isAndroid||daedalus.platform.isQt){
           this.attrs.nav.addSubAction(resources.svg.download,"Sync",()=>{
               this.doNavigate("/u/library/sync");
             });
@@ -9790,9 +10441,6 @@ app=(function(api,components,daedalus,pages,resources,router,store){
               this.doNavigate("/u/fs");
             });
         }
-        this.attrs.nav.addAction(resources.svg.disc,"Radio",()=>{
-            this.doNavigate("/u/radio");
-          });
         this.attrs.nav.addAction(resources.svg.settings,"Settings",()=>{
             this.doNavigate("/u/settings");
           });
@@ -9805,18 +10453,19 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         this.appendChild(this.attrs.container);
         this.appendChild(this.attrs.nav);
         window.addEventListener("locationChangedEvent",(event)=>{
-            this.handleLocationChanged();
+            this.handleLocationChanged(event.detail.path);
           });
-        this.handleLocationChanged();
+        console.log("initial route");
+        this.handleLocationChanged(window.daedalus_location);
         if(this.attrs.loading!=null){
           this.removeChild(this.attrs.loading);
           this.attrs.loading=null;
         }
         console.log(`app build router: ${performance.now()}ms`);
       }
-      handleLocationChanged(){
+      handleLocationChanged(pathname){
         this.toggleShowMenuFixed();
-        this.attrs.router.handleLocationChanged(window.location.pathname);
+        this.attrs.router.handleLocationChanged(pathname);
       }
       handleRoute(fn,page){
         if(this.attrs.page_cache[page]===undefined){
@@ -9830,25 +10479,37 @@ app=(function(api,components,daedalus,pages,resources,router,store){
           Client.documentLoaded();
         }
         this.updateMargin();
-        const token=api.getUsertoken();
-        if(!!token){
-          api.validate_token(token).then((data)=>{
-              if(!data.token_is_valid){
-                api.clearUserToken();
-              }
+        api.getUsertoken().then(token=>{
+            console.log(`1. got token <${token}>`);
+            if(!!token){
+              console.log("2. validate token");
+              api.validate_token(token).then((data)=>{
+                  if(!data.token_is_valid){
+                    api.clearUserToken();
+                  }else if(((data)||{}).token){
+                    console.log("updating user token");
+                    api.setUsertoken(data.token);
+                  }
+                  console.log("1. build router");
+                  this.buildRouter();
+                }).catch((err)=>{
+                  console.error(err);
+                  this.attrs.loading.setText("Error");
+                  if(!daedalus.platform.isAndroid){
+                    api.clearUserToken();
+                  }
+                  console.log("2. build router");
+                  this.buildRouter();
+                });
+            }else{
+              console.log("3. build router");
               this.buildRouter();
-            }).catch((err)=>{
-              console.error(err.stack);
-              console.error(err);
-              this.attrs.loading.setText("Error");
-              if(!daedalus.platform.isAndroid){
-                api.clearUserToken();
-              }
-              this.buildRouter();
-            });
-        }else{
-          this.buildRouter();
-        }
+            }
+          }).catch((err)=>{
+            console.error(err);
+            console.log("4. build router");
+            this.buildRouter();
+          });
         if(daedalus.platform.isAndroid){
           registerAndroidEvent('onexcept',this.handleError.bind(this));
         }
@@ -9864,8 +10525,11 @@ app=(function(api,components,daedalus,pages,resources,router,store){
         if(!this.attrs.nav){
           return;
         }
-        let condition=(document.body.clientWidth>900)&&(!!api.getUsertoken());
-        if(!location.pathname.startsWith("/u")||location.pathname.startsWith("/u/storage/preview")){
+        let condition=(document.body.clientWidth>900)&&api.hasUsertoken();
+        let pathname=window.daedalus_location;
+        console.log("clientWidth",pathname,document.body.clientWidth>900,api.hasUsertoken(
+                    ));
+        if(!pathname.startsWith("/u")||pathname.startsWith("/u/storage/preview")){
         
           this.attrs.nav.addClassName(style.hide);
           this.attrs.nav.removeClassName(style.show);

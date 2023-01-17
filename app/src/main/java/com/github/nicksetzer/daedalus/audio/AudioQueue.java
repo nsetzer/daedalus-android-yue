@@ -64,7 +64,7 @@ public class AudioQueue {
         }
         try {
             JSONObject obj = m_queue.getJSONObject(index);
-            Log.info(obj.toString());
+            //Log.info(obj.toString());
             if (obj.has("file_path")) {
                 String file_path = obj.getString("file_path");
                 File file = new File(file_path);

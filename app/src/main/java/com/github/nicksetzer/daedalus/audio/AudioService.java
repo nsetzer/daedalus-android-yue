@@ -551,6 +551,10 @@ public class AudioService extends MediaBrowserServiceCompat {
         return m_manager.formatTimeUpdate();
     }
 
+    public int getCurrentIndex() {
+        return m_manager.m_queue.getCurrentIndex();
+    }
+
     public void sendEvent(String name, String payload) {
 
         Intent intent = new Intent();

@@ -219,4 +219,13 @@ public class NativeAudio {
         intent.putExtra("station", station);
         m_activity.startForegroundService(intent);
     }
+
+    @JavascriptInterface
+    public int getCurrentIndex() {
+        AudioService service = m_activity.getBoundService();
+        if (service != null) {
+            return service.getCurrentIndex();
+        }
+        return 0;
+    }
 }
