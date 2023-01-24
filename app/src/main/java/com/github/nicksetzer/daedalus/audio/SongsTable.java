@@ -105,7 +105,7 @@ public class SongsTable extends EntityTable {
         Log.error(query);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("SELECT spk, uid, artist, artist_key, album, album_index, year, title, length, sync, synced, file_path, rating FROM songs");
+        sb.append("SELECT spk, uid, artist, artist_key, album, album_index, year, title, length, sync, synced, file_path, play_count, rating FROM songs");
 
         Token token = null;
         Pair<String, List<String>> result;
@@ -205,7 +205,7 @@ public class SongsTable extends EntityTable {
         JSONArray forest = new JSONArray();
         JSONObject artist = null;
         JSONObject album = null;
-        boolean selected_all_art = false;
+        boolean selected_all_art = false; // initial state of sync checkbox in tree view
         boolean selected_any_art = false;
         boolean selected_all_abm = false;
         boolean selected_any_abm = false;

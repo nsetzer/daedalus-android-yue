@@ -270,6 +270,10 @@ public class Database {
         m_db.close();
     }
 
+    public Boolean isClosed() {
+        return m_db.isClosed();
+    }
+
     public void beginTransaction() {
         m_db.beginTransaction();
     }

@@ -13,9 +13,6 @@ import android.support.v4.media.session.PlaybackStateCompat;
 import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.audio.tasks.RadioNextTrackTask;
 import com.github.nicksetzer.metallurgy.orm.EntityTable;
-import com.github.nicksetzer.metallurgy.orm.NaturalPrimaryKey;
-import com.github.nicksetzer.metallurgy.orm.Statement;
-import com.github.nicksetzer.metallurgy.orm.StatementBuilder;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -40,7 +37,8 @@ public class AudioManager {
 
     private AudioService m_service;
 
-    final String MP3URL = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+    //final String MP3URL = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+
     private BTReceiver m_receiver;
 
     private MediaSessionCompat m_session;
@@ -50,7 +48,7 @@ public class AudioManager {
     private android.media.AudioManager m_manager;
 
     private boolean m_autoPlay = true;
-    private int playback_mode = 0;
+    private int m_playback_mode = 0;
 
     private String m_token = null;
     private String m_station = null;
@@ -78,6 +76,7 @@ public class AudioManager {
         context.registerReceiver(m_receiver, filter);
 
         m_session = new MediaSessionCompat(context, "AudioService");
+        // These flags are now always set
         m_session.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
 
         PlaybackStateCompat state = new PlaybackStateCompat.Builder()
@@ -112,7 +111,7 @@ public class AudioManager {
                     case MediaPlayer.MEDIA_ERROR_UNSUPPORTED:
                         s_what = "unsupported";
                         break;
-                    case -38:
+                    case -38: // undocumented error for when app is paused for too long
                         loadResume();
                         s_what = "state error";
                         break;
@@ -131,7 +130,9 @@ public class AudioManager {
                 //MEDIA_ERROR_SYSTEM
                 String payload = "{\"what\": " + what + ", \"extra\": " + extra + "}";
                 Log.error("sending error to javascript: " + s_what + " extra=" + extra);
-                m_service.sendEvent(AudioEvents.ONERROR, payload);
+                if (what != -38) {
+                    m_service.sendEvent(AudioEvents.ONERROR, payload);
+                }
 
                 return true; // true when error is handled
             }
@@ -143,9 +144,16 @@ public class AudioManager {
                 // do stuff here
                 if (m_autoPlay) {
                     m_mediaPlayer.start();
-                    if (m_pausedTimeMs >= 0) {
-                        m_mediaPlayer.seekTo(m_pausedTimeMs);
-                    }
+                }
+
+                if (m_pausedTimeMs >= 0) {
+                    m_mediaPlayer.seekTo(m_pausedTimeMs);
+                }
+
+                int ct = m_mediaPlayer.getCurrentPosition();
+                Log.info("on play current_time=" + ct + " paused_time=" + m_pausedTimeMs);
+
+                if (m_autoPlay) {
                     m_service.updateNotification();
                     m_service.sendEvent(AudioEvents.ONPLAY, "{}");
                 }
@@ -167,12 +175,16 @@ public class AudioManager {
         m_manager = (android.media.AudioManager) context.getSystemService(context.AUDIO_SERVICE);
         m_manager.setMode(android.media.AudioManager.MODE_NORMAL);
 
+        SettingsTable tab = m_service.m_database.m_settingsTable;
+        // store current session id
+        tab.setInt("previous_session_id", m_mediaPlayer.getAudioSessionId());
+        Log.warn("Session Id: " + m_mediaPlayer.getAudioSessionId());
 
         loadQueueData();
 
         loadMediaPlayerState();
 
-        android.util.Log.e("daedalus-js", "media session created");
+        Log.info("media session created");
     }
 
     public String formatTimeUpdate() {
@@ -233,6 +245,40 @@ public class AudioManager {
         saveQueueData(data, m_queue.getCurrentIndex());
     }
 
+    /**
+     *
+     * @param url path to resource local file or url
+     * @param autoPlay begin playback when finished loading
+     * @param initialTimeMs -1: play from beginning, >=0 begin playback from time T in MS
+     */
+    public void loadUrl(final String url, boolean autoPlay, int initialTimeMs) {
+        m_currentUrl = null;
+        m_autoPlay = autoPlay;
+        m_pausedTimeMs = initialTimeMs;
+
+        if (url == null) {
+            android.util.Log.e("daedalus-js", "null url given");
+            return;
+        }
+        try {
+            if (m_mediaPlayer.isPlaying()) {
+                m_mediaPlayer.stop();
+            }
+            m_mediaPlayer.reset();
+
+            // note: logging the url may Log the user token
+            android.util.Log.i("daedalus-js", "url: " + url);
+            m_mediaPlayer.setDataSource(url);
+            m_mediaPlayer.prepareAsync();
+
+            m_currentUrl = url;
+
+        } catch(IOException e) {
+            android.util.Log.e("daedalus-js", e.toString());
+        }
+    }
+
+    @Deprecated
     public void loadUrl(final String url) {
         m_currentUrl = null;
         m_pausedTimeMs = -1;
@@ -260,24 +306,29 @@ public class AudioManager {
     }
 
     public void loadResume() {
-        if (playback_mode != 0) {
-            Log.warn("unable to resume in current playback_mode=" + playback_mode);
+        if (m_playback_mode != 0) {
+            Log.warn("unable to resume in current m_playback_mode=" + m_playback_mode);
             return;
         }
 
-
-        m_autoPlay = true;
         int index = m_queue.getCurrentIndex();
-        Log.info("resume playback for index=" + index);
-        loadUrl( m_queue.getUrl(index));
+
+        int session_id = -1;
+        try {
+            session_id = m_mediaPlayer.getAudioSessionId();
+        }catch (RuntimeException e) {
+            Log.error(e.getMessage());
+        }
+
+        Log.info("resume playback for index=" + index + " session id=" + session_id);
+        loadUrl( m_queue.getUrl(index), true, m_pausedTimeMs);
 
         m_service.updateNotification();
     }
 
     public void loadRadioUrl(final String url) {
-        playback_mode = 1;
-        m_autoPlay = false;
-        loadUrl(url);
+        m_playback_mode = 1;
+        loadUrl(url, false, -1);
 
         // replace the existing meta data with dummy data if there was an error
         MediaMetadataCompat data = new MediaMetadataCompat.Builder()
@@ -290,9 +341,8 @@ public class AudioManager {
     }
 
     public void playRadioUrl(final String url) {
-        playback_mode = 1;
-        m_autoPlay = true;
-        loadUrl(url);
+        m_playback_mode = 1;
+        loadUrl(url, true, -1);
 
         // replace the existing meta data with dummy data if there was an error
         MediaMetadataCompat data = new MediaMetadataCompat.Builder()
@@ -308,9 +358,8 @@ public class AudioManager {
         m_queue.setCurrentIndex(index);
         SettingsTable tab = m_service.m_database.m_settingsTable;
         tab.setInt("current_index", index);
-        playback_mode = 0;
-        m_autoPlay = true;
-        loadUrl( m_queue.getUrl(index));
+        m_playback_mode = 0;
+        loadUrl( m_queue.getUrl(index), true, -1);
 
         // get the current meta data
         MediaMetadataCompat data = m_queue.getMetadata(index);
@@ -351,7 +400,16 @@ public class AudioManager {
             Log.info("mediaplayer play");
         }
 
+        // somewhat undocumented feature. must call start then seek
         m_mediaPlayer.start();
+
+        if (m_pausedTimeMs >= 0) {
+            m_mediaPlayer.seekTo(m_pausedTimeMs);
+        }
+
+        int ct = m_mediaPlayer.getCurrentPosition();
+        Log.info("on play current_time=" + ct + " paused_time=" + m_pausedTimeMs);
+
         m_service.updateNotification();
 
         sendStatus();
@@ -380,6 +438,16 @@ public class AudioManager {
         m_mediaPlayer.stop();
     }
 
+    public void release() {
+
+        try {
+            Log.info("service release");
+            m_mediaPlayer.release();
+        }catch (RuntimeException e) {
+            Log.error("failed to release", e.getMessage());
+        }
+    }
+
     public void nextRadioTrack() {
 
         m_service.m_executor.execute(new RadioNextTrackTask(m_service, m_token, m_station));
@@ -388,7 +456,7 @@ public class AudioManager {
 
     public void onSongEnd() {
 
-        if (playback_mode == 0) {
+        if (m_playback_mode == 0) {
             // normal playback
             try {
                 long spk = m_queue.getSpk(m_queue.getCurrentIndex());
@@ -427,7 +495,12 @@ public class AudioManager {
     }
 
     public boolean isPlaying() {
-        return m_mediaPlayer.isPlaying();
+        try {
+            return m_mediaPlayer.isPlaying();
+        } catch (java.lang.IllegalStateException e) {
+            Log.warn("illegal player state", e.getMessage());
+            return false;
+        }
     }
 
     public void setToken(final String token) {
@@ -541,14 +614,17 @@ public class AudioManager {
 
         if (current_index >= 0 && current_index < m_queue.length()) {
             m_queue.setCurrentIndex(current_index);
-            m_autoPlay = false;
-            loadUrl( m_queue.getUrl(current_index));
+            loadUrl(m_queue.getUrl(current_index), false, current_time);
         }
     }
 
 
     private void saveMediaPlayerState() {
 
+        if (m_service.m_database.isClosed()) {
+            Log.warn("unable to save media player state because DB is closed");
+            return;
+        }
         int index = m_queue.getCurrentIndex();
         Log.info("save state: index=" + index + " time_ms=" + m_pausedTimeMs);
         SettingsTable tab = m_service.m_database.m_settingsTable;

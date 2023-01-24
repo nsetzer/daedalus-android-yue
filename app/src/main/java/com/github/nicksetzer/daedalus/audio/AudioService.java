@@ -117,11 +117,15 @@ public class AudioService extends MediaBrowserServiceCompat {
         super();
 
         m_manager = null;
+
+        Log.info("service construct");
     }
 
     @Override
     public void onCreate() {
         super.onCreate();
+
+        Log.info("service create");
 
         BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
         m_executor = new ThreadPoolExecutor(
@@ -135,7 +139,7 @@ public class AudioService extends MediaBrowserServiceCompat {
         m_database = new Database(this);
 
         m_database.connect();
-        android.util.Log.e("daedalus-js", "" + m_database.m_songsTable.count());
+        Log.error("service create" + m_database.m_songsTable.count());
 
         m_fetchRunning = false;
         m_fetchLock = new ReentrantLock();
@@ -214,6 +218,7 @@ public class AudioService extends MediaBrowserServiceCompat {
             builder.setContentTitle("App is running in background");
         }
 
+        // TODO: this has stopped working, manifest has the intent specified. no log indicating event is received
         builder.setDeleteIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(this,
                 PlaybackStateCompat.ACTION_STOP));
 
@@ -227,9 +232,11 @@ public class AudioService extends MediaBrowserServiceCompat {
 
         if (session != null) {
 
+            int[] actions = {0}; // actions to show by index order added
+
             builder.setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
                     .setMediaSession(m_manager.getSession().getSessionToken())
-                    .setShowActionsInCompactView(0)
+                    .setShowActionsInCompactView(actions)
 
                     // Add a cancel button
                     .setShowCancelButton(true)
@@ -362,7 +369,7 @@ public class AudioService extends MediaBrowserServiceCompat {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        android.util.Log.e("daedalus-js", "onStartCommand");
+        Log.error( "onStartCommand");
         if (m_manager != null) {
             MediaButtonReceiver.handleIntent(m_manager.getSession(), intent);
         }
@@ -376,7 +383,7 @@ public class AudioService extends MediaBrowserServiceCompat {
 
         if (intent != null) {
             String action = intent.getAction();
-            Log.info("daedalus-js", "action intent: " + action);
+            Log.info( "action intent: " + action);
 
             String token;
             String data;
@@ -509,10 +516,13 @@ public class AudioService extends MediaBrowserServiceCompat {
         if (m_database != null) {
             m_database.close();
         }
-        android.util.Log.e("daedalus", "destroy service");
+        Log.error("destroy service");
         if (m_manager != null && m_manager.isPlaying()) {
             m_manager.stop();
         }
+
+        m_manager.release();
+
         super.onDestroy();
     }
 
@@ -524,12 +534,13 @@ public class AudioService extends MediaBrowserServiceCompat {
 
     @Override
     public void onRebind(Intent intent) {
-
+        Log.info("service rebind");
         super.onRebind(intent);
     }
 
     @Override
     public boolean onUnbind(Intent intent) {
+        Log.info("service unbind");
         return true;
     }
 

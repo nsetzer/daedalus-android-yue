@@ -349,7 +349,7 @@ daedalus=(function(){
           }
           getDomNode(){
             if(this._$fiber==null){
-              console.log(this);
+              console.error(this);
             }
             return this._$fiber&&this._$fiber.dom;
           }
@@ -1385,9 +1385,6 @@ daedalus=(function(){
             }else{
               parentDom.insertBefore(fiber.dom,parentDom.children[position]);
             }
-            if(fiber.element.type=="input"){
-              console.log("mount",fiber.element._$fiber);
-            }
             if(fiber.element.elementMounted){
               requestIdleCallback(fiber.element.elementMounted.bind(fiber.element));
               
@@ -1397,9 +1394,6 @@ daedalus=(function(){
             updateDomNode(fiber);
           }else if(fiber.effect==='DELETE'){
             fiber.alternate.alternate=null;
-            if(fiber.element.type=="input"){
-              console.log("delete",fiber);
-            }
             removeDomNode(fiber);
           }else if(fiber.effect==='SORT_CHILDREN'){
             Array.from(fiber.dom.childNodes).forEach((node,idx)=>{
@@ -4040,8 +4034,8 @@ audio=(function(api,daedalus){
         let device_instance=null;
         function mapSongToObj(song){
           return{url:api.librarySongAudioUrl(song.id),artist:song.artist,album:song.album,
-                      title:song.title,length:song.length,file_path:song.file_path,spk:song.spk,
-                      id:song.id};
+                      title:song.title,length:song.length,play_count:song.playcount,year:song.year,
+                      file_path:song.file_path,spk:song.spk,id:song.id};
         }
         class RemoteDeviceImpl{
           constructor(parent){
@@ -4120,7 +4114,7 @@ audio=(function(api,daedalus){
             this.audio_instance.volume=volume;
           }
           isPlaying(){
-            return this.audio_instance&&this.audio_instance.currentTime>0&&!this.audio_instance.paused&&!this.audio_instance.ended&&this.audio_instance.readyState>2;
+            return this.audio_instance&&this.audio_instance.currentTime>=0&&!this.audio_instance.paused&&!this.audio_instance.ended&&this.audio_instance.readyState>2;
             
           }
           onplay(event){
@@ -6673,7 +6667,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           handleMoreSongInfo(){
             for(const key in this.sec_attrs){
-              this.sec_attrs[key].setText(this.attrs.more_song[key]);
+              this.sec_attrs[key].setText(""+this.attrs.more_song[key]);
             }
             this.attrs.more_info.show();
           }
@@ -6722,6 +6716,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
           }
           handleAudioTimeUpdate(event){
             this.attrs.header.setTime(event.currentTime,event.duration);
+            if(this.attrs.device.isPlaying()){
+              this.attrs.header.setStatus("playing");
+            }
           }
           handleAudioDurationChange(event){
             this.attrs.header.setTime(event.currentTime,event.duration);
@@ -7059,7 +7056,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.addAction(resources.svg['sort'],()=>{
                 let songList=this.attrs.parent.attrs.view.getSelectedSongs();
                 console.log("creating playlist",songList.length);
-                songList=api.sortTracks(songList).splice(0,100);
+                songList=api.sortTracks(songList).splice(0,200);
                 audio.AudioDevice.instance().queueSet(songList);
                 audio.AudioDevice.instance().next();
                 this.attrs.parent.attrs.view.selectAll(false);
@@ -7068,7 +7065,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.addAction(resources.svg['media_shuffle'],()=>{
                 let songList=this.attrs.parent.attrs.view.getSelectedSongs();
                 console.log("creating playlist",songList.length);
-                songList=api.track_shuffle(songList).splice(0,100);
+                songList=api.track_shuffle(songList).splice(0,200);
                 console.log("creating playlist",songList.length);
                 audio.AudioDevice.instance().queueSet(songList);
                 audio.AudioDevice.instance().next();
