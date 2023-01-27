@@ -44,8 +44,14 @@ public class WebActivity extends Activity {
 
     private Handler m_timeHandler = new Handler();
 
+    Runnable m_updateTimeout;
+
+    boolean m_isPaused = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Log.info("lifecycle onCreate");
+
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_web);
@@ -76,10 +82,11 @@ public class WebActivity extends Activity {
 
         launchAudioService();
 
-        runOnUiThread(new Runnable() {
+        m_updateTimeout = new Runnable() {
 
             @Override
             public void run() {
+
                 if (m_serviceBound && m_audioService != null) {
 
                     if (m_audioService.mediaIsPlaying()) {
@@ -89,9 +96,17 @@ public class WebActivity extends Activity {
                     }
                 }
 
-                m_timeHandler.postDelayed(this, 1000);
+                // cancel the timer when the app has been destroyed or paused
+                // resuming the app will restart the timer
+                if (!m_isPaused && m_timeHandler != null) {
+                    m_timeHandler.postDelayed(this, 1000);
+                }
+
             }
-        });
+        };
+
+        runOnUiThread(m_updateTimeout);
+        //m_timeHandler.postDelayed(m_updateTimeout, 1000);
 
         Log.info("successfully launch on create");
         Log.warn("successfully launch on create");
@@ -119,12 +134,75 @@ public class WebActivity extends Activity {
     }
 
     @Override
+    protected void onStart() {
+        Log.info("lifecycle onStart");
+        super.onStart();
+
+        android.util.Log.e("daedalus-js", "register receiver: ");
+
+        registerReceiver(m_receiver, new IntentFilter(AudioActions.ACTION_EVENT));
+
+
+        Intent intent = new Intent(this, AudioService.class);
+        bindService(intent, m_serviceConnection, Context.BIND_AUTO_CREATE);
+
+    }
+
+    @Override
+    protected void onPause() {
+        Log.info("lifecycle onPause");
+        super.onPause();
+
+        m_isPaused = true;
+    }
+
+    @Override
+    protected void onResume() {
+        Log.info("lifecycle onResume");
+        super.onResume();
+
+        m_isPaused = false;
+        m_timeHandler.postDelayed(m_updateTimeout, 1000);
+    }
+
+    @Override
+    public void onPostResume() {
+        Log.info("lifecycle onPostResume");
+        super.onPostResume();
+        // called when the app comes into focus, the user is present
+
+        invokeJavascriptCallback(AudioEvents.ONRESUME, "{}");
+
+        if (m_audioService != null) {
+            m_audioService.m_manager.sendStatus();
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        Log.info("lifecycle onStop");
+        super.onStop();
+        try {
+            unregisterReceiver(m_receiver);
+        } catch(IllegalArgumentException e) {
+            // api issue on android
+            android.util.Log.e("daedalus-js", "Receiver not registered: " + e.toString());
+        }
+        if (m_serviceBound) {
+            unbindService(m_serviceConnection);
+        }
+    }
+
+    @Override
     protected void onDestroy() {
+        Log.info("lifecycle onDestroy");
         super.onDestroy();
         if (m_screen_receiver != null) {
             unregisterReceiver(m_screen_receiver);
             m_screen_receiver = null;
         }
+
+        m_timeHandler = null;
     }
 
     @Override
@@ -155,20 +233,6 @@ public class WebActivity extends Activity {
         //if (!result) {
         //    super.onBackPressed();
         //}
-    }
-
-    @Override
-    public void onPostResume() {
-        super.onPostResume();
-        // called when the app comes into focus, the user is present
-        Log.info("on app resume.");
-
-        invokeJavascriptCallback(AudioEvents.ONRESUME, "{}");
-
-        if (m_audioService != null) {
-            m_audioService.m_manager.sendStatus();
-        }
-
     }
 
 
@@ -203,7 +267,6 @@ public class WebActivity extends Activity {
     }
 
     private int STORAGE_PERMISSION_CODE = 1000; // application specific request code
-
 
     private void requestStoragePermission(){
 
@@ -241,34 +304,6 @@ public class WebActivity extends Activity {
 
     private AudioService m_audioService;
     private boolean m_serviceBound = false;
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-
-        android.util.Log.e("daedalus-js", "register receiver: ");
-
-        registerReceiver(m_receiver, new IntentFilter(AudioActions.ACTION_EVENT));
-
-
-        Intent intent = new Intent(this, AudioService.class);
-        bindService(intent, m_serviceConnection, Context.BIND_AUTO_CREATE);
-
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        try {
-            unregisterReceiver(m_receiver);
-        } catch(IllegalArgumentException e) {
-            // api issue on android
-            android.util.Log.e("daedalus-js", "Receiver not registered: " + e.toString());
-        }
-        if (m_serviceBound) {
-            unbindService(m_serviceConnection);
-        }
-    }
 
     private ServiceConnection m_serviceConnection = new ServiceConnection() {
         @Override

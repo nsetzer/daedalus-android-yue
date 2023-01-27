@@ -4034,7 +4034,7 @@ audio=(function(api,daedalus){
         let device_instance=null;
         function mapSongToObj(song){
           return{url:api.librarySongAudioUrl(song.id),artist:song.artist,album:song.album,
-                      title:song.title,length:song.length,play_count:song.playcount,year:song.year,
+                      title:song.title,length:song.length,play_count:song.play_count,year:song.year,
                       file_path:song.file_path,spk:song.spk,id:song.id};
         }
         class RemoteDeviceImpl{

@@ -496,11 +496,13 @@ public class AudioManager {
 
     public boolean isPlaying() {
         try {
-            return m_mediaPlayer.isPlaying();
+            if (m_mediaPlayer != null) {
+                return m_mediaPlayer.isPlaying();
+            }
         } catch (java.lang.IllegalStateException e) {
-            Log.warn("illegal player state", e.getMessage());
-            return false;
+            Log.warn("illegal player state");
         }
+        return false;
     }
 
     public void setToken(final String token) {

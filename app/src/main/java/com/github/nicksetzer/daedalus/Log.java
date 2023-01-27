@@ -50,7 +50,11 @@ public class Log {
             if (i > 0) {
                 sb.append(" ");
             }
-            sb.append(messages[i].toString());
+            if (messages[i] != null) {
+                sb.append(messages[i].toString());
+            } else {
+                sb.append("<NULL>");
+            }
         }
 
         return sb.toString();
