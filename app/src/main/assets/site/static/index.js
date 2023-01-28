@@ -2893,8 +2893,8 @@ components=(function(api,daedalus,resources){
         return[Slider];
       })();
     const[ProgressBar]=(function(){
-        const style={progressBar:'dcs-ad0cbf76-0',progressBar_bar:'dcs-ad0cbf76-1',
-                  progressBar_button:'dcs-ad0cbf76-2'};
+        const style={progressBar:'dcs-f3332da9-0',progressBar_bar:'dcs-f3332da9-1',
+                  progressBar_button:'dcs-f3332da9-2'};
         ;
         ;
         ;
@@ -4232,7 +4232,7 @@ audio=(function(api,daedalus){
             AndroidNativeAudio.play();
           }
           pause(){
-            console.log("native pause");
+            console.error("native pause");
             AndroidNativeAudio.pause();
           }
           stop(){
@@ -4292,9 +4292,10 @@ audio=(function(api,daedalus){
           }
           onindexchanged(payload){
             const index=payload.index;
-            this.device.current_song=this.device.queue[index];
-            this.device._sendEvent('handleAudioSongChanged',{...this.device.current_song,
-                              index});
+            const song=this.device.currentSong();
+            if(song!=null){
+              this.device._sendEvent('handleAudioSongChanged',{...song,index});
+            }
           }
           ontrackchanged(payload){
             this.device.current_track=payload;
@@ -4448,11 +4449,13 @@ audio=(function(api,daedalus){
             this.parent._sendEvent('handleAudioStalled',{});
           }
           onended(event){
-            window.channel.objects.backend.songFinished(this.parent.current_song.id).then(
-                          _=>{
-                this.parent._sendEvent('handleAudioEnded',event);
-                this.parent.next();
-              });
+            const song=this.parent.currentSong();
+            if(song!=null){
+              window.channel.objects.backend.songFinished(song.id).then(_=>{
+                  this.parent._sendEvent('handleAudioEnded',event);
+                  this.parent.next();
+                });
+            }
           }
           onerror(event){
             this.parent._sendEvent('handleAudioError',event);
@@ -4463,7 +4466,6 @@ audio=(function(api,daedalus){
           constructor(){
             this.connected_elements=[];
             this.current_index=-1;
-            this.current_song=null;
             this.queue=[];
             this.impl=null;
           }
@@ -4588,7 +4590,6 @@ audio=(function(api,daedalus){
               this.queue.push(song);
             }else{
               this.current_index=-1;
-              this.current_song=song;
               this.queue=[song];
               this._sendEvent('handleAudioSongChanged',null);
             }
@@ -4606,16 +4607,13 @@ audio=(function(api,daedalus){
               if(this.current_index>=this.queue.length){
                 this.pause();
                 this.current_index=-1;
-                this.current_song=null;
                 this._sendEvent('handleAudioSongChanged',null);
               }else if(index==this.current_index){
                 this.pause();
-                this.current_song=this.queue[index];
                 this._sendEvent('handleAudioSongChanged',{...this.queue[index],index});
                 
               }else if(index<this.current_index){
                 this.current_index-=1;
-                this.current_song=this.queue[index];
               }
               this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
                                 }).catch((error)=>{
@@ -4627,7 +4625,6 @@ audio=(function(api,daedalus){
             }
           }
           queueReinsertIndex(index,newIndex){
-            let temp_current=this.current_song;
             if(index<0&&index>=this.queue.length){
               return;
             }
@@ -4648,14 +4645,11 @@ audio=(function(api,daedalus){
             if(this.current_index<0||this.current_index>=this.queue.length){
               this.pause();
               this.current_index=-1;
-              this.current_song=null;
               this._sendEvent('handleAudioSongChanged',null);
-            }else if(this.queue[this.current_index]!=this.current_song){
-              this.pause();
-              this.current_song=this.queue[index];
-              this._sendEvent('handleAudioSongChanged',{...this.queue[index],index});
-              
             }
+            this.queue.forEach((item,index)=>{
+                item.index=index;
+              });
             this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
               
                 this.queue_modified=false;
@@ -4668,19 +4662,19 @@ audio=(function(api,daedalus){
           }
           stop(){
             this.current_index=-1;
-            this.current_song=null;
             this.impl.stop();
           }
           pause(){
             this.impl.pause();
           }
           _playSong(song){
-            this.current_song=song;
-            this.impl.playSong(this.current_index,this.current_song);
+            console.error("deprecated function call : play by index instead");
+            this.impl.playSong(this.current_index,song);
             this._sendEvent('handleAudioSongChanged',{...song,index:this.current_index});
             
           }
           playSong(song){
+            console.error("deprecated function call : play by index instead");
             this.current_index=-1;
             this._playSong(song);
           }
@@ -4690,7 +4684,6 @@ audio=(function(api,daedalus){
               this._playSong(this.queue[index]);
             }else{
               this.current_index=-1;
-              this.current_song=null;
               this.stop();
               this._sendEvent('handleAudioSongChanged',null);
               console.warn("playIndex: invalid playlist index "+index);
@@ -6330,10 +6323,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.addRowElement(0,this.attrs.txt_SongTitle);
             this.addRowElement(1,this.attrs.txt_SongArtist);
             this.addRowElement(2,this.attrs.txt_SongAlbum);
-            this.addRowElement(3,this.attrs.txt_SongTime).props.onClick=()=>{
-              const device=audio.AudioDevice.instance();
-              device.setCurrentTime(device.duration()-2);
-            };
+            this.addRowElement(3,this.attrs.txt_SongTime);
             this.addRowElement(3,new components.HStretch());
             this.addRowElement(3,this.attrs.txt_SongTime2);
             this.addRowElement(5,this.attrs.pbar_time);
@@ -6719,6 +6709,20 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             if(this.attrs.device.isPlaying()){
               this.attrs.header.setStatus("playing");
             }
+            if(event.currentIndex!==undefined){
+              if(event.currentIndex!=this.attrs.currentIndex){
+                this.attrs.currentIndex=event.currentIndex;
+                this.attrs.container.children.forEach((child,index)=>{
+                    child.updateActive(index===event.currentIndex);
+                  });
+                console.log("update index ",event.currentIndex,this.attrs.currentIndex);
+                
+              }
+            }
+          }
+          handleResume(){
+            console.log("on app resume");
+            this.attrs.container.update();
           }
           handleAudioDurationChange(event){
             this.attrs.header.setTime(event.currentTime,event.duration);
@@ -6787,10 +6791,6 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             const song=this.attrs.device.currentSong();
             this.attrs.header.setSong(song);
             console.log(`miss rate hit: ${hit} miss: ${miss} del: ${del}`);
-          }
-          handleResume(){
-            console.log("on app resume");
-            this.attrs.container.update();
           }
         }
         return[PlaylistPage];

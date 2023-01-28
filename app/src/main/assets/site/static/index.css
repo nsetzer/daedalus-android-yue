@@ -65,12 +65,12 @@
 .dcs-a98c7ce9-2 {position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:#ccc;transition:.4s;border-radius:34px}
 .dcs-a98c7ce9-1:checked + .dcs-a98c7ce9-2:before {transform:translateX(26px);background-color:#0cb51a}
 .dcs-a98c7ce9-2:before {position:absolute;content:"";height:26px;width:26px;left:4px;bottom:4px;background-color:white;transition:.4s;border-radius:50%}
-.dcs-ad0cbf76-0 {position:relative;height:1em;max-height:1em;min-height:1em;width:calc(100% - 4px)}
-.dcs-ad0cbf76-1 {position:absolute;height:.3em;max-height:.3em;min-height:.3em;width:100%;top:.35em;background-color:black;border-radius:1em;border-width:1px;border-style:solid;border-color:black;user-select:none}
-.dcs-ad0cbf76-2 {position:absolute;height:.3em;max-height:.3em;min-height:.3em;width:1em;top:.25em;background-color:blue;border-radius:1em;border-width:2px;border-style:solid;border-color:blue}
-.dcs-ad0cbf76-0:hover {cursor:pointer}
-.dcs-ad0cbf76-0:hover .dcs-ad0cbf76-1 {top:.15em;height:.5em;max-height:.5em;min-height:.5em}
-.dcs-ad0cbf76-0:hover .dcs-ad0cbf76-2 {top:-.05em;height:.7em;max-height:.7em;min-height:.7em}
+.dcs-f3332da9-0 {position:relative;height:1em;max-height:1em;min-height:1em;width:calc(100% - 4px)}
+.dcs-f3332da9-1 {position:absolute;height:.3em;max-height:.3em;min-height:.3em;width:100%;top:.35em;background-color:black;border-radius:1em;border-width:1px;border-style:solid;border-color:black;user-select:none}
+.dcs-f3332da9-2 {position:absolute;height:.3em;max-height:.3em;min-height:.3em;width:1em;top:.25em;background-color:blue;border-radius:1em;border-width:2px;border-style:solid;border-color:blue}
+.dcs-f3332da9-0:hover {cursor:pointer}
+.dcs-f3332da9-0:hover .dcs-f3332da9-1 {top:.15em;height:.5em;max-height:.5em;min-height:.5em}
+.dcs-f3332da9-0:hover .dcs-f3332da9-2 {top:-.05em;height:.7em;max-height:.7em;min-height:.7em}
 .dcs-9969ddfa-0 {text-align:center;position:fixed;background:#0cb51a;bottom:0;left:0;right:0;min-height:32px;background-image:linear-gradient(#d11010, #d12525);z-index:1000}
 .dcs-9969ddfa-1 {display:flex;flex-direction:row;justify-content:flex-start;align-items:center;width:100%}
 .dcs-9969ddfa-2 {width:100%;padding-left:1em;padding-right:1em}

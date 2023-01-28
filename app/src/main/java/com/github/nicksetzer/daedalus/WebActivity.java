@@ -173,7 +173,12 @@ public class WebActivity extends Activity {
 
         invokeJavascriptCallback(AudioEvents.ONRESUME, "{}");
 
-        if (m_audioService != null) {
+        if (m_serviceBound && m_audioService != null) {
+
+            // always even if not playing
+            String update = m_audioService.getFormattedTimeUpdate();
+            WebActivity.this.invokeJavascriptCallback("ontimeupdate", update);
+
             m_audioService.m_manager.sendStatus();
         }
     }
