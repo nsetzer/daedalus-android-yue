@@ -39,9 +39,9 @@ build:
 		python -m daedalus build \
 			--platform android \
 			--env baseUrl='https://yueapp.duckdns.org' \
-			--static /mnt/d/git/yue-react-flask/frontend/resources \
-			/mnt/d/git/yue-react-flask/frontend/src/app.js \
-			/mnt/d/git/daedalus-android/app/src/main/assets/site
+			--static ../yue-react-flask/frontend/resources \
+			../yue-react-flask/frontend/src/app.js \
+			./app/src/main/assets/site
 
 .PHONY: build-profile
 build-profile:
@@ -50,9 +50,9 @@ build-profile:
 		python -m daedalus build-profile \
 			--platform android \
 			--env baseUrl='https://yueapp.duckdns.org' \
-			--static /mnt/d/git/yue-react-flask/frontend/resources \
+			--static ../yue-react-flask/frontend/resources \
 			/mnt/d/git/yue-react-flask/frontend/src/app.js \
-			/mnt/d/git/daedalus-android/app/src/main/assets/site
+			./app/src/main/assets/site
 
 .PHONY: serve2
 serve2:
@@ -61,8 +61,8 @@ serve2:
 		python -m daedalus serve \
 			--platform android \
 			--env baseUrl='http://10.0.2.2:4200' \
-			--static /mnt/d/git/yue-react-flask/frontend/resources \
-			/mnt/d/git/yue-react-flask/frontend/src/app.js
+			--static ../yue-react-flask/frontend/resources \
+			../yue-react-flask/frontend/src/app.js
 
 .PHONY: self
 self:

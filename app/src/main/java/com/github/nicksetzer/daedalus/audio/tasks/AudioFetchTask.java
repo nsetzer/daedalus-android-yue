@@ -178,9 +178,9 @@ public class AudioFetchTask implements Runnable {
                     if (remoteTrack.has("file_path")) {
                         remoteTrack.remove("file_path");
                     }
-                    if (remoteTrack.has("file_size")) {
-                        remoteTrack.remove("file_size");
-                    }
+                    //if (remoteTrack.has("file_size")) {
+                    //    remoteTrack.remove("file_size");
+                    //}
                     if (remoteTrack.has("art_path")) {
                         remoteTrack.remove("art_path");
                     }

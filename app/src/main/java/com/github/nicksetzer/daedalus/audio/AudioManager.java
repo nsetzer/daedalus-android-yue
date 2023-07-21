@@ -5,7 +5,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.Cursor;
 import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
 import android.media.MediaPlayer;
+import android.service.media.MediaBrowserService;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -401,6 +403,29 @@ public class AudioManager {
         }
 
         // somewhat undocumented feature. must call start then seek
+
+        AudioAttributes audioAttributes =
+                new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build();
+
+        AudioFocusRequest mAudioFocusRequest =
+                new AudioFocusRequest.Builder(m_manager.AUDIOFOCUS_GAIN)
+                        .setOnAudioFocusChangeListener(new android.media.AudioManager.OnAudioFocusChangeListener() {
+                            @Override
+                            public void onAudioFocusChange(int focusChange) {
+
+
+                            }
+                        })
+                        .setAcceptsDelayedFocusGain(false)
+                        .setWillPauseWhenDucked(true)
+                        .setAudioAttributes(audioAttributes)
+                        .build();
+
+        m_manager.requestAudioFocus(mAudioFocusRequest);
+
         m_mediaPlayer.start();
 
         if (m_pausedTimeMs >= 0) {

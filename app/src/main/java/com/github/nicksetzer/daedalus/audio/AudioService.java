@@ -145,6 +145,9 @@ public class AudioService extends MediaBrowserServiceCompat {
         m_fetchLock = new ReentrantLock();
         //super.onCreate();
 
+        if (m_manager == null) {
+            m_manager = new AudioManager(this);
+        }
     }
 
     @Override
@@ -170,14 +173,15 @@ public class AudioService extends MediaBrowserServiceCompat {
             return new BrowserRoot(MY_EMPTY_MEDIA_ROOT_ID, null);
         }
         */
+        Log.info("service onGetRoot");
 
-        return new BrowserRoot(MY_EMPTY_MEDIA_ROOT_ID, null);
+        return new BrowserRoot(MY_MEDIA_ROOT_ID, null);
     }
 
     @Override
     public void onLoadChildren(final String parentMediaId,
                                final Result<List<MediaBrowserCompat.MediaItem>> result) {
-
+        Log.info("service onLoadChildren:" + parentMediaId);
         //  Browsing not allowed
         if (MY_EMPTY_MEDIA_ROOT_ID.equals(parentMediaId)) {
             result.sendResult(null);
@@ -281,6 +285,7 @@ public class AudioService extends MediaBrowserServiceCompat {
 
                 // OLD:
                 PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PAUSE);
+
                 builder.addAction(R.drawable.pause, "pause", intent);
 
                 // NEW:
@@ -529,6 +534,7 @@ public class AudioService extends MediaBrowserServiceCompat {
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
+        Log.info("service onbind", m_binder!=null);
         return m_binder;
     }
 
@@ -715,7 +721,5 @@ public class AudioService extends MediaBrowserServiceCompat {
 
         return obj.toString();
     }
-
-
 
 }

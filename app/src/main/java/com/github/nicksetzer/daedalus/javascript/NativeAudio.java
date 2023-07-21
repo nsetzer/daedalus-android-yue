@@ -1,5 +1,6 @@
 package com.github.nicksetzer.daedalus.javascript;
 
+import android.app.Service;
 import android.content.Intent;
 import android.webkit.JavascriptInterface;
 
@@ -163,9 +164,18 @@ public class NativeAudio {
 
     @JavascriptInterface
     public String buildForest(String query, int syncState, int showBannished) {
-        Log.error(query);
-        String forest = m_activity.getBoundService().mediaBuildForest(query, syncState, showBannished);
-        return forest;
+
+        AudioService service = m_activity.getBoundService();
+        if (service != null) {
+            Log.error(query);
+            String forest = service.mediaBuildForest(query, syncState, showBannished);
+            return forest;
+        } else {
+            Log.error("failed to build forest -- no bound service");
+            return "{}";
+        }
+
+
     }
 
     @JavascriptInterface

@@ -159,7 +159,7 @@ public class AndroidClient {
         if (path.equals("/")) {
             directories.put(m_activity.getExternalFilesDir(null));
             directories.put(m_activity.getExternalFilesDir(Environment.DIRECTORY_MUSIC));
-            Environment.getExternalStorageDirectory();
+            //Environment.getExternalStorageDirectory();
             directories.put("storage");
             directories.put(Environment.getDataDirectory());
             directories.put(Environment.getExternalStorageDirectory().toString());

@@ -339,7 +339,7 @@ public class SongsTable extends EntityTable {
     }
 
     public ArrayList<JSONObject> getSyncDownloadTracks() {
-        String query = "SELECT spk, uid, artist, album, title FROM songs WHERE (valid == 1 AND sync != synced AND sync == 1)";
+        String query = "SELECT spk, uid, artist, album, title, file_size, valid, sync, synced FROM songs WHERE (valid == 1 AND sync == 1)";
 
         Cursor cursor = m_db.query(query, null);
 

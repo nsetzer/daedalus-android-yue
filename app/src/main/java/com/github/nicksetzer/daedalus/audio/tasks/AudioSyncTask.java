@@ -11,6 +11,10 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
+import java.io.File;
+import java.util.List;
+import java.util.jar.JarFile;
+import java.util.stream.Collectors;
 
 public class AudioSyncTask implements Runnable {
 
@@ -27,17 +31,31 @@ public class AudioSyncTask implements Runnable {
 
         try {
             ArrayList<JSONObject> array = m_service.m_database.m_songsTable.getSyncDownloadTracks();
-            Log.info("found " + array.size() + " tracks to download");
+
+            ArrayList<JSONObject> filtered = new ArrayList<>();
+            for (JSONObject obj : array) {
+                try {
+                    if (_filterOne(obj)) {
+                        filtered.add(obj);
+                    }
+                } catch (JSONException e) {
+                    Log.error(e.getMessage());
+                }
+            }
+
+            Log.info("found " + filtered.size() + "/" + array.size() + " tracks to download");
 
             int index = 0;
-            for (JSONObject obj : array) {
+            for (JSONObject obj : filtered) {
 
                 if (m_service.taskIsKill()) {
                     break;
                 }
 
                 try {
-                    _syncOne(index, array.size(), obj);
+
+                    _syncOne(index, filtered.size(), obj);
+
                 } catch (JSONException e) {
                     Log.error("json", e);
                 } catch (IOException e) {
@@ -54,22 +72,60 @@ public class AudioSyncTask implements Runnable {
         }
     }
 
-    void _syncOne(int index, int length, JSONObject obj) throws JSONException, IOException {
+    String _getFilePath(JSONObject obj) throws JSONException {
         String uid = obj.getString("uid");
         String pattern = "['\"\\/\\^\\$\\|\\?\\*\\:\\<\\>\\[\\]]";
         String art = obj.getString("artist").replaceAll(pattern, "");
         String abm = obj.getString("album").replaceAll(pattern, "");
         String ttl = obj.getString("title").replaceAll(pattern, "");
-        long spk = obj.getLong("spk");
-
-        Log.info("obj", uid);
 
         String file_path = "/music/" + art + "/" + abm + "/" + ttl + "_" + uid.substring(0, 6) + ".ogg";
 
-
         file_path =  m_service.getExternalFilesDir(null) + file_path.replaceAll("[\\s]", "_");
+        return file_path;
+    }
 
-        Log.info(file_path);
+    boolean _filterOne(JSONObject obj) throws JSONException {
+        // remove files that have already been synced
+        // double check that the file size is correct
+        boolean synced = obj.getInt("synced")!=0;
+
+        if (synced) {
+            long file_size = obj.getInt("file_size");
+
+            String file_path =  _getFilePath(obj);
+
+            File file = new File(file_path);
+
+            if (!file.exists()) {
+                synced = false;
+            } else {
+                long actual_size = file.length();
+                if (actual_size != file_size) {
+                    Log.warn(String.format("file_size = %d  actual_size = %d", file_size, actual_size));
+
+                    synced = false;
+                }
+            }
+
+        }
+
+        return !synced;
+
+    }
+    void _syncOne(int index, int length, JSONObject obj) throws JSONException, IOException {
+
+        long spk = obj.getLong("spk");
+        //boolean sync = obj.getBoolean("sync");
+        boolean synced = obj.getInt("synced")!=0;
+        String uid = obj.getString("uid");
+
+        String file_path =  _getFilePath(obj);
+
+        Log.info("path=" + file_path + ", uid=" + uid);
+
+
+
         try {
             YueApi.download(m_token, uid, file_path, (a, b) -> {
                 String message = (a / 1024) + "/" + (b / 1024) + " kb";
