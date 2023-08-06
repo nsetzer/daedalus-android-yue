@@ -5,23 +5,39 @@ import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.net.http.SslError;
 import android.webkit.SslErrorHandler;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
-import com.github.nicksetzer.daedalus.R;
-import com.github.nicksetzer.daedalus.WebActivity;
-import com.github.nicksetzer.daedalus.audio.AudioWebView;
+import androidx.webkit.WebViewAssetLoader;
+
+import com.github.nicksetzer.daedalus.Log;
 
 public class DaedalusWebViewClient extends WebViewClient {
 
     Activity m_activity;
     boolean m_devel;
 
+    WebViewAssetLoader m_assetLoader;
+
     public DaedalusWebViewClient(Activity activity, boolean devel) {
         m_activity = activity;
         m_devel = devel;
+
+        m_assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(activity))
+                .addPathHandler("/res/", new WebViewAssetLoader.ResourcesPathHandler(activity))
+                .build();
+
     }
 
+    @Override
+    public WebResourceResponse shouldInterceptRequest(WebView view,
+                                                      WebResourceRequest request) {
+        Log.error("asset: " + request.getUrl());
+        return m_assetLoader.shouldInterceptRequest(request.getUrl());
+    }
     @Override
     public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
         android.util.Log.e("daedalus-js", "ssl error handled");

@@ -18,6 +18,9 @@ import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
+
+import androidx.annotation.NonNull;
+
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
 
 //import androidx.media3.common.MediaItem;
@@ -34,6 +37,7 @@ import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.ext.mediasession.TimelineQueueNavigator;
 import com.google.android.exoplayer2.util.MimeTypes;
+import com.google.android.exoplayer2.util.NonNullApi;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -90,11 +94,13 @@ public class AudioManager {
         }
 
         @Override
+        @NonNullApi
         public long getSupportedQueueNavigatorActions(Player player) {
             return PlaybackStateCompat.ACTION_SKIP_TO_NEXT|PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
         }
 
         @Override
+        @NonNullApi
         public MediaDescriptionCompat getMediaDescription(Player player, int windowIndex) {
 
             if (windowIndex < m_queue.length()) {
@@ -108,7 +114,7 @@ public class AudioManager {
 
     }
 
-    class PlayerEventListener implements Player.Listener {
+    static class PlayerEventListener implements Player.Listener {
 
         private AudioManager m_manager = null;
         PlayerEventListener(AudioManager manager) {
@@ -151,15 +157,14 @@ public class AudioManager {
             Log.warn("player state changed. playWhenReady: " + playWhenReady + " state: " + playbackState + " " + stateName(playbackState));
 
             switch (playbackState) {
-                case Player.STATE_IDLE:
-                    break;
-                case Player.STATE_BUFFERING:
-                    break;
-                case Player.STATE_READY:
-                    break;
+
                 case Player.STATE_ENDED:
                     m_manager.onSongEnd();
                     break;
+
+                case Player.STATE_IDLE:
+                case Player.STATE_BUFFERING:
+                case Player.STATE_READY:
                 default:
                     break;
             }
@@ -192,7 +197,7 @@ public class AudioManager {
 
         Context context = service.getApplicationContext();
 
-        // adb shell input keyevent <keycode>
+        // adb shell input key event <keycode>
         // keycode: 126: play, 85: pause
         // https://developer.android.com/reference/android/view/KeyEvent.html
         IntentFilter filter = new IntentFilter();
@@ -205,7 +210,7 @@ public class AudioManager {
         String packageName = m_service.getApplicationContext().getPackageName();
         Intent sessionIntent = pm.getLaunchIntentForPackage(packageName);
         //Context context = m_service.getApplicationContext();
-        PendingIntent intent = PendingIntent.getActivity(context, 0, sessionIntent, 0);
+        PendingIntent intent = PendingIntent.getActivity(context, 0, sessionIntent, PendingIntent.FLAG_IMMUTABLE);
 
         Log.info("lifecycle MediaSessionCompat");
         m_session = new MediaSessionCompat(context, "AudioService");
@@ -443,9 +448,6 @@ public class AudioManager {
 
         m_mediaPlayer.setPlayWhenReady(m_autoPlay);
         m_mediaPlayer.prepare();
-
-        //m_mediaPlayer.setDataSource(url);
-        //m_mediaPlayer.prepareAsync();
 
         m_currentUrl = url;
 
@@ -799,7 +801,7 @@ public class AudioManager {
     }
 
     private void loadMediaPlayerState() {
-        EntityTable tab = m_service.m_database.m_settingsTable;
+        SettingsTable tab = m_service.m_database.m_settingsTable;
         Cursor cursor = null;
         JSONObject obj = null;
         int current_index = -1;
@@ -808,13 +810,13 @@ public class AudioManager {
         long count = tab.count();
 
         try {
-            current_index = ((SettingsTable) tab).getInt("current_index");
+            current_index = tab.getInt("current_index");
         } catch (SettingsTable.MissingValue e) {
             current_index = -1;
         }
 
         try {
-            current_time = ((SettingsTable) tab).getLong("current_time");
+            current_time = tab.getLong("current_time");
         } catch (SettingsTable.MissingValue e) {
             current_time = -1;
         }

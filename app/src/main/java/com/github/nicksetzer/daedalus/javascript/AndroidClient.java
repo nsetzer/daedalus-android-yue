@@ -32,6 +32,8 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.util.Iterator;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.zip.GZIPInputStream;
 
 public class AndroidClient {
@@ -96,12 +98,16 @@ public class AndroidClient {
                 wv.post(new Runnable() {
                     @Override
                     public void run() {
-                        m_download = new AudioDownloadFile(m_activity);
+
+
+                        ExecutorService executor = Executors.newSingleThreadExecutor();
+
+                        m_download = new AudioDownloadFile(m_activity, url, destinationPath, destinationName);
                         android.util.Log.e("daedalus-js", "check: " + url);
                         android.util.Log.e("daedalus-js", "check: " + destinationPath);
                         android.util.Log.e("daedalus-js", "check: " + destinationName);
 
-                        m_download.execute(url, destinationPath, destinationName);
+                        executor.execute(m_download);
                     }
                 });
             } else {
@@ -161,8 +167,9 @@ public class AndroidClient {
             directories.put(m_activity.getExternalFilesDir(Environment.DIRECTORY_MUSIC));
             //Environment.getExternalStorageDirectory();
             directories.put("storage");
-            directories.put(Environment.getDataDirectory());
-            directories.put(Environment.getExternalStorageDirectory().toString());
+            //directories.put(Environment.getDataDirectory());
+            //directories.put(m_activity.getExternalFilesDir().toString());
+            directories.put(m_activity.getExternalMediaDirs().toString());
         }
 
         File[] contents;

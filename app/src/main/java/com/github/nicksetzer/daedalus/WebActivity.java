@@ -18,10 +18,14 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.KeyEvent;
 import android.webkit.ValueCallback;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Toast;
 import com.google.android.gms.cast.framework.CastContext;
 
@@ -43,7 +47,7 @@ public class WebActivity extends Activity {
     ScreenEventReceiver m_screen_receiver = null;
     public LocalStorage m_storage;
 
-    private Handler m_timeHandler = new Handler();
+    private Handler m_timeHandler = new Handler(Looper.getMainLooper());
 
     Runnable m_updateTimeout;
 
@@ -76,7 +80,7 @@ public class WebActivity extends Activity {
         view.addJavascriptInterface(new AndroidClient(this), "Client");
         view.addJavascriptInterface(new NativeAudio(this), "AndroidNativeAudio");
 
-        view.getSettings().setAllowUniversalAccessFromFileURLs(true);
+        //view.getSettings().setAllowUniversalAccessFromFileURLs(true);
 
         if (this.profile == "dev") {
             // 192.168.1.149

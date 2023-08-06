@@ -4,8 +4,8 @@ import android.Manifest;
 import android.app.Activity;
 
 import android.content.pm.PackageManager;
-import android.os.AsyncTask;
-import android.widget.Toast;
+import android.os.Handler;
+import android.os.Looper;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -15,28 +15,42 @@ import java.io.OutputStream;
 import java.net.URL;
 import java.net.URLConnection;
 
-public class AudioDownloadFile extends AsyncTask<String,Integer,Long> {
+public class AudioDownloadFile implements Runnable {
     String strFolderName;
     Activity m_activity;
 
-    public AudioDownloadFile(Activity activity) {
+    String m_url;
+    String m_destinationPath;
+    String m_destinationName;
+
+    Handler m_handler;
+
+    public AudioDownloadFile(Activity activity, final String url, final String destinationPath, final String destinationName) {
         m_activity = activity;
+
+        m_url = url;
+        m_destinationPath = destinationPath;
+        m_destinationName = destinationName;
+
+        m_handler = new Handler(Looper.getMainLooper());
+
     }
     @Override
-    protected void onPreExecute() {
-        super.onPreExecute();
+    public void run() {
+
+        doInBackground();
+
     }
 
-    @Override
-    protected Long doInBackground(String... opts) {
+    protected Long doInBackground() {
         int count;
         try {
             android.util.Log.e("daedalus-js", "download r: " + isReadStorageAllowed());
             android.util.Log.e("daedalus-js", "download w: " + isWriteStorageAllowed());
             android.util.Log.e("daedalus-js", "download start");
-            URL url = new URL((String) opts[0]);
-            String destinationDirectory = opts[1];
-            String destinationName = opts[2];
+            URL url = new URL((String) m_url);
+            String destinationDirectory = m_destinationPath;
+            String destinationName = m_destinationName;
             URLConnection connection = url.openConnection();
             connection.connect();
 
@@ -57,7 +71,9 @@ public class AudioDownloadFile extends AsyncTask<String,Integer,Long> {
             long total = 0;
             while ((count = input.read(data)) != -1) {
                 total += count;
-                publishProgress ((int)(total*100/lengthOfFile));
+                // TODO: handler post
+                // https://stackoverflow.com/questions/58767733/the-asynctask-api-is-deprecated-in-android-11-what-are-the-alternatives
+                //onProgressUpdate ((int)(total*100/lengthOfFile));
                 output.write(data, 0, count);
             }
             output.flush();
@@ -70,12 +86,9 @@ public class AudioDownloadFile extends AsyncTask<String,Integer,Long> {
         return null;
     }
 
-    protected void onProgressUpdate(Integer... progress) {
-        android.util.Log.e("daedalus-js", "download progress " + progress);
-    }
-
-    protected void onPostExecute(String result) {
-    }
+    //protected void onProgressUpdate(Integer... progress) {
+    //    android.util.Log.e("daedalus-js", "download progress " + progress);
+    //}
 
     private boolean isReadStorageAllowed() {
         //Getting the permission status
