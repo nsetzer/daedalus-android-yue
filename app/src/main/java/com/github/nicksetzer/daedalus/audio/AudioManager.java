@@ -1,8 +1,10 @@
 package com.github.nicksetzer.daedalus.audio;
 
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
@@ -77,9 +79,18 @@ public class AudioManager {
         m_receiver = new BTReceiver();
         context.registerReceiver(m_receiver, filter);
 
+        PackageManager pm = m_service.getPackageManager();
+        String packageName = m_service.getApplicationContext().getPackageName();
+        Intent sessionIntent = pm.getLaunchIntentForPackage(packageName);
+        //Context context = m_service.getApplicationContext();
+        PendingIntent intent = PendingIntent.getActivity(context, 0, sessionIntent, 0);
+
+        Log.info("lifecycle MediaSessionCompat");
         m_session = new MediaSessionCompat(context, "AudioService");
+        m_session.setSessionActivity(intent);
+        //m_session.setActive(true);
         // These flags are now always set
-        m_session.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        //m_session.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
 
         PlaybackStateCompat state = new PlaybackStateCompat.Builder()
                 .setActions(

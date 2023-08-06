@@ -23,6 +23,7 @@ import android.view.KeyEvent;
 import android.webkit.ValueCallback;
 import android.webkit.WebView;
 import android.widget.Toast;
+import com.google.android.gms.cast.framework.CastContext;
 
 import com.github.nicksetzer.daedalus.audio.AudioActions;
 import com.github.nicksetzer.daedalus.audio.AudioEvents;
@@ -48,11 +49,15 @@ public class WebActivity extends Activity {
 
     boolean m_isPaused = false;
 
+    private CastContext castContext = null;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         Log.info("lifecycle onCreate");
 
         super.onCreate(savedInstanceState);
+
+        castContext = CastContext.getSharedInstance(this);
 
         setContentView(R.layout.activity_web);
 

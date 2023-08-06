@@ -20,6 +20,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ContentProvider;
 import android.content.Intent;
 import android.content.Context;
 
@@ -125,7 +126,7 @@ public class AudioService extends MediaBrowserServiceCompat {
     public void onCreate() {
         super.onCreate();
 
-        Log.info("service create");
+        Log.info("lifecycle service create");
 
         BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
         m_executor = new ThreadPoolExecutor(
@@ -145,8 +146,14 @@ public class AudioService extends MediaBrowserServiceCompat {
         m_fetchLock = new ReentrantLock();
         //super.onCreate();
 
+        Log.info("lifecycle manager = " + (m_manager != null));
         if (m_manager == null) {
+            Log.error("lifecycle new manager");
             m_manager = new AudioManager(this);
+
+            setSessionToken(m_manager.getSession().getSessionToken());
+
+
         }
     }
 
@@ -157,8 +164,10 @@ public class AudioService extends MediaBrowserServiceCompat {
     }
 
     @Override
-    public BrowserRoot onGetRoot(String clientPackageName, int clientUid,
-                                 Bundle rootHints) {
+    public BrowserRoot onGetRoot(
+            String clientPackageName,
+            int clientUid,
+            Bundle rootHints) {
 
         // (Optional) Control the level of access for the specified package name.
         // You'll need to write your own logic to do this.
@@ -173,25 +182,33 @@ public class AudioService extends MediaBrowserServiceCompat {
             return new BrowserRoot(MY_EMPTY_MEDIA_ROOT_ID, null);
         }
         */
-        Log.info("service onGetRoot");
+        Log.info("lifecycle onGetRoot");
 
-        return new BrowserRoot(MY_MEDIA_ROOT_ID, null);
+        Bundle extras = new Bundle();
+        String CONTENT_STYLE_PLAYABLE_HINT = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT";
+        int CONTENT_STYLE_LIST = 1;
+        extras.putInt(CONTENT_STYLE_PLAYABLE_HINT, CONTENT_STYLE_LIST);
+
+        return new BrowserRoot(MY_MEDIA_ROOT_ID, extras);
     }
 
     @Override
     public void onLoadChildren(final String parentMediaId,
                                final Result<List<MediaBrowserCompat.MediaItem>> result) {
-        Log.info("service onLoadChildren:" + parentMediaId);
+        Log.info("lifecycle service onLoadChildren:" + parentMediaId);
         //  Browsing not allowed
         if (MY_EMPTY_MEDIA_ROOT_ID.equals(parentMediaId)) {
+            Log.info("lifecycle service onLoadChildren: send result null");
             result.sendResult(null);
             return;
         }
 
         // Check if this is the root menu:
         if (MY_MEDIA_ROOT_ID.equals(parentMediaId)) {
+            Log.info("lifecycle service onLoadChildren: send result media items");
             result.sendResult(m_manager.m_queue.getMediaItems());
         } else {
+            Log.info("lifecycle service onLoadChildren: send result null");
             result.sendResult(null);
         }
 
@@ -263,8 +280,9 @@ public class AudioService extends MediaBrowserServiceCompat {
         if (m_manager != null && m_manager.m_queue != null) {
 
             if (session != null) {
+                Log.warn("lifecycle notification setState");
                 // TODO: this looks redundant with AudioManager when the song is initially loaded
-                //session.setMetadata(m_manager.m_queue.getMetadata(m_manager.m_queue.getCurrentIndex()));
+                session.setMetadata(m_manager.m_queue.getMetadata(m_manager.m_queue.getCurrentIndex()));
                 session.setPlaybackState(new PlaybackStateCompat.Builder()
                         .setState(
                                 mediaIsPlaying()?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
@@ -326,11 +344,14 @@ public class AudioService extends MediaBrowserServiceCompat {
                 PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SEEK_TO);
                 builder.addAction(R.drawable.next, "forward", intent);
             }*/
+        } else {
+            Log.warn("lifecycle notification :: no manager or queue");
         }
 
 
 
         Notification notification = builder.setOngoing(true)
+
                 .setSmallIcon(R.drawable.play)
                 .setPriority(NotificationManager.IMPORTANCE_HIGH)
                 .setCategory(Notification.CATEGORY_SERVICE)
@@ -534,13 +555,19 @@ public class AudioService extends MediaBrowserServiceCompat {
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
-        Log.info("service onbind", m_binder!=null);
+        Log.info("lifecycle service onbind", m_binder!=null);
+        if (SERVICE_INTERFACE.equals(intent.getAction())) {
+            Log.info("lifecycle super.bind");
+            return super.onBind(intent);
+        } else {
+            Log.info("lifecycle default.bind");
+        }
         return m_binder;
     }
 
     @Override
     public void onRebind(Intent intent) {
-        Log.info("service rebind");
+        Log.info("lifecycle service rebind");
         super.onRebind(intent);
     }
 
@@ -721,5 +748,6 @@ public class AudioService extends MediaBrowserServiceCompat {
 
         return obj.toString();
     }
+
 
 }

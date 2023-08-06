@@ -26,6 +26,14 @@ daedalus=(function(){
         function randomFloat(min,max){
           return Math.random()*(max-min)+min;
         }
+        /**
+         * Returns a random integer between min (inclusive) and max (inclusive).
+         * The value is no lower than min (or the next integer greater than min
+         * if min isn't an integer) and no greater than max (or the next integer
+         * lower than max if max isn't an integer).
+         * Using Math.round() will give you a non-uniform distribution!
+         */
+
         function randomInt(min,max){
           let _rnd=Math.random();
           let _min=Math.ceil(min);
@@ -73,6 +81,12 @@ daedalus=(function(){
             },[]);
           return'?'+strings.join('&');
         }
+        /**
+         * Parse URL Parameters from a string or the current window location
+         *
+         * return an object mapping of string to list of strings
+         */
+
         function parseParameters(text=undefined){
           let match;
           let search=/([^&=]+)=?([^&]*)/g;
@@ -154,6 +168,29 @@ daedalus=(function(){
           }
           return array;
         }
+        /**
+        this function has two forms based on the number of arguments
+        the style is always the final parameter
+        
+        The single argument form builds a new style sheet and automatically
+        generates a class name.
+        
+        StyleSheet(style)
+        StyleSheet(selector, style)
+        
+        The two argument form builds a style sheet but allows the user to specifiy
+        the selector. Use to apply psuedo class selectors to existing styles.
+        
+        usage:
+            This example sets the color of an element to red, and changes the
+            color to blue when the element is hovered over
+        
+            style1 = StyleSheet({color: red})
+            style1_hover = StyleSheet(`.${style1}:hover`, {color: blue})
+            element.updateProps({'className': style1})
+        
+        */
+
         function StyleSheet(...args){
           let name;
           let style;
@@ -204,6 +241,22 @@ daedalus=(function(){
           }
           return name+"-"+(element_uid++);
         }
+        /**
+            a minimal element is:
+                - type
+                - props
+                - children
+            other reserved keys include:
+                - state     // deprecated
+                - attrs     // deprecated, private keys now use a prefix _$
+                            // a seperate namespace for user defined keys is
+                            // no longer required
+                - on*       : event callbacks
+            daedalus private keys begin with '_$'
+                - _$fiber
+                - _$dirty
+        */
+
         class DomElement{
           constructor(type="div",props=undefined,children=undefined){
             if(type===undefined){
@@ -383,7 +436,7 @@ daedalus=(function(){
             }
           }
         }
-        LinkElement.style={link:'dcs-14b6e0af-0'};
+        LinkElement.style={link:'dcs-2533d68a-0'};
         class ListElement extends DomElement {
           constructor(){
             super("ul",{},[]);
@@ -468,7 +521,11 @@ daedalus=(function(){
           }
           return count;
         }
-        const placeholder='dcs-14b6e0af-1';
+        const placeholder='dcs-2533d68a-1';
+        /**
+         * Reference implementation for a Draggable Item
+         */
+
         class DraggableListItem extends DomElement {
           constructor(){
             super("div",{},[]);
@@ -500,6 +557,11 @@ daedalus=(function(){
             this.attrs.parent.handleChildDragEnd(this,event);
           }
         }
+        /**
+         * A div where child elements can be dragged with a mouse or touch event
+         *
+         */
+
         class DraggableList extends DomElement {
           constructor(){
             super("div",{},[]);
@@ -510,6 +572,11 @@ daedalus=(function(){
           setPlaceholderClassName(className){
             this.attrs.placeholderClassName=className;
           }
+          /**
+               * child: a DomElement that is a child of this element
+               * event: a mouse or touch event
+               */
+
           handleChildDragBegin(child,event){
             if(!!this.attrs.draggingEle){
               console.error("running drag cancel because previous did not finish");
@@ -823,7 +890,22 @@ daedalus=(function(){
         function patternMatch(pattern,location){
           return locationMatch(patternToRegexp(pattern),location);
         }
+        /**
+         * A class which controls the child element of another DomElement using
+         * the current location.
+         *
+         * This class is designed to be embeddable. The method handleLocationChanged
+         * should be called by the user whenever the location has been changed.
+         * This class can be used independently of the window location, provided
+         * the user can provide an alternative location.
+         */
+
         class Router{
+          /**
+               * container: a DomElement
+               * default_callback: function(setElementCallback)
+               */
+
           constructor(container,default_callback){
             if(!container){
               throw'invalid container';
@@ -858,6 +940,18 @@ daedalus=(function(){
             this.default_callback(fn);
             return;
           }
+          /**
+               * item: the route object
+               * fn: a callback function which will set the element in the container
+               * match: the location match result
+               *
+               * When a location matches a known route this function is called
+               * the route object contains a callback which should be called
+               * In which case this method returns true. If this route should not
+               * be followed return false
+               *
+               */
+
           doRoute(item,fn,match){
             item.callback(fn,match);
             return true;
@@ -884,6 +978,16 @@ daedalus=(function(){
             const re=patternToRegexp(pattern);
             this.routes.push({pattern,callback,re});
           }
+          /**
+               * set the callback to use for the default route, when no
+               * other defined route matches the current location.
+               *
+               * callback :: function(setElementCallback)
+               *   the callback should be a function which accepts asingle arugment,
+               *   a function that will be used to set an element as a child of the
+               *   container
+               */
+
           setDefaultRoute(callback){
             this.default_callback=callback;
           }
@@ -906,6 +1010,10 @@ daedalus=(function(){
             super(container,route_list,default_callback);
             this.authenticated=false;
           }
+          /**
+               *
+               */
+
           doRoute(item,fn,match){
             let has_auth=this.isAuthenticated();
             if(item.auth===true&&item.noauth===undefined){
@@ -951,6 +1059,26 @@ daedalus=(function(){
         
       })();
     const[downloadFile,uploadFile]=(function(){
+        /**
+         * Daedalus File API
+         *
+         * Methods for uploading and downloading files to a webserver
+         *
+         * Compatability Notes:
+         *   uploadFile does not work for Android WebView.
+         *   Instead an API is needed for background file uploads using
+         *   Android APIs.
+         *
+         *   downloadFile does not work for Android WebView.
+         *   Instead generate an anchor tag with the href and download proptery.
+         *
+         *   e.g.
+         *      <a href="url" download="filename">Click Here</a>
+         *
+         *   Alternativley, an android API can be implemented to support downloads
+         *
+         */
+
         function saveBlob(blob,fileName){
           let a=document.createElement('a');
           a.href=window.URL.createObjectURL(blob);
@@ -1243,6 +1371,7 @@ daedalus=(function(){
               }
             }
           }catch(e){
+            console.log(e);
             console.error("unhandled workloop exception: "+e.message);
           };
           let debug=workstack.length>1||updatequeue.length>1;
@@ -2065,6 +2194,26 @@ Object.assign(api,(function(api,daedalus){
             const cfg=getPublicConfig();
             return api.requests.post_json(url,track,cfg);
           }
+          /**
+           * params:
+           *   crypt: One of: client, server, system, none. default: none
+           *          client and system are not supported
+           *
+           *          none: no encryption is performed
+           *          client: file is encrypted, key is managed by the user client side
+           *            files are encrypted and decrypted by the client
+           *            files can only be decrypted by the owner
+           *            the server (and database) never have access to the decrypted key
+           *          server: file is encrypted, key is managed by the user server side
+           *            files are encrypted and decrypted by the server
+           *            files can only be decrypted by the owner
+           *            man in the middle attacks could determine the encryption key
+           *          system: file is encrypted, key is managed by the application
+           *            files are encrypted and decrypted by the server
+           *            files can be decrypted by users other than the file owner
+           *            the encryption key is compromised if the database is compromised
+           */
+
           function fsUploadFile(root,path,headers,params,success=null,failure=null,
                       progress=null){
             const urlbase=env.baseUrl+daedalus.util.joinpath('/api/fs',root,'path',
@@ -2158,7 +2307,7 @@ components=(function(api,daedalus,resources){
     const ButtonElement=daedalus.ButtonElement;
     const Router=daedalus.Router;
     const[SvgButtonElement,SvgElement]=(function(){
-        const style={svgButton:'dcs-1115aa73-0'};
+        const style={svgButton:'dcs-658b336c-0'};
         ;
         class SvgElement extends DomElement {
           constructor(url,props){
@@ -2255,7 +2404,7 @@ components=(function(api,daedalus,resources){
         return[SwipeHandler];
       })();
     const[HSpacer,HStretch,VSpacer]=(function(){
-        const style={HStretch:'dcs-0f7b85d8-0'};
+        const style={HStretch:'dcs-e0b5d60f-0'};
         class HSpacer extends DomElement {
           constructor(width){
             super("div",{},[]);
@@ -2312,7 +2461,7 @@ components=(function(api,daedalus,resources){
         return[HSpacer,HStretch,VSpacer];
       })();
     const[CheckBoxElement]=(function(){
-        const style={chkbox:'dcs-2dacdfbc-0'};
+        const style={chkbox:'dcs-56473361-0'};
         class CheckBoxElement extends SvgElement {
           constructor(callback,initialCheckState){
             super(null,{width:20,height:32,className:style.chkbox});
@@ -2342,11 +2491,11 @@ components=(function(api,daedalus,resources){
         return[CheckBoxElement];
       })();
     const[NavMenu]=(function(){
-        const style={navMenuShadow:'dcs-1d21fab3-0',navMenuShadowHide:'dcs-1d21fab3-1',
-                  alignRight:'dcs-1d21fab3-2',navMenuShadowShow:'dcs-1d21fab3-3',navMenu:'dcs-1d21fab3-4',
-                  navMenuActionContainer:'dcs-1d21fab3-5',navMenuHide:'dcs-1d21fab3-6',navMenuShow:'dcs-1d21fab3-7',
-                  navMenuShowFixed:'dcs-1d21fab3-8',navMenuHideFixed:'dcs-1d21fab3-9',svgDiv:'dcs-1d21fab3-10',
-                  actionItem:'dcs-1d21fab3-11',subActionItem:'dcs-1d21fab3-12',header:'dcs-1d21fab3-13'};
+        const style={navMenuShadow:'dcs-2cc64f69-0',navMenuShadowHide:'dcs-2cc64f69-1',
+                  alignRight:'dcs-2cc64f69-2',navMenuShadowShow:'dcs-2cc64f69-3',navMenu:'dcs-2cc64f69-4',
+                  navMenuActionContainer:'dcs-2cc64f69-5',navMenuHide:'dcs-2cc64f69-6',navMenuShow:'dcs-2cc64f69-7',
+                  navMenuShowFixed:'dcs-2cc64f69-8',navMenuHideFixed:'dcs-2cc64f69-9',svgDiv:'dcs-2cc64f69-10',
+                  actionItem:'dcs-2cc64f69-11',subActionItem:'dcs-2cc64f69-12',header:'dcs-2cc64f69-13'};
         
         ;
         ;
@@ -2481,8 +2630,8 @@ components=(function(api,daedalus,resources){
         return[NavMenu];
       })();
     const[MiddleText,MiddleTextLink]=(function(){
-        const style={ellideMiddle:'dcs-620f3e39-0',ellideMiddleDiv1:'dcs-620f3e39-1',
-                  ellideMiddleDiv2:'dcs-620f3e39-2',ellideMiddleLink:'dcs-620f3e39-3'};
+        const style={ellideMiddle:'dcs-9543db32-0',ellideMiddleDiv1:'dcs-9543db32-1',
+                  ellideMiddleDiv2:'dcs-9543db32-2',ellideMiddleLink:'dcs-9543db32-3'};
         class MiddleText extends DomElement {
           constructor(text){
             super("div",{className:[style.textSpacer]},[]);
@@ -2525,10 +2674,10 @@ components=(function(api,daedalus,resources){
         return[MiddleText,MiddleTextLink];
       })();
     const[TreeItem,TreeView]=(function(){
-        const style={treeView:'dcs-eea1a2c8-0',treeItem:'dcs-eea1a2c8-1',treeItemObjectContainer:'dcs-eea1a2c8-2',
-                  treeItemChildContainer:'dcs-eea1a2c8-3',treeItem0:'dcs-eea1a2c8-4',treeItemN:'dcs-eea1a2c8-5',
-                  listItemMid:'dcs-eea1a2c8-6',listItemEnd:'dcs-eea1a2c8-7',listItemSelected:'dcs-eea1a2c8-8',
-                  treeFooter:'dcs-eea1a2c8-9'};
+        const style={treeView:'dcs-11073d64-0',treeItem:'dcs-11073d64-1',treeItemObjectContainer:'dcs-11073d64-2',
+                  treeItemChildContainer:'dcs-11073d64-3',treeItem0:'dcs-11073d64-4',treeItemN:'dcs-11073d64-5',
+                  listItemMid:'dcs-11073d64-6',listItemEnd:'dcs-11073d64-7',listItemSelected:'dcs-11073d64-8',
+                  treeFooter:'dcs-11073d64-9'};
         ;
         class SvgMoreElement extends SvgElement {
           constructor(callback){
@@ -2714,9 +2863,9 @@ components=(function(api,daedalus,resources){
         return[TreeItem,TreeView];
       })();
     const[MoreMenu]=(function(){
-        const style={moreMenuShadow:'dcs-15cdb49b-0',moreMenu:'dcs-15cdb49b-1',moreMenuShow:'dcs-15cdb49b-2',
-                  moreMenuHide:'dcs-15cdb49b-3',moreMenuButton:'dcs-15cdb49b-4',moreMenuSection:'dcs-15cdb49b-5',
-                  moreMenuSectionHeader:'dcs-15cdb49b-6',moreMenuSectionText:'dcs-15cdb49b-7'};
+        const style={moreMenuShadow:'dcs-131ebe5c-0',moreMenu:'dcs-131ebe5c-1',moreMenuShow:'dcs-131ebe5c-2',
+                  moreMenuHide:'dcs-131ebe5c-3',moreMenuButton:'dcs-131ebe5c-4',moreMenuSection:'dcs-131ebe5c-5',
+                  moreMenuSectionHeader:'dcs-131ebe5c-6',moreMenuSectionText:'dcs-131ebe5c-7'};
         
         ;
         ;
@@ -2783,12 +2932,12 @@ components=(function(api,daedalus,resources){
         return[MoreMenu];
       })();
     const[NavFooter,NavHeader]=(function(){
-        const style={header:'dcs-6e832ea3-0',footer:'dcs-6e832ea3-1',headerDiv:'dcs-6e832ea3-2',
-                  toolbar:'dcs-6e832ea3-3',toolbarInner:'dcs-6e832ea3-4',toolbarFooter:'dcs-6e832ea3-5',
-                  toolbarFooterInnerV1:'dcs-6e832ea3-6',toolbarFooterInnerV2:'dcs-6e832ea3-7',
-                  toolbar2:'dcs-6e832ea3-8',toolbarInner2:'dcs-6e832ea3-9',footerText:'dcs-6e832ea3-10',
-                  toolbar2Start:'dcs-6e832ea3-11',toolbar2Center:'dcs-6e832ea3-12',grow:'dcs-6e832ea3-13',
-                  pad:'dcs-6e832ea3-14'};
+        const style={header:'dcs-18e731e2-0',footer:'dcs-18e731e2-1',headerDiv:'dcs-18e731e2-2',
+                  toolbar:'dcs-18e731e2-3',toolbarInner:'dcs-18e731e2-4',toolbarFooter:'dcs-18e731e2-5',
+                  toolbarFooterInnerV1:'dcs-18e731e2-6',toolbarFooterInnerV2:'dcs-18e731e2-7',
+                  toolbar2:'dcs-18e731e2-8',toolbarInner2:'dcs-18e731e2-9',footerText:'dcs-18e731e2-10',
+                  toolbar2Start:'dcs-18e731e2-11',toolbar2Center:'dcs-18e731e2-12',grow:'dcs-18e731e2-13',
+                  pad:'dcs-18e731e2-14'};
         class NavHeader extends DomElement {
           constructor(){
             super("div",{className:style.header},[]);
@@ -2866,7 +3015,7 @@ components=(function(api,daedalus,resources){
         return[NavFooter,NavHeader];
       })();
     const[Slider]=(function(){
-        const style={slider:'dcs-a98c7ce9-0',sliderInput:'dcs-a98c7ce9-1',sliderSpan:'dcs-a98c7ce9-2'};
+        const style={slider:'dcs-31e910bc-0',sliderInput:'dcs-31e910bc-1',sliderSpan:'dcs-31e910bc-2'};
         
         ;
         ;
@@ -2893,8 +3042,8 @@ components=(function(api,daedalus,resources){
         return[Slider];
       })();
     const[ProgressBar]=(function(){
-        const style={progressBar:'dcs-f3332da9-0',progressBar_bar:'dcs-f3332da9-1',
-                  progressBar_button:'dcs-f3332da9-2'};
+        const style={progressBar:'dcs-509f6531-0',progressBar_bar:'dcs-509f6531-1',
+                  progressBar_button:'dcs-509f6531-2'};
         ;
         ;
         ;
@@ -3031,9 +3180,9 @@ components=(function(api,daedalus,resources){
         return[ProgressBar];
       })();
     const[ErrorDrawer]=(function(){
-        const style={drawer:'dcs-9969ddfa-0',headerDiv:'dcs-9969ddfa-1',lhs:'dcs-9969ddfa-2',
-                  title:'dcs-9969ddfa-3',message:'dcs-9969ddfa-4',button:'dcs-9969ddfa-5',
-                  hide:'dcs-9969ddfa-6'};
+        const style={drawer:'dcs-a0396a69-0',headerDiv:'dcs-a0396a69-1',lhs:'dcs-a0396a69-2',
+                  title:'dcs-a0396a69-3',message:'dcs-a0396a69-4',button:'dcs-a0396a69-5',
+                  hide:'dcs-a0396a69-6'};
         class ErrorDrawer extends DomElement {
           constructor(icon){
             super("div",{className:style.drawer},[]);
@@ -3080,7 +3229,16 @@ components=(function(api,daedalus,resources){
         return[ErrorDrawer];
       })();
     const[Refresh]=(function(){
-        const style={refresh:'dcs-060f84ad-0'};
+        /**
+        a pull to refresh widget
+        
+        add this widget as a child to a page
+        use connect() to connect events from an existing element to handlers
+        pull down to trigger a callback
+        
+        */
+
+        const style={refresh:'dcs-88280dc5-0'};
         class Refresh extends DomElement {
           constructor(cbk=null){
             super("img",{className:style.refresh,src:resources.svg.refresh});
@@ -3584,16 +3742,13 @@ components=(function(api,daedalus,resources){
             return QRUtil.PATTERN_POSITION_TABLE[typeNumber-1];
           },getMask:function(maskPattern,i,j){
             switch(maskPattern){
-              case QRMaskPattern.PATTERN000:return(i+j)%2==0;
-              case QRMaskPattern.PATTERN001:return i%2==0;
-              case QRMaskPattern.PATTERN010:return j%3==0;
-              case QRMaskPattern.PATTERN011:return(i+j)%3==0;
-              case QRMaskPattern.PATTERN100:return(Math.floor(i/2)+Math.floor(j/3))%2==0;
-              
-              case QRMaskPattern.PATTERN101:return(i*j)%2+(i*j)%3==0;
-              case QRMaskPattern.PATTERN110:return((i*j)%2+(i*j)%3)%2==0;
-              case QRMaskPattern.PATTERN111:return((i*j)%3+(i+j)%2)%2==0;
-              default:throw new Error("bad maskPattern:"+maskPattern);
+              case QRMaskPattern.PATTERN000:return(i+j)%2==0;case QRMaskPattern.PATTERN001:return i%2==0;
+                            case QRMaskPattern.PATTERN010:return j%3==0;case QRMaskPattern.PATTERN011:return(
+                              i+j)%3==0;case QRMaskPattern.PATTERN100:return(Math.floor(i/2)+Math.floor(
+                                  j/3))%2==0;case QRMaskPattern.PATTERN101:return(i*j)%2+(i*j)%3==0;
+                            case QRMaskPattern.PATTERN110:return((i*j)%2+(i*j)%3)%2==0;case QRMaskPattern.PATTERN111:return(
+                              (i*j)%3+(i+j)%2)%2==0;default:throw new Error("bad maskPattern:"+maskPattern);
+                            ;
             }
           },getErrorCorrectPolynomial:function(errorCorrectLength){
             let a=new QRPolynomial([1],0);
@@ -3605,27 +3760,21 @@ components=(function(api,daedalus,resources){
           },getLengthInBits:function(mode,type){
             if(1<=type&&type<10){
               switch(mode){
-                case QRMode.MODE_NUMBER:return 10;
-                case QRMode.MODE_ALPHA_NUM:return 9;
-                case QRMode.MODE_8BIT_BYTE:return 8;
-                case QRMode.MODE_KANJI:return 8;
-                default:throw new Error("mode:"+mode);
+                case QRMode.MODE_NUMBER:return 10;case QRMode.MODE_ALPHA_NUM:return 9;
+                                case QRMode.MODE_8BIT_BYTE:return 8;case QRMode.MODE_KANJI:return 8;
+                                default:throw new Error("mode:"+mode);;
               }
             }else if(type<27){
               switch(mode){
-                case QRMode.MODE_NUMBER:return 12;
-                case QRMode.MODE_ALPHA_NUM:return 11;
-                case QRMode.MODE_8BIT_BYTE:return 16;
-                case QRMode.MODE_KANJI:return 10;
-                default:throw new Error("mode:"+mode);
+                case QRMode.MODE_NUMBER:return 12;case QRMode.MODE_ALPHA_NUM:return 11;
+                                case QRMode.MODE_8BIT_BYTE:return 16;case QRMode.MODE_KANJI:return 10;
+                                default:throw new Error("mode:"+mode);;
               }
             }else if(type<41){
               switch(mode){
-                case QRMode.MODE_NUMBER:return 14;
-                case QRMode.MODE_ALPHA_NUM:return 13;
-                case QRMode.MODE_8BIT_BYTE:return 16;
-                case QRMode.MODE_KANJI:return 12;
-                default:throw new Error("mode:"+mode);
+                case QRMode.MODE_NUMBER:return 14;case QRMode.MODE_ALPHA_NUM:return 13;
+                                case QRMode.MODE_8BIT_BYTE:return 16;case QRMode.MODE_KANJI:return 12;
+                                default:throw new Error("mode:"+mode);;
               }
             }else{
               throw new Error("type:"+type);
@@ -3860,14 +4009,10 @@ components=(function(api,daedalus,resources){
         QRRSBlock.getRsBlockTable=function(typeNumber,errorCorrectLevel){
           switch(errorCorrectLevel){
             case QRErrorCorrectLevel.L:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+0];
-            
-            case QRErrorCorrectLevel.M:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+1];
-            
-            case QRErrorCorrectLevel.Q:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+2];
-            
-            case QRErrorCorrectLevel.H:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+3];
-            
-            default:return undefined;
+                        case QRErrorCorrectLevel.M:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+1];
+                        case QRErrorCorrectLevel.Q:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+2];
+                        case QRErrorCorrectLevel.H:return QRRSBlock.RS_BLOCK_TABLE[(typeNumber-1)*4+3];
+                        default:return undefined;;
           }
         };
         function QRBitBuffer(){
@@ -3964,7 +4109,7 @@ components=(function(api,daedalus,resources){
           let element=options.render=="canvas"?createCanvas():createTable();
           return domElement.appendChild(element);
         }
-        const style={main:'dcs-ef48f9f1-0'};
+        const style={main:'dcs-24e97430-0'};
         class QrCodeElement extends DomElement {
           constructor(text){
             super("div",{className:style.main});
@@ -4280,8 +4425,7 @@ audio=(function(api,daedalus){
               if(payload.currentIndex>=0&&payload.currentIndex<this.device.queue.length){
               
                 let song=this.device.queue[payload.currentIndex];
-                this.device._sendEvent('handleAudioSongChanged',{...song,index:payload.currentIndex});
-                
+                this.device._sendEvent('handleAudioSongChanged',song);
               }
             }
             this._currentTime=payload.position/1000;
@@ -4294,7 +4438,7 @@ audio=(function(api,daedalus){
             const index=payload.index;
             const song=this.device.currentSong();
             if(song!=null){
-              this.device._sendEvent('handleAudioSongChanged',{...song,index});
+              this.device._sendEvent('handleAudioSongChanged',song);
             }
           }
           ontrackchanged(payload){
@@ -4647,9 +4791,6 @@ audio=(function(api,daedalus){
               this.current_index=-1;
               this._sendEvent('handleAudioSongChanged',null);
             }
-            this.queue.forEach((item,index)=>{
-                item.index=index;
-              });
             this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
               
                 this.queue_modified=false;
@@ -4670,8 +4811,7 @@ audio=(function(api,daedalus){
           _playSong(song){
             console.error("deprecated function call : play by index instead");
             this.impl.playSong(this.current_index,song);
-            this._sendEvent('handleAudioSongChanged',{...song,index:this.current_index});
-            
+            this._sendEvent('handleAudioSongChanged',song);
           }
           playSong(song){
             console.error("deprecated function call : play by index instead");
@@ -4983,7 +5123,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[fmtEpochTime];
       })();
     const[LandingPage]=(function(){
-        const styles={main:'dcs-204dd050-0',btn_center:'dcs-204dd050-1'};
+        const styles={main:'dcs-25fcefae-0',btn_center:'dcs-25fcefae-1'};
         class LandingPage extends DomElement {
           constructor(){
             super("div",{className:styles.main},[]);
@@ -4998,9 +5138,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[LandingPage];
       })();
     const[LoginPage]=(function(){
-        const style={main:'dcs-795f0492-0',btn_center:'dcs-795f0492-1',edit:'dcs-795f0492-2',
-                  edit2:'dcs-795f0492-3',btnt:'dcs-795f0492-4',warning:'dcs-795f0492-5',hbox:'dcs-795f0492-6',
-                  hide:'dcs-795f0492-7'};
+        const style={main:'dcs-240dd88a-0',btn_center:'dcs-240dd88a-1',edit:'dcs-240dd88a-2',
+                  edit2:'dcs-240dd88a-3',btnt:'dcs-240dd88a-4',warning:'dcs-240dd88a-5',hbox:'dcs-240dd88a-6',
+                  hide:'dcs-240dd88a-7'};
         class LoginPage extends DomElement {
           constructor(){
             super("div",{className:style.main},[]);
@@ -5061,18 +5201,34 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
       })();
     const[FileSystemPage,PublicFilePage,StoragePage,StoragePreviewPage]=(function(
             ){
+        /**
+        SERVER SIDE TODO:
+        - limit simultaneous transcodes using the task engine
+          each request submits a task and waits until the task completes
+          before returning the response
+        
+        
+        */
+
+        /**
+        
+        download:
+            <a href="url" download></a>
+            <a href="url" download="filename"></a>
+        */
+
         const thumbnailFormats={jpg:true,png:true,webm:true,mp4:true,gif:true};
-        const style={item_file:'dcs-6f774f69-0',list:'dcs-6f774f69-1',listItem:'dcs-6f774f69-2',
-                  listItemMain:'dcs-6f774f69-3',listItemDir:'dcs-6f774f69-4',listItemMid:'dcs-6f774f69-5',
-                  listItemEnd:'dcs-6f774f69-6',listItemText:'dcs-6f774f69-7',icon1:'dcs-6f774f69-8',
-                  icon2:'dcs-6f774f69-9',fileDetailsShow:'dcs-6f774f69-10',fileDetailsHide:'dcs-6f774f69-11',
-                  encryption:{"system":'dcs-6f774f69-12',"server":'dcs-6f774f69-13',"client":'dcs-6f774f69-14',
-                      "none":'dcs-6f774f69-15'},svgDiv:'dcs-6f774f69-16',text:'dcs-6f774f69-17',
-                  textSpacer:'dcs-6f774f69-18',callbackLink:'dcs-6f774f69-19',center:'dcs-6f774f69-20',
-                  paddedText:'dcs-6f774f69-21',navBar:'dcs-6f774f69-22',searchShow:'dcs-6f774f69-23',
-                  searchHide:'dcs-6f774f69-24',grow:'dcs-6f774f69-25',objectContainer:'dcs-6f774f69-26',
-                  zoomOut:'dcs-6f774f69-27',zoomIn:'dcs-6f774f69-28',maxWidth:'dcs-6f774f69-29',
-                  main2:'dcs-6f774f69-30',show:'dcs-6f774f69-31',hide:'dcs-6f774f69-32'};
+        const style={item_file:'dcs-370f94ee-0',list:'dcs-370f94ee-1',listItem:'dcs-370f94ee-2',
+                  listItemMain:'dcs-370f94ee-3',listItemDir:'dcs-370f94ee-4',listItemMid:'dcs-370f94ee-5',
+                  listItemEnd:'dcs-370f94ee-6',listItemText:'dcs-370f94ee-7',icon1:'dcs-370f94ee-8',
+                  icon2:'dcs-370f94ee-9',fileDetailsShow:'dcs-370f94ee-10',fileDetailsHide:'dcs-370f94ee-11',
+                  encryption:{"system":'dcs-370f94ee-12',"server":'dcs-370f94ee-13',"client":'dcs-370f94ee-14',
+                      "none":'dcs-370f94ee-15'},svgDiv:'dcs-370f94ee-16',text:'dcs-370f94ee-17',
+                  textSpacer:'dcs-370f94ee-18',callbackLink:'dcs-370f94ee-19',center:'dcs-370f94ee-20',
+                  paddedText:'dcs-370f94ee-21',navBar:'dcs-370f94ee-22',searchShow:'dcs-370f94ee-23',
+                  searchHide:'dcs-370f94ee-24',grow:'dcs-370f94ee-25',objectContainer:'dcs-370f94ee-26',
+                  zoomOut:'dcs-370f94ee-27',zoomIn:'dcs-370f94ee-28',maxWidth:'dcs-370f94ee-29',
+                  main2:'dcs-370f94ee-30',show:'dcs-370f94ee-31',hide:'dcs-370f94ee-32'};
         
         ;
         ;
@@ -5402,8 +5558,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }else{
               const item=this.attrs.files[msg.fileName];
               item.fileInfo.bytesTransfered=msg.bytesTransfered;
-              item.node.setText(`${msg.fileName} ${(100.0*msg.bytesTransfered/msg.fileSize).toFixed(
-                                  2)}%`);
+              item.node.setText(`${msg.fileName} ${(100.0*msg.bytesTransfered/msg.fileSize).toFixed(2)}%`);
+              
             }
           }
           handleRemove(msg){
@@ -5815,9 +5971,9 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[FileSystemPage,PublicFilePage,StoragePage,StoragePreviewPage];
       })();
     const[NoteContentPage,NoteContext,NoteEditPage,NotesPage]=(function(){
-        const styles={page:'dcs-f1fbc9ce-0',list:'dcs-f1fbc9ce-1',item:'dcs-f1fbc9ce-2',
-                  padding1:'dcs-f1fbc9ce-3',padding2:'dcs-f1fbc9ce-4',contentDiv:'dcs-f1fbc9ce-5',
-                  contentPre:'dcs-f1fbc9ce-6',contentText:'dcs-f1fbc9ce-7'};
+        const styles={page:'dcs-178d2ae3-0',list:'dcs-178d2ae3-1',item:'dcs-178d2ae3-2',
+                  padding1:'dcs-178d2ae3-3',padding2:'dcs-178d2ae3-4',contentDiv:'dcs-178d2ae3-5',
+                  contentPre:'dcs-178d2ae3-6',contentText:'dcs-178d2ae3-7'};
         class NoteContext{
           constructor(root,base){
             this.root=root;
@@ -6051,15 +6207,15 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[NoteContentPage,NoteContext,NoteEditPage,NotesPage];
       })();
     const[PlaylistPage]=(function(){
-        const style={main:'dcs-13113e22-0',header:'dcs-13113e22-1',content:'dcs-13113e22-2',
-                  toolbar:'dcs-13113e22-3',info:'dcs-13113e22-4',songList:'dcs-13113e22-5',
-                  songItem:'dcs-13113e22-6',songItemPlaceholder:'dcs-13113e22-7',songItemActive:'dcs-13113e22-8',
-                  fontBig:'dcs-13113e22-9',fontSmall:'dcs-13113e22-10',songItemRow:'dcs-13113e22-11',
-                  songItemRhs:'dcs-13113e22-12',songItemIndex:'dcs-13113e22-13',songItemRow2:'dcs-13113e22-14',
-                  callbackLink2:'dcs-13113e22-15',grip:'dcs-13113e22-16',space5:'dcs-13113e22-17',
-                  center80:'dcs-13113e22-18',centerRow:'dcs-13113e22-19',lockScreen:'dcs-13113e22-20',
-                  padding1:'dcs-13113e22-21',padding2:'dcs-13113e22-22',listItemEnd:'dcs-13113e22-23'};
-        
+        const style={main:'dcs-00bdf631-0',header:'dcs-00bdf631-1',content:'dcs-00bdf631-2',
+                  toolbar:'dcs-00bdf631-3',info:'dcs-00bdf631-4',songList:'dcs-00bdf631-5',
+                  songItem:'dcs-00bdf631-6',songItemPlaceholder:'dcs-00bdf631-7',songItemMoving:'dcs-00bdf631-8',
+                  songItemActive:'dcs-00bdf631-9',fontBig:'dcs-00bdf631-10',fontSmall:'dcs-00bdf631-11',
+                  songItemRow:'dcs-00bdf631-12',songItemRhs:'dcs-00bdf631-13',songItemIndex:'dcs-00bdf631-14',
+                  songItemRow2:'dcs-00bdf631-15',callbackLink2:'dcs-00bdf631-16',grip:'dcs-00bdf631-17',
+                  space5:'dcs-00bdf631-18',center80:'dcs-00bdf631-19',centerRow:'dcs-00bdf631-20',
+                  lockScreen:'dcs-00bdf631-21',padding1:'dcs-00bdf631-22',padding2:'dcs-00bdf631-23',
+                  listItemEnd:'dcs-00bdf631-24'};
         ;
         function formatTime(secs){
           secs=secs===Infinity?0:secs;
@@ -6101,7 +6257,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             grip.props.onMouseDown=(event)=>{
               let node=this.getDomNode();
               node.style.width=node.clientWidth+'px';
-              node.style.background="white";
+              this.addClassName(style.songItemMoving);
               this.attrs.parent.handleChildDragBegin(this,event);
               event.preventDefault();
               event.stopPropagation();
@@ -6109,7 +6265,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             grip.props.onTouchStart=(event)=>{
               let node=this.getDomNode();
               node.style.width=node.clientWidth+'px';
-              node.style.background="white";
+              this.addClassName(style.songItemMoving);
               this.attrs.parent.handleChildDragBegin(this,event);
               event.preventDefault();
               event.stopPropagation();
@@ -6156,7 +6312,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             }
             let node=this.getDomNode();
             node.style.width=node.clientWidth+'px';
-            node.style.background="white";
+            this.addClassName(style.songItemMoving);
             console.log(`touch start ${this.attrs.index}`);
             this.attrs.parent.handleChildSwipeBegin(this,event);
           }
@@ -6199,7 +6355,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               
               let node=this.getDomNode();
               node.style.removeProperty('width');
-              node.style.removeProperty('background');
+              this.removeClassName(style.songItemMoving);
             }
             event.stopPropagation();
           }
@@ -6221,14 +6377,14 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               
               let node=this.getDomNode();
               node.style.removeProperty('width');
-              node.style.removeProperty('background');
+              this.removeClassName(style.songItemMoving);
             }
             event.stopPropagation();
           }
           onMouseDown(event){
             let node=this.getDomNode();
             node.style.width=node.clientWidth+'px';
-            node.style.background="white";
+            this.addClassName(style.songItemMoving);
             this.attrs.parent.handleChildSwipeBegin(this,event);
           }
           onMouseMove(event){
@@ -6260,7 +6416,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.attrs.parent.handleChildDragEnd(this,event);
               let node=this.getDomNode();
               node.style.removeProperty('width');
-              node.style.removeProperty('background');
+              this.removeClassName(style.songItemMoving);
             }
             event.stopPropagation();
           }
@@ -6275,7 +6431,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               this.attrs.parent.handleChildDragEnd(this,event);
               let node=this.getDomNode();
               node.style.removeProperty('width');
-              node.style.removeProperty('background');
+              this.removeClassName(style.songItemMoving);
             }
             event.stopPropagation();
           }
@@ -6553,7 +6709,6 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             s.removeProperty('position');
             s.removeProperty('transition');
             s.removeProperty('width');
-            s.removeProperty('background');
             this.attrs.draggingEle=null;
             if(!!this.swipeActionRight){
               this.handleSwipeRight(this.swipeActionRight);
@@ -6572,13 +6727,13 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
             this.attrs.draggingEle=null;
           }
           handleSwipeRight(child){
-            console.log(`handle swipe right index: ${child.attrs.index}`);
-            const index=child.attrs.index;
+            const index=this.children.indexOf(child);
+            console.log(`handle swipe right index: ${index}`);
             audio.AudioDevice.instance().queueRemoveIndex(index);
           }
           handleSwipeLeft(child){
-            console.log(`handle swipe left index: ${child.attrs.index}`);
-            const index=child.attrs.index;
+            const index=this.children.indexOf(child);
+            console.log(`handle swipe left index: ${index}`);
             audio.AudioDevice.instance().playIndex(index);
           }
           handleSwipeCancel(child){
@@ -6733,10 +6888,11 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               if(!song.id){
                 this.attrs.header.setStatus("load error: invalid id");
               }else{
-                this.attrs.currentIndex=song.index;
+                this.attrs.currentIndex=audio.AudioDevice.instance().currentSongIndex(
+                                );
                 this.attrs.header.setStatus("pending");
                 this.attrs.container.children.forEach((child,index)=>{
-                    child.updateActive(index===song.index);
+                    child.updateActive(index===this.attrs.currentIndex);
                   });
                 this.attrs.header.setTime(0,0);
               }
@@ -6796,7 +6952,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[PlaylistPage];
       })();
     const[SettingsPage]=(function(){
-        const style={main:'dcs-07e42eba-0',settingsItem:'dcs-07e42eba-1',settingsRowItem:'dcs-07e42eba-2'};
+        const style={main:'dcs-7a525177-0',settingsItem:'dcs-7a525177-1',settingsRowItem:'dcs-7a525177-2'};
         
         class SettingsItem extends DomElement {
           constructor(title){
@@ -6975,11 +7131,11 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                           resources.svg.checkbox_partial];
           }
         }
-        const style={main:'dcs-f089c6c5-0',grow:'dcs-f089c6c5-1',viewPad:'dcs-f089c6c5-2',
-                  listItemCheck:'dcs-f089c6c5-3',savedSearchPage:'dcs-f089c6c5-4',savedSearchList:'dcs-f089c6c5-5',
-                  savedSearchItem:'dcs-f089c6c5-6',padding1:'dcs-f089c6c5-7',padding2:'dcs-f089c6c5-8',
-                  listItem:'dcs-f089c6c5-9',listItemMid:'dcs-f089c6c5-10',listItemQuery:'dcs-f089c6c5-11',
-                  listItemInner:'dcs-f089c6c5-12',show:'dcs-f089c6c5-13',hide:'dcs-f089c6c5-14'};
+        const style={main:'dcs-33c2f1c6-0',grow:'dcs-33c2f1c6-1',viewPad:'dcs-33c2f1c6-2',
+                  listItemCheck:'dcs-33c2f1c6-3',savedSearchPage:'dcs-33c2f1c6-4',savedSearchList:'dcs-33c2f1c6-5',
+                  savedSearchItem:'dcs-33c2f1c6-6',padding1:'dcs-33c2f1c6-7',padding2:'dcs-33c2f1c6-8',
+                  listItem:'dcs-33c2f1c6-9',listItemMid:'dcs-33c2f1c6-10',listItemQuery:'dcs-33c2f1c6-11',
+                  listItemInner:'dcs-33c2f1c6-12',show:'dcs-33c2f1c6-13',hide:'dcs-33c2f1c6-14'};
         
         class LibraryHeader extends components.NavHeader {
           constructor(parent){
@@ -7180,6 +7336,10 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                 this._collectTrack(result,child,artist,obj.name,selected);
               });
           }
+          /**
+              collect a track when the node exists and is selected
+              */
+
           _chkTrackSelection(result,node,artist,album){
             if(this.attrs.selectMode==components.TreeItem.SELECTION_MODE_CHECK){
               const item=node.attrs.obj;
@@ -7197,6 +7357,14 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
               }
             }
           }
+          /**
+              collect a track when the node does not exist
+              and a parent, which exists, is selected
+          
+              TODO: the optimization to use is: was this or a parent
+              modified by the user, if not then dont descend.
+              */
+
           _collectTrack(result,obj,artist,album,selected){
             if(this.attrs.selectMode==components.TreeItem.SELECTION_MODE_CHECK){
               if(obj.sync==0&&selected==1){
@@ -7689,8 +7857,8 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   {name:"soundwitch",query:"soundwitch"},{name:"Gothic Emily",query:"\"gothic emily\""},
                   {name:"Driving Hits Volume 1",query:qt?"\":DRV\" && pcnt < -14d":"\":DRV\" && p lt -14d"},
                   {name:"Driving Hits Volume 2",query:qt?"\":VL2\" && pcnt < -14d":"\":VL2\" && p lt -14d"},
-                  {name:"Driving Hits Volume 3",query:"(comment=\":DRV\" or comment=\":VL2\") && p lt -14d"}];
-        
+                  {name:"Driving Hits Volume 3",query:"(comment=\":DRV\" or comment=\":VL2\") && p lt -14d"},
+                  {name:"Best Albums",query:"comment=\":BEST\" && p lt -14d"}];
         class SavedSearchList extends DomElement {
           constructor(parent){
             super("div",{className:style.savedSearchList},[]);
@@ -7730,30 +7898,30 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
         return[LibraryPage,SavedSearchPage,SyncPage];
       })();
     const[InfoOilPage,RecipeIndexPage,RecipePage]=(function(){
-        const style={ingredientTable:'dcs-f4bd2df9-0',ingredientQuantityHeader:'dcs-f4bd2df9-1',
-                  ingredientBorder:'dcs-f4bd2df9-2',ingredientQuantity:'dcs-f4bd2df9-3',ingredientUnit:'dcs-f4bd2df9-4',
-                  ingredientName:'dcs-f4bd2df9-5',header:'dcs-f4bd2df9-6',summary:'dcs-f4bd2df9-7',
-                  noteList:'dcs-f4bd2df9-8',noteItem:'dcs-f4bd2df9-9',steps:'dcs-f4bd2df9-10',
-                  select:'dcs-f4bd2df9-11',text_input:'dcs-f4bd2df9-12',attributeList:'dcs-f4bd2df9-13',
-                  attributeItem:'dcs-f4bd2df9-14',attributeItemBreakfast:'dcs-f4bd2df9-15',
-                  attributeItemLunch:'dcs-f4bd2df9-16',attributeItemDinner:'dcs-f4bd2df9-17',
-                  attributeItemDessert:'dcs-f4bd2df9-18',attributeItemSnack:'dcs-f4bd2df9-19',
-                  attributeItemSide:'dcs-f4bd2df9-20',attributeItemAppetizer:'dcs-f4bd2df9-21',
-                  attributeItemMeal:'dcs-f4bd2df9-22',recipeHeader:'dcs-f4bd2df9-23',recipeTitle:'dcs-f4bd2df9-24',
-                  divRecipeBody:'dcs-f4bd2df9-25',infoHeader:'dcs-f4bd2df9-26',infoBox:'dcs-f4bd2df9-27',
-                  infoTitle:'dcs-f4bd2df9-28',infoRowCalorie:'dcs-f4bd2df9-29',infoRowMacro:'dcs-f4bd2df9-30',
-                  infoRowMacroSub:'dcs-f4bd2df9-31',infoRowMicro:'dcs-f4bd2df9-32',infoAttribute:'dcs-f4bd2df9-33',
-                  fraction:'dcs-f4bd2df9-34',nutritionTable:'dcs-f4bd2df9-35',nutritionTableValue:'dcs-f4bd2df9-36',
-                  oilTable:'dcs-f4bd2df9-37',oilTableRowName:'dcs-f4bd2df9-38',oilTableRowData:'dcs-f4bd2df9-39',
-                  oilTableRowSmokePoint1:'dcs-f4bd2df9-40',oilTableRowSmokePoint2:'dcs-f4bd2df9-41',
-                  oilTableRowSmokePoint3:'dcs-f4bd2df9-42',oilTableRowSmokePoint4:'dcs-f4bd2df9-43',
-                  oilTableRowSmokePoint5:'dcs-f4bd2df9-44',oilTableRowPrice1:'dcs-f4bd2df9-45',
-                  oilTableRowPrice2:'dcs-f4bd2df9-46',oilTableRowPrice3:'dcs-f4bd2df9-47',
-                  oilTableRowPrice4:'dcs-f4bd2df9-48',oilTableRowPrice5:'dcs-f4bd2df9-49',
-                  oilTableRowScoreF:'dcs-f4bd2df9-50',oilTableRowScoreD:'dcs-f4bd2df9-51',
-                  oilTableRowScoreC:'dcs-f4bd2df9-52',oilTableRowScoreB:'dcs-f4bd2df9-53',
-                  oilTableRowScoreA:'dcs-f4bd2df9-54',oilTableRowScoreS:'dcs-f4bd2df9-55',
-                  hide:'dcs-f4bd2df9-56',logo:'dcs-f4bd2df9-57'};
+        const style={ingredientTable:'dcs-962d71a7-0',ingredientQuantityHeader:'dcs-962d71a7-1',
+                  ingredientBorder:'dcs-962d71a7-2',ingredientQuantity:'dcs-962d71a7-3',ingredientUnit:'dcs-962d71a7-4',
+                  ingredientName:'dcs-962d71a7-5',header:'dcs-962d71a7-6',summary:'dcs-962d71a7-7',
+                  noteList:'dcs-962d71a7-8',noteItem:'dcs-962d71a7-9',steps:'dcs-962d71a7-10',
+                  select:'dcs-962d71a7-11',text_input:'dcs-962d71a7-12',attributeList:'dcs-962d71a7-13',
+                  attributeItem:'dcs-962d71a7-14',attributeItemBreakfast:'dcs-962d71a7-15',
+                  attributeItemLunch:'dcs-962d71a7-16',attributeItemDinner:'dcs-962d71a7-17',
+                  attributeItemDessert:'dcs-962d71a7-18',attributeItemSnack:'dcs-962d71a7-19',
+                  attributeItemSide:'dcs-962d71a7-20',attributeItemAppetizer:'dcs-962d71a7-21',
+                  attributeItemMeal:'dcs-962d71a7-22',recipeHeader:'dcs-962d71a7-23',recipeTitle:'dcs-962d71a7-24',
+                  divRecipeBody:'dcs-962d71a7-25',infoHeader:'dcs-962d71a7-26',infoBox:'dcs-962d71a7-27',
+                  infoTitle:'dcs-962d71a7-28',infoRowCalorie:'dcs-962d71a7-29',infoRowMacro:'dcs-962d71a7-30',
+                  infoRowMacroSub:'dcs-962d71a7-31',infoRowMicro:'dcs-962d71a7-32',infoAttribute:'dcs-962d71a7-33',
+                  fraction:'dcs-962d71a7-34',nutritionTable:'dcs-962d71a7-35',nutritionTableValue:'dcs-962d71a7-36',
+                  oilTable:'dcs-962d71a7-37',oilTableRowName:'dcs-962d71a7-38',oilTableRowData:'dcs-962d71a7-39',
+                  oilTableRowSmokePoint1:'dcs-962d71a7-40',oilTableRowSmokePoint2:'dcs-962d71a7-41',
+                  oilTableRowSmokePoint3:'dcs-962d71a7-42',oilTableRowSmokePoint4:'dcs-962d71a7-43',
+                  oilTableRowSmokePoint5:'dcs-962d71a7-44',oilTableRowPrice1:'dcs-962d71a7-45',
+                  oilTableRowPrice2:'dcs-962d71a7-46',oilTableRowPrice3:'dcs-962d71a7-47',
+                  oilTableRowPrice4:'dcs-962d71a7-48',oilTableRowPrice5:'dcs-962d71a7-49',
+                  oilTableRowScoreF:'dcs-962d71a7-50',oilTableRowScoreD:'dcs-962d71a7-51',
+                  oilTableRowScoreC:'dcs-962d71a7-52',oilTableRowScoreB:'dcs-962d71a7-53',
+                  oilTableRowScoreA:'dcs-962d71a7-54',oilTableRowScoreS:'dcs-962d71a7-55',
+                  hide:'dcs-962d71a7-56',logo:'dcs-962d71a7-57'};
         const attr_style={"breakfast":style.attributeItemBreakfast,"lunch":style.attributeItemLunch,
                   "dinner":style.attributeItemDinner,"dessert":style.attributeItemDessert,
                   "snack":style.attributeItemSnack,"appetizer":style.attributeItemAppetizer,
@@ -8344,7 +8512,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                           if(item==0){
                             display="";
                           }else{
-                            display=`$ ${item.toFixed(2)}`;
+                            display=`$${item.toFixed(2)}`;
                             let j=Math.floor(Math.max(0,Math.min(4,(item-1.0)/25*5)));
                             
                             _style=[_style,scheme2[j]];
@@ -8371,17 +8539,17 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
     const[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
           UserRadioListPage,UserRadioStationEditPage,UserRadioStationHistoryPage,UserRadioStationPage,
           UserRadioStationSearchPage]=(function(){
-        const style={main:'dcs-fa9decf8-0',grow:'dcs-fa9decf8-1',svgDiv:'dcs-fa9decf8-2',
-                  header:'dcs-fa9decf8-3',content:'dcs-fa9decf8-4',list:'dcs-fa9decf8-5',
-                  placeholder:'dcs-fa9decf8-6',editIndex:'dcs-fa9decf8-7',grip:'dcs-fa9decf8-8',
-                  headerInfo:'dcs-fa9decf8-9',listItem:'dcs-fa9decf8-10',listItemTitle:'dcs-fa9decf8-11',
-                  listItemInfo:'dcs-fa9decf8-12',textGrey:'dcs-fa9decf8-13',listNoItemRow:'dcs-fa9decf8-14',
-                  listItemRow:'dcs-fa9decf8-15',listItemRowText:'dcs-fa9decf8-16',listItemColText:'dcs-fa9decf8-17',
-                  votePanel:'dcs-fa9decf8-18',moreButton:'dcs-fa9decf8-19',voteButton:'dcs-fa9decf8-20',
-                  icon1:'dcs-fa9decf8-21',icon2:'dcs-fa9decf8-22',padding2:'dcs-fa9decf8-23',
-                  voteText:'dcs-fa9decf8-24',voteUp:'dcs-fa9decf8-25',voteNuetral:'dcs-fa9decf8-26',
-                  voteDown:'dcs-fa9decf8-27',show:'dcs-fa9decf8-28',hide:'dcs-fa9decf8-29',
-                  floater:'dcs-fa9decf8-30',titleText:'dcs-fa9decf8-31',footerHighlight:'dcs-fa9decf8-32'};
+        const style={main:'dcs-d0546ce4-0',grow:'dcs-d0546ce4-1',svgDiv:'dcs-d0546ce4-2',
+                  header:'dcs-d0546ce4-3',content:'dcs-d0546ce4-4',list:'dcs-d0546ce4-5',
+                  placeholder:'dcs-d0546ce4-6',editIndex:'dcs-d0546ce4-7',grip:'dcs-d0546ce4-8',
+                  headerInfo:'dcs-d0546ce4-9',listItem:'dcs-d0546ce4-10',listItemTitle:'dcs-d0546ce4-11',
+                  listItemInfo:'dcs-d0546ce4-12',textGrey:'dcs-d0546ce4-13',listNoItemRow:'dcs-d0546ce4-14',
+                  listItemRow:'dcs-d0546ce4-15',listItemRowText:'dcs-d0546ce4-16',listItemColText:'dcs-d0546ce4-17',
+                  votePanel:'dcs-d0546ce4-18',moreButton:'dcs-d0546ce4-19',voteButton:'dcs-d0546ce4-20',
+                  icon1:'dcs-d0546ce4-21',icon2:'dcs-d0546ce4-22',padding2:'dcs-d0546ce4-23',
+                  voteText:'dcs-d0546ce4-24',voteUp:'dcs-d0546ce4-25',voteNuetral:'dcs-d0546ce4-26',
+                  voteDown:'dcs-d0546ce4-27',show:'dcs-d0546ce4-28',hide:'dcs-d0546ce4-29',
+                  floater:'dcs-d0546ce4-30',titleText:'dcs-d0546ce4-31',footerHighlight:'dcs-d0546ce4-32'};
         
         ;
         class HiddenEvent{
@@ -10269,7 +10437,7 @@ pages=(function(api,audio,components,daedalus,resources,router,store){
                   UserRadioStationPage,UserRadioStationSearchPage];
       })();
     const[OpenApiDocPage]=(function(){
-        const styles={main:'dcs-ebf574b0-0'};
+        const styles={main:'dcs-3d60ceff-0'};
         class OpenApiDocPage extends DomElement {
           constructor(){
             super("div",{className:styles.main},[]);
@@ -10303,9 +10471,27 @@ app=(function(api,components,daedalus,pages,resources,router,store){
     const TextElement=daedalus.TextElement;
     const AuthenticatedRouter=daedalus.AuthenticatedRouter;
     const Router=daedalus.Router;
-    const style={body:'dcs-1e053eca-0',navMenu:'dcs-1e053eca-1',rootWebDesktop:'dcs-1e053eca-2',
-          rootWebMobile:'dcs-1e053eca-3',rootMobile:'dcs-1e053eca-4',margin:'dcs-1e053eca-5',
-          fullsize:'dcs-1e053eca-6',show:'dcs-1e053eca-7',hide:'dcs-1e053eca-8',loading:'dcs-1e053eca-9'};
+    /**
+    TODO: investigate dynamically loading pages
+    
+        store each page in a separate js file to be loaded on demand
+        display a default loading page while the script loads
+        once fully loaded replace the loading page with the actual page
+    
+        requires daedalus and router integration
+    
+        let script = document.createElement('script');
+        script.onload = function () {
+            router replace...
+        };
+        script.src = something;
+        document.head.appendChild(script); // initiate script load
+    
+    */
+
+    const style={body:'dcs-54555cd8-0',navMenu:'dcs-54555cd8-1',rootWebDesktop:'dcs-54555cd8-2',
+          rootWebMobile:'dcs-54555cd8-3',rootMobile:'dcs-54555cd8-4',margin:'dcs-54555cd8-5',
+          fullsize:'dcs-54555cd8-6',show:'dcs-54555cd8-7',hide:'dcs-54555cd8-8',loading:'dcs-54555cd8-9'};
     
     function buildRouter(parent,container){
       const u=router.route_urls;

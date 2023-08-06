@@ -1,6 +1,7 @@
 package com.github.nicksetzer.daedalus.audio;
 
 import android.content.Intent;
+import android.os.Bundle;
 import android.support.v4.media.RatingCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.view.KeyEvent;
@@ -17,7 +18,7 @@ public class BTCallback extends MediaSessionCompat.Callback {
 
     @Override
     public boolean onMediaButtonEvent(Intent mediaButtonIntent) {
-
+        Log.warn("lifecycle onMediaButtonEvent");
         if (mediaButtonIntent.getAction().equals(Intent.ACTION_MEDIA_BUTTON)) {
             KeyEvent event = mediaButtonIntent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
             //event.getAction() == KeyEvent.ACTION_UP ||
@@ -45,6 +46,7 @@ public class BTCallback extends MediaSessionCompat.Callback {
                         return true;
 
                     default:
+                        Log.warn("lifecycle unhandled keycode:" + event.getKeyCode());
                         break;
                 }
             } else if (event.getAction() == KeyEvent.ACTION_UP) {
@@ -98,8 +100,9 @@ public class BTCallback extends MediaSessionCompat.Callback {
 
     @Override
     public void onPlay() {
+        super.onPlay();
 
-        Log.info( "onplay");
+        Log.info( "lifecycle onPlay");
         // some bluetooth devices only send play events
         if (m_manager.isPlaying()) {
             m_manager.pause();
@@ -110,56 +113,76 @@ public class BTCallback extends MediaSessionCompat.Callback {
     }
 
     @Override
-    public void onPause() {
+    public void onPlayFromMediaId(String mediaId, Bundle extras) {
+        super.onPlayFromMediaId(mediaId, extras);
+        Log.info( "lifecycle onPlayFromMediaId:" + mediaId + " : " +extras.toString());
+        //initMediaMetaData( mediaId );
+        //toggleMediaPlaybackState( true );
+        //playMedia( 0, mediaId );
+        if (m_manager.isPlaying()) {
+            m_manager.pause();
+        } else {
+            m_manager.play();
+        }
+    }
 
-        Log.info("onpause");
+    @Override
+    public void onPause() {
+        super.onPause();
+
+        Log.info("lifecycle onpause");
         m_manager.pause();
     }
 
     @Override
     public void onStop() {
-
-        Log.info("onstop");
+        super.onStop();
+        Log.info("lifecycle onstop");
         m_manager.stop();
     }
 
     @Override
     public void onSkipToNext() {
 
-        Log.info("onskiptonext");
+        Log.info("lifecycle onskiptonext");
         m_manager.skipToNext();
     }
 
     @Override
     public void onSkipToPrevious() {
 
-        Log.info("onskiptoprev");
+        Log.info("lifecycle onskiptoprev");
         m_manager.skipToPrev();
     }
 
     @Override
     public void onSeekTo(long pos) {
 
-        Log.info("onseek");
+        Log.info("lifecycle onseek");
         m_manager.seek(pos);
     }
 
     @Override
     public void onFastForward() {
 
-        Log.info("onfastforward");
+        Log.info("lifecycle onfastforward");
     }
 
     @Override
     public void onRewind() {
 
-        Log.info("onwind");
+        Log.info("lifecycle onRewind");
     }
 
     @Override
     public void onSetRating(RatingCompat rating) {
 
-        Log.info("onsetrating");
+        Log.info("lifecycle onSetRating");
     }
 
+    @Override
+    public void onCustomAction(String action, Bundle extras) {
+        Log.info("lifecycle onCustomAction");
+        super.onCustomAction(action, extras);
+    }
 }

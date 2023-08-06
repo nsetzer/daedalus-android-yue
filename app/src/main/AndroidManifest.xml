@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.github.nicksetzer.daedalus">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -23,24 +24,33 @@
         android:theme="@android:style/Theme.Black.NoTitleBar"
         android:usesCleartextTraffic="true">
 
-        <meta-data android:name="com.google.android.gms.car.application"
+        <!-- declare support for android auto-->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc"/>
+
+        <!-- Declare support for Cast. -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.github.nicksetzer.daedalus.cast.UampCastOptionsProvider"/>
+
 
         <!--
         Attribution Icon must be a monochrome icon
         https://developer.android.com/training/cars/media#attribution_icon
+         -->
         <meta-data
             android:name="androidx.car.app.TintableAttributionIcon"
-            android:resource="@drawable/ic_status_icon" /> -->
+            android:resource="@drawable/ic_status_icon" />
 
 
         <activity
             android:name=".WebActivity"
+            android:label="daedalus-music"
             android:exported="true"
             android:configChanges="orientation|screenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
@@ -50,7 +60,8 @@
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.FOREGROUND_SERVICE"
-            android:canRequestFilterKeyEvents="true">
+            android:canRequestFilterKeyEvents="true"
+            tools:ignore="ExportedService">
             <intent-filter android:priority="1000000">
                 <action android:name="android.media.browse.MediaBrowserService" />
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
