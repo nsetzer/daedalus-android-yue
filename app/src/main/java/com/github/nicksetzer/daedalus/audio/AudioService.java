@@ -33,6 +33,7 @@ import android.net.Uri;
 
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.Process;
 import android.support.v4.media.MediaBrowserCompat;
@@ -113,6 +114,8 @@ public class AudioService extends MediaBrowserServiceCompat {
     static final String NOTIFICATION_CHANNEL_ID = "com.github.nicksetzer.daedalus";
     NotificationManager m_notificationManager;
 
+    Handler m_exoHandler;
+
     public AudioService() {
 
         super();
@@ -152,6 +155,22 @@ public class AudioService extends MediaBrowserServiceCompat {
             m_manager = new AudioManager(this);
 
             setSessionToken(m_manager.getSession().getSessionToken());
+
+
+            m_exoHandler = new Handler(this.getMainLooper());
+
+            Runnable myRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    //long position = m_manager.getCurrentPosition();
+
+                    updateNotification();
+
+                    m_exoHandler.postDelayed(this, 1000);
+                }
+            };
+            m_exoHandler.postDelayed(myRunnable, 1000);
+
 
 
         }
@@ -280,13 +299,12 @@ public class AudioService extends MediaBrowserServiceCompat {
         if (m_manager != null && m_manager.m_queue != null) {
 
             if (session != null) {
-                Log.warn("lifecycle notification setState");
-                // TODO: this looks redundant with AudioManager when the song is initially loaded
+
                 session.setMetadata(m_manager.m_queue.getMetadata(m_manager.m_queue.getCurrentIndex()));
                 session.setPlaybackState(new PlaybackStateCompat.Builder()
                         .setState(
                                 mediaIsPlaying()?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
-                                m_manager.getPlayer().getCurrentPosition(),
+                                m_manager.getCurrentPosition(),
                                 1.0F)
                         .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
                         .build());
@@ -350,8 +368,8 @@ public class AudioService extends MediaBrowserServiceCompat {
 
 
 
-        Notification notification = builder.setOngoing(true)
-
+        Notification notification = builder
+                .setOngoing(true)
                 .setSmallIcon(R.drawable.play)
                 .setPriority(NotificationManager.IMPORTANCE_HIGH)
                 .setCategory(Notification.CATEGORY_SERVICE)

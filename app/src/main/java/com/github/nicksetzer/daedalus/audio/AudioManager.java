@@ -6,17 +6,34 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
-import android.media.AudioAttributes;
+//import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
+import android.media.AudioTrack;
 import android.media.MediaPlayer;
+import android.media.browse.MediaBrowser;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.service.media.MediaBrowserService;
+import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
+import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
+
+//import androidx.media3.common.MediaItem;
+import com.google.android.exoplayer2.C;
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.MediaItem;
 
 import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.audio.tasks.RadioNextTrackTask;
 import com.github.nicksetzer.metallurgy.orm.EntityTable;
+import com.google.android.exoplayer2.PlaybackException;
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.SimpleExoPlayer;
+import com.google.android.exoplayer2.audio.AudioAttributes;
+import com.google.android.exoplayer2.ext.mediasession.TimelineQueueNavigator;
+import com.google.android.exoplayer2.util.MimeTypes;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -28,6 +45,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.List;
 
 /*
 TODO: update the media session queue.
@@ -46,11 +65,13 @@ public class AudioManager {
     private BTReceiver m_receiver;
 
     private MediaSessionCompat m_session;
+    private MediaSessionConnector m_sessionConnector;
 
-    private MediaPlayer m_mediaPlayer;
+    private ExoPlayer m_mediaPlayer;
 
     private android.media.AudioManager m_manager;
 
+    private boolean m_isPlaying = false;
     private boolean m_autoPlay = true;
     private int m_playback_mode = 0;
 
@@ -58,10 +79,111 @@ public class AudioManager {
     private String m_station = null;
 
     private String m_currentUrl = null;
-    private int m_pausedTimeMs = -1;
+    private long m_pausedTimeMs = -1;
 
     AudioQueue m_queue;
 
+    class QueueNavigator extends TimelineQueueNavigator {
+
+        QueueNavigator(MediaSessionCompat session) {
+            super(session);
+        }
+
+        @Override
+        public long getSupportedQueueNavigatorActions(Player player) {
+            return PlaybackStateCompat.ACTION_SKIP_TO_NEXT|PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
+        }
+
+        @Override
+        public MediaDescriptionCompat getMediaDescription(Player player, int windowIndex) {
+
+            if (windowIndex < m_queue.length()) {
+                return new MediaDescriptionCompat.Builder()
+                        .setTitle("foo " + windowIndex)
+                        .setSubtitle("bar " + windowIndex)
+                        .build();
+            }
+            return new MediaDescriptionCompat.Builder().build();
+        }
+
+    }
+
+    class PlayerEventListener implements Player.Listener {
+
+        private AudioManager m_manager = null;
+        PlayerEventListener(AudioManager manager) {
+            m_manager = manager;
+        }
+
+        private String stateName(int state) {
+            switch (state){
+                case Player.STATE_IDLE:
+                    return "IDLE";
+                case Player.STATE_BUFFERING:
+                    return "BUFFERING";
+                case Player.STATE_READY:
+                    return "READY";
+                case Player.STATE_ENDED:
+                    return "ENDED";
+                default:
+                    return "UNKNOWN";
+            }
+        }
+
+        @Override
+        public void onIsPlayingChanged(boolean isPlaying) {
+            m_manager.m_isPlaying = isPlaying;
+        }
+
+        @Override
+        public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+
+            Log.warn("player discontinuity " + reason + " : " + oldPosition.positionMs + " => " + newPosition.positionMs);
+        }
+
+        @Override
+        public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
+
+            //Player.STATE_IDLE // 1
+            //Player.STATE_READY // 3
+            //Player.STATE_ENDED // 4
+            //Player.STATE_BUFFERING// 2
+            Log.warn("player state changed. playWhenReady: " + playWhenReady + " state: " + playbackState + " " + stateName(playbackState));
+
+            switch (playbackState) {
+                case Player.STATE_IDLE:
+                    break;
+                case Player.STATE_BUFFERING:
+                    break;
+                case Player.STATE_READY:
+                    break;
+                case Player.STATE_ENDED:
+                    m_manager.onSongEnd();
+                    break;
+                default:
+                    break;
+            }
+            //Player.Listener.super.onPlayerStateChanged(playWhenReady, playbackState);
+        }
+
+        @Override
+        public void onEvents(Player player, Player.Events events) {
+            //Player.Listener.super.onEvents(player, events);
+            Log.error("lifecycle playback event: " + events.toString());
+        }
+
+        @Override
+        public void onPlayerError(PlaybackException error) {
+            Log.error("lifecycle playback error: " + error.getMessage());
+            //Player.Listener.super.onPlayerError(error);
+            //onSongEnd();
+        }
+
+
+
+    }
+
+    private PlayerEventListener m_listener = null;
     public AudioManager(AudioService service) {
 
         m_service = service;
@@ -103,9 +225,21 @@ public class AudioManager {
         m_session.setCallback(new BTCallback(this));
         m_session.setActive(true);
 
-        m_mediaPlayer = new MediaPlayer();
+        AudioAttributes attrs = new AudioAttributes.Builder()
+                .setContentType(C.CONTENT_TYPE_MUSIC)
+                .setUsage(C.USAGE_MEDIA)
+                .build();
+
+        m_listener = new PlayerEventListener(this);
+        m_mediaPlayer = new SimpleExoPlayer.Builder(context).build();
+
+        m_mediaPlayer.setAudioAttributes(attrs, true);
+        m_mediaPlayer.setHandleAudioBecomingNoisy(true);
+        m_mediaPlayer.addListener(m_listener);
+
 
         //m_mediaPlayer.setAudioStreamType(android.media.AudioManager.STREAM_MUSIC);
+        /*
         m_mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
 
@@ -188,8 +322,16 @@ public class AudioManager {
         m_manager = (android.media.AudioManager) context.getSystemService(context.AUDIO_SERVICE);
         m_manager.setMode(android.media.AudioManager.MODE_NORMAL);
 
-        SettingsTable tab = m_service.m_database.m_settingsTable;
+
         // store current session id
+
+         */
+
+        m_sessionConnector = new MediaSessionConnector(m_session);
+
+        m_sessionConnector.setQueueNavigator(new QueueNavigator(m_session));
+
+        SettingsTable tab = m_service.m_database.m_settingsTable;
         tab.setInt("previous_session_id", m_mediaPlayer.getAudioSessionId());
         Log.warn("Session Id: " + m_mediaPlayer.getAudioSessionId());
 
@@ -198,12 +340,14 @@ public class AudioManager {
         loadMediaPlayerState();
 
         Log.info("media session created");
+
     }
 
     public String formatTimeUpdate() {
         JSONObject update = new JSONObject();
         // position is the time in milliseconds
-        int duration = m_mediaPlayer.getDuration();
+        long duration = m_mediaPlayer.getDuration();
+        //int duration = m_mediaPlayer.getDuration();
         // duration is -1 during streaming
         if (duration < 0) {
             duration = 0;
@@ -222,7 +366,7 @@ public class AudioManager {
         return m_session;
     }
 
-    public MediaPlayer getPlayer() { return m_mediaPlayer; }
+    // public MediaPlayer getPlayer() { return m_mediaPlayer; }
 
     public void setQueueData(final String data) {
 
@@ -233,6 +377,11 @@ public class AudioManager {
         } else {
             m_queue.setCurrentIndex(-1);
         }
+
+        //List<MediaSessionCompat.QueueItem> queue = new ArrayList<>();
+        //MediaSessionCompat.QueueItem
+        //queue.add();
+        //m_session.setQueue(queue);
 
         saveQueueData(data, m_queue.getCurrentIndex());
     }
@@ -264,7 +413,7 @@ public class AudioManager {
      * @param autoPlay begin playback when finished loading
      * @param initialTimeMs -1: play from beginning, >=0 begin playback from time T in MS
      */
-    public void loadUrl(final String url, boolean autoPlay, int initialTimeMs) {
+    public void loadUrl(final String url, boolean autoPlay, long initialTimeMs) {
         m_currentUrl = null;
         m_autoPlay = autoPlay;
         m_pausedTimeMs = initialTimeMs;
@@ -273,22 +422,33 @@ public class AudioManager {
             android.util.Log.e("daedalus-js", "null url given");
             return;
         }
-        try {
-            if (m_mediaPlayer.isPlaying()) {
-                m_mediaPlayer.stop();
-            }
-            m_mediaPlayer.reset();
 
-            // note: logging the url may Log the user token
-            android.util.Log.i("daedalus-js", "url: " + url);
-            m_mediaPlayer.setDataSource(url);
-            m_mediaPlayer.prepareAsync();
-
-            m_currentUrl = url;
-
-        } catch(IOException e) {
-            android.util.Log.e("daedalus-js", e.toString());
+        if (m_mediaPlayer.isPlaying()) {
+            m_mediaPlayer.stop();
         }
+
+        //m_mediaPlayer.reset();
+        //m_mediaPlayer.release();
+
+        // note: logging the url may Log the user token
+        android.util.Log.i("daedalus-js", "player load url: " + url);
+        MediaItem item = new MediaItem.Builder()
+                .setMediaId("0")
+                .setUri(url).build();
+                //.setMediaMetadata()
+                //.setMimeType(MimeTypes.AUDIO_OGG)
+        m_mediaPlayer.setMediaItem(item);
+
+
+
+        m_mediaPlayer.setPlayWhenReady(m_autoPlay);
+        m_mediaPlayer.prepare();
+
+        //m_mediaPlayer.setDataSource(url);
+        //m_mediaPlayer.prepareAsync();
+
+        m_currentUrl = url;
+
     }
 
     @Deprecated
@@ -300,22 +460,29 @@ public class AudioManager {
             android.util.Log.e("daedalus-js", "null url given");
             return;
         }
-        try {
-            if (m_mediaPlayer.isPlaying()) {
-                m_mediaPlayer.stop();
-            }
-            m_mediaPlayer.reset();
 
-            // note: logging the url may Log the user token
-            android.util.Log.i("daedalus-js", "url: " + url);
-            m_mediaPlayer.setDataSource(url);
-            m_mediaPlayer.prepareAsync();
-
-            m_currentUrl = url;
-
-        } catch(IOException e) {
-            android.util.Log.e("daedalus-js", e.toString());
+        if (m_mediaPlayer.isPlaying()) {
+            m_mediaPlayer.stop();
         }
+        //m_mediaPlayer.reset();
+        //m_mediaPlayer.release();
+
+        // note: logging the url may Log the user token
+        android.util.Log.i("daedalus-js", "player load url: " + url);
+        MediaItem item = new MediaItem.Builder()
+                .setMediaId(url)
+                .setUri(url).build();
+        //.setMediaMetadata()
+        //.setMimeType(MimeTypes.AUDIO_OGG)
+        m_mediaPlayer.setMediaItem(item);
+
+
+
+        m_mediaPlayer.prepare();
+
+        m_currentUrl = url;
+
+
     }
 
     public void loadResume() {
@@ -414,11 +581,11 @@ public class AudioManager {
         }
 
         // somewhat undocumented feature. must call start then seek
-
+        /*
         AudioAttributes audioAttributes =
                 new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.CONTENT_TYPE_MUSIC)
                         .build();
 
         AudioFocusRequest mAudioFocusRequest =
@@ -434,17 +601,15 @@ public class AudioManager {
                         .setWillPauseWhenDucked(true)
                         .setAudioAttributes(audioAttributes)
                         .build();
+        */
 
-        m_manager.requestAudioFocus(mAudioFocusRequest);
-
-        m_mediaPlayer.start();
+        //m_manager.requestAudioFocus(mAudioFocusRequest);
+        Log.info("player play");
+        m_mediaPlayer.play();
 
         if (m_pausedTimeMs >= 0) {
             m_mediaPlayer.seekTo(m_pausedTimeMs);
         }
-
-        int ct = m_mediaPlayer.getCurrentPosition();
-        Log.info("on play current_time=" + ct + " paused_time=" + m_pausedTimeMs);
 
         m_service.updateNotification();
 
@@ -470,6 +635,9 @@ public class AudioManager {
         saveMediaPlayerState();
     }
 
+    public long getCurrentPosition() {
+        return m_mediaPlayer.getCurrentPosition();
+    }
     public void stop() {
         m_mediaPlayer.stop();
     }
@@ -527,18 +695,21 @@ public class AudioManager {
     public void seek(long pos) {
         // seek to a position, units: ms
         android.util.Log.e("daedalus-js", "seek to " + pos);
-        m_mediaPlayer.seekTo(pos, MediaPlayer.SEEK_PREVIOUS_SYNC);
+        m_mediaPlayer.seekTo(pos);
     }
 
     public boolean isPlaying() {
-        try {
+
+        return m_isPlaying;
+        /*try {
             if (m_mediaPlayer != null) {
                 return m_mediaPlayer.isPlaying();
             }
         } catch (java.lang.IllegalStateException e) {
-            Log.warn("illegal player state");
+            Log.warn("illegal player state: " + e.getMessage());
         }
         return false;
+        */
     }
 
     public void setToken(final String token) {
@@ -632,7 +803,7 @@ public class AudioManager {
         Cursor cursor = null;
         JSONObject obj = null;
         int current_index = -1;
-        int current_time = -1;
+        long current_time = -1;
 
         long count = tab.count();
 
@@ -643,7 +814,7 @@ public class AudioManager {
         }
 
         try {
-            current_time = ((SettingsTable) tab).getInt("current_time");
+            current_time = ((SettingsTable) tab).getLong("current_time");
         } catch (SettingsTable.MissingValue e) {
             current_time = -1;
         }
@@ -668,7 +839,7 @@ public class AudioManager {
         SettingsTable tab = m_service.m_database.m_settingsTable;
         //tab.delete_all_rows();
         tab.setInt("current_index", index);
-        tab.setInt("current_time", m_pausedTimeMs);
+        tab.setLong("current_time", m_pausedTimeMs);
 
 
     }

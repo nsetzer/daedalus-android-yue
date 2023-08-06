@@ -39,6 +39,9 @@ public class AudioQueue {
     }
 
     public String getData() {
+        if (m_queue == null) {
+            Log.error("queue contains no data");
+        }
         return m_queue.toString();
     }
 
@@ -140,7 +143,7 @@ public class AudioQueue {
         duration.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, obj.optLong("length", 0));
 
         MediaDescriptionCompat desc = new MediaDescriptionCompat.Builder()
-                .setMediaId(obj.optString("uid", "null") + "-" + index)
+                .setMediaId("queue-" + obj.optString("uid", "null") + "-" + index)
                 .setTitle(obj.optString("title", "Unknown Album"))
                 .setSubtitle(obj.optString("artist", "Unknown Album"))
                 .setExtras(duration)

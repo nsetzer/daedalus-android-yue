@@ -116,14 +116,9 @@ public class BTCallback extends MediaSessionCompat.Callback {
     public void onPlayFromMediaId(String mediaId, Bundle extras) {
         super.onPlayFromMediaId(mediaId, extras);
         Log.info( "lifecycle onPlayFromMediaId:" + mediaId + " : " +extras.toString());
-        //initMediaMetaData( mediaId );
-        //toggleMediaPlaybackState( true );
-        //playMedia( 0, mediaId );
-        if (m_manager.isPlaying()) {
-            m_manager.pause();
-        } else {
-            m_manager.play();
-        }
+        int index = Integer.parseInt(mediaId.substring(mediaId.lastIndexOf('-') + 1));
+        m_manager.loadIndex(index);
+
     }
 
     @Override
