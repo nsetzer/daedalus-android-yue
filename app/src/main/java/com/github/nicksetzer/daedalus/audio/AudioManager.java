@@ -1,5 +1,6 @@
 package com.github.nicksetzer.daedalus.audio;
 
+import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -7,12 +8,14 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 //import android.media.AudioAttributes;
+import android.graphics.Bitmap;
 import android.media.AudioFocusRequest;
 import android.media.AudioTrack;
 import android.media.MediaPlayer;
 import android.media.browse.MediaBrowser;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.net.Uri;
 import android.service.media.MediaBrowserService;
 import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
@@ -20,7 +23,10 @@ import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.core.app.NotificationCompat;
 
+import com.github.nicksetzer.daedalus.audio.media2.ExoNotificationManager;
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
 
 //import androidx.media3.common.MediaItem;
@@ -36,6 +42,7 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.ext.mediasession.TimelineQueueNavigator;
+import com.google.android.exoplayer2.ui.PlayerNotificationManager;
 import com.google.android.exoplayer2.util.MimeTypes;
 import com.google.android.exoplayer2.util.NonNullApi;
 
@@ -74,6 +81,9 @@ public class AudioManager {
     private ExoPlayer m_mediaPlayer;
 
     private android.media.AudioManager m_manager;
+
+    static final String NOTIFICATION_CHANNEL_ID = "com.github.nicksetzer.daedalus";
+    public ExoNotificationManager m_notificationManager;
 
     private boolean m_isPlaying = false;
     private boolean m_autoPlay = true;
@@ -243,97 +253,15 @@ public class AudioManager {
         m_mediaPlayer.addListener(m_listener);
 
 
-        //m_mediaPlayer.setAudioStreamType(android.media.AudioManager.STREAM_MUSIC);
-        /*
-        m_mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
-
-        m_mediaPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
-            @Override
-            public boolean onError(MediaPlayer mp, int what, int extra) {
-
-                // what:
-                //MediaPlayer.MEDIA_ERROR_UNKNOWN
-                //MediaPlayer.MEDIA_ERROR_SERVER_DIED
-                String s_what = "";
-                switch (what) {
-                    case MediaPlayer.MEDIA_ERROR_UNKNOWN:
-                        s_what = "unknown";
-                        break;
-                    case MediaPlayer.MEDIA_ERROR_UNSUPPORTED:
-                        s_what = "unsupported";
-                        break;
-                    case -38: // undocumented error for when app is paused for too long
-                        loadResume();
-                        s_what = "state error";
-                        break;
-                    default:
-                        s_what = "other";
-                        break;
-                }
-                s_what += " (" + what + ")";
+        m_notificationManager = new ExoNotificationManager(m_service, m_session.getSessionToken());
+        m_notificationManager.showNotificationForPlayer(m_mediaPlayer);
 
 
-                // extra:
-                //MediaPlayer.MEDIA_ERROR_IO
-                //MediaPlayer.MEDIA_ERROR_MALFORMED
-                //MediaPlayer.MEDIA_ERROR_UNSUPPORTED
-                //MediaPlayer.MEDIA_ERROR_TIMED_OUT
-                //MEDIA_ERROR_SYSTEM
-                String payload = "{\"what\": " + what + ", \"extra\": " + extra + "}";
-                Log.error("sending error to javascript: " + s_what + " extra=" + extra);
-                if (what != -38) {
-                    m_service.sendEvent(AudioEvents.ONERROR, payload);
-                }
+        Log.warn("lifecycle notification manager created");
 
-                return true; // true when error is handled
-            }
-        });
-
-        m_mediaPlayer.setOnPreparedListener (new MediaPlayer.OnPreparedListener() {
-            @Override
-            public void onPrepared(MediaPlayer mp) {
-                // do stuff here
-                if (m_autoPlay) {
-                    m_mediaPlayer.start();
-                }
-
-                if (m_pausedTimeMs >= 0) {
-                    m_mediaPlayer.seekTo(m_pausedTimeMs);
-                }
-
-                int ct = m_mediaPlayer.getCurrentPosition();
-                Log.info("on play current_time=" + ct + " paused_time=" + m_pausedTimeMs);
-
-                if (m_autoPlay) {
-                    m_service.updateNotification();
-                    m_service.sendEvent(AudioEvents.ONPLAY, "{}");
-                }
-
-                m_service.sendEvent("onprepared", "{}");
-
-                m_service.sendEvent("ontimeupdate", AudioManager.this.formatTimeUpdate());
-
-            }
-        });
-
-        m_mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-            @Override
-            public void onCompletion(MediaPlayer mp) {
-                onSongEnd();
-            }
-        });
-
-        m_manager = (android.media.AudioManager) context.getSystemService(context.AUDIO_SERVICE);
-        m_manager.setMode(android.media.AudioManager.MODE_NORMAL);
-
-
-        // store current session id
-
-         */
 
         m_sessionConnector = new MediaSessionConnector(m_session);
-
+        //m_sessionConnector.setPlaybackPreparer(new UampPlaybackPreparer());
         m_sessionConnector.setQueueNavigator(new QueueNavigator(m_session));
 
         SettingsTable tab = m_service.m_database.m_settingsTable;

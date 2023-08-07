@@ -50,6 +50,7 @@ import com.github.nicksetzer.daedalus.R;
 import com.github.nicksetzer.daedalus.audio.tasks.AudioFetchTask;
 import com.github.nicksetzer.daedalus.audio.tasks.AudioSyncTask;
 import com.github.nicksetzer.metallurgy.orm.dsl.DslException;
+import com.google.android.exoplayer2.ui.PlayerNotificationManager;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -112,7 +113,7 @@ public class AudioService extends MediaBrowserServiceCompat {
     private Lock m_fetchLock;
 
     static final String NOTIFICATION_CHANNEL_ID = "com.github.nicksetzer.daedalus";
-    NotificationManager m_notificationManager;
+    //NotificationManager m_notificationManager;
 
     Handler m_exoHandler;
 
@@ -235,6 +236,7 @@ public class AudioService extends MediaBrowserServiceCompat {
 
     private void startForeground() {
 
+        /*
 
         String channelName = "My Background Service";
         NotificationChannel chan = new NotificationChannel(NOTIFICATION_CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_NONE);
@@ -243,12 +245,24 @@ public class AudioService extends MediaBrowserServiceCompat {
         m_notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         assert m_notificationManager != null;
         m_notificationManager.createNotificationChannel(chan);
+        */
 
-        updateNotification();
+
+        // updateNotification();
 
     }
 
     public void updateNotification() {
+
+        //Log.warn("lifecycle notification : not this way");
+        return;
+    }
+
+    public void disableNotification() {
+        return;
+    }
+
+    public void updateNotificationOld() {
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
 
@@ -273,18 +287,19 @@ public class AudioService extends MediaBrowserServiceCompat {
         if (session != null) {
 
             int[] actions = {0}; // actions to show by index order added
-
             builder.setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
                     .setMediaSession(m_manager.getSession().getSessionToken())
                     .setShowActionsInCompactView(actions)
-
-                    // Add a cancel button
+            // Add a cancel button
                     .setShowCancelButton(true)
                     .setCancelButtonIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(this,
                             PlaybackStateCompat.ACTION_STOP)));
 
 
+        } else {
+            Log.warn("lifecycle notification no session");
         }
+
 
         Context context = getApplicationContext();
         String packageName = context.getPackageName();
@@ -308,10 +323,9 @@ public class AudioService extends MediaBrowserServiceCompat {
                                 1.0F)
                         .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
                         .build());
+            } else {
+                Log.warn("lifecycle notification: no session");
             }
-
-
-
 
             if (mediaIsPlaying()){
                 //Intent mediaIntent = new Intent(context, AudioService.class);
@@ -380,7 +394,7 @@ public class AudioService extends MediaBrowserServiceCompat {
 
     }
 
-    public void disableNotification() {
+    public void disableNotificationOld() {
 
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
