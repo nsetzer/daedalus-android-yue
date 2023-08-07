@@ -31,7 +31,8 @@ public class NotificationListener implements PlayerNotificationManager.Notificat
 
         //new NotificationChannel("")
         //m_platformMgr.createNotificationChannel();
-        Log.warn("start notification: " + notificationId + " " + (notification != null));
+        Log.warn("start notification: " + notificationId + " " + (notification != null) + " " + notification.toString());
+
 
         m_service.startForeground(notificationId, notification);
     }

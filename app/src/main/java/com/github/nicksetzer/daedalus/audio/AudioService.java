@@ -113,10 +113,6 @@ public class AudioService extends MediaBrowserServiceCompat {
     private Lock m_fetchLock;
 
     static final String NOTIFICATION_CHANNEL_ID = "com.github.nicksetzer.daedalus";
-    //NotificationManager m_notificationManager;
-
-    Handler m_exoHandler;
-
     public AudioService() {
 
         super();
@@ -156,21 +152,6 @@ public class AudioService extends MediaBrowserServiceCompat {
             m_manager = new AudioManager(this);
 
             setSessionToken(m_manager.getSession().getSessionToken());
-
-
-            m_exoHandler = new Handler(this.getMainLooper());
-
-            Runnable myRunnable = new Runnable() {
-                @Override
-                public void run() {
-                    //long position = m_manager.getCurrentPosition();
-
-                    updateNotification();
-
-                    m_exoHandler.postDelayed(this, 1000);
-                }
-            };
-            m_exoHandler.postDelayed(myRunnable, 1000);
 
 
 
@@ -234,24 +215,6 @@ public class AudioService extends MediaBrowserServiceCompat {
 
     }
 
-    private void startForeground() {
-
-        /*
-
-        String channelName = "My Background Service";
-        NotificationChannel chan = new NotificationChannel(NOTIFICATION_CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_NONE);
-        chan.setLightColor(Color.BLUE);
-        chan.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
-        m_notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        assert m_notificationManager != null;
-        m_notificationManager.createNotificationChannel(chan);
-        */
-
-
-        // updateNotification();
-
-    }
-
     public void updateNotification() {
 
         //Log.warn("lifecycle notification : not this way");
@@ -262,186 +225,39 @@ public class AudioService extends MediaBrowserServiceCompat {
         return;
     }
 
-    public void updateNotificationOld() {
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
-
-        if (m_manager != null && m_manager.m_queue != null) {
-            m_manager.m_queue.updateNotification(builder);
-        } else {
-            builder.setContentTitle("App is running in background");
-        }
-
-        // TODO: this has stopped working, manifest has the intent specified. no log indicating event is received
-        builder.setDeleteIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(this,
-                PlaybackStateCompat.ACTION_STOP));
-
-        builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-
-        MediaSessionCompat session = null;
-
-        if (m_manager != null) {
-            session = m_manager.getSession();
-        }
-
-        if (session != null) {
-
-            int[] actions = {0}; // actions to show by index order added
-            builder.setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
-                    .setMediaSession(m_manager.getSession().getSessionToken())
-                    .setShowActionsInCompactView(actions)
-            // Add a cancel button
-                    .setShowCancelButton(true)
-                    .setCancelButtonIntent(MediaButtonReceiver.buildMediaButtonPendingIntent(this,
-                            PlaybackStateCompat.ACTION_STOP)));
-
-
-        } else {
-            Log.warn("lifecycle notification no session");
-        }
-
-
-        Context context = getApplicationContext();
-        String packageName = context.getPackageName();
-        Intent openApp = context.getPackageManager().getLaunchIntentForPackage(packageName);
-
-        openApp.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-
-        // Add the Uri data so apps can identify that it was a notification click
-        openApp.setAction(Intent.ACTION_VIEW);
-        openApp.setData(Uri.parse("daedalus://notification.click"));
-
-        if (m_manager != null && m_manager.m_queue != null) {
-
-            if (session != null) {
-
-                session.setMetadata(m_manager.m_queue.getMetadata(m_manager.m_queue.getCurrentIndex()));
-                session.setPlaybackState(new PlaybackStateCompat.Builder()
-                        .setState(
-                                mediaIsPlaying()?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
-                                m_manager.getCurrentPosition(),
-                                1.0F)
-                        .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
-                        .build());
-            } else {
-                Log.warn("lifecycle notification: no session");
-            }
-
-            if (mediaIsPlaying()){
-                //Intent mediaIntent = new Intent(context, AudioService.class);
-                //Intent mediaIntent = new Intent();
-                //mediaIntent.setAction(AudioActions.ACTION_PAUSE);
-                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
-
-                // OLD:
-                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PAUSE);
-
-                builder.addAction(R.drawable.pause, "pause", intent);
-
-                // NEW:
-                //PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PLAY_PAUSE))
-                //builder.addAction(new NotificationCompat.Action(R.drawable.pause, "pause", intent);
-
-            } else {
-                //Intent mediaIntent = new Intent(context, AudioService.class);
-                //Intent mediaIntent = new Intent();
-                //mediaIntent.setAction(AudioActions.ACTION_PLAY);
-                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
-                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PLAY);
-                builder.addAction(R.drawable.play, "play", intent);
-
-            }
-
-            {
-                //Intent mediaIntent = new Intent(context, AudioService.class);
-                //Intent mediaIntent = new Intent();
-                //mediaIntent.setAction(AudioActions.ACTION_SKIPTOPREV);
-                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
-                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS);
-                builder.addAction(R.drawable.previous, "previous", intent);
-            }
-
-            {
-                //Intent mediaIntent = new Intent(context, AudioService.class);
-                //Intent mediaIntent = new Intent();
-                //mediaIntent.setAction(AudioActions.ACTION_SKIPTONEXT);
-                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
-
-                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_NEXT);
-                builder.addAction(R.drawable.next, "forward", intent);
-
-            }
-
-            /*{
-                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SEEK_TO);
-                builder.addAction(R.drawable.next, "forward", intent);
-            }*/
-        } else {
-            Log.warn("lifecycle notification :: no manager or queue");
-        }
-
-
-
-        Notification notification = builder
-                .setOngoing(true)
-                .setSmallIcon(R.drawable.play)
-                .setPriority(NotificationManager.IMPORTANCE_HIGH)
-                .setCategory(Notification.CATEGORY_SERVICE)
-                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_CANCEL_CURRENT))
-                .build();
-
-        startForeground(1, notification);
-
-    }
-
-    public void disableNotificationOld() {
-
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
-
-        builder.setContentTitle("App is running in background");
-        builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-
-        MediaSessionCompat session = null;
-
-        Context context = getApplicationContext();
-        String packageName = context.getPackageName();
-        Intent openApp = context.getPackageManager().getLaunchIntentForPackage(packageName);
-
-        openApp.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-
-        // Add the Uri data so apps can identify that it was a notification click
-        openApp.setAction(Intent.ACTION_VIEW);
-        openApp.setData(Uri.parse("daedalus://notification.click"));
-
-        Notification notification = builder.setOngoing(true)
-                .setSmallIcon(R.drawable.play)
-                .setPriority(NotificationManager.IMPORTANCE_HIGH)
-                .setCategory(Notification.CATEGORY_SERVICE)
-                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
-                .build();
-
-        startForeground(1, notification);
-
-    }
-
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.error( "onStartCommand");
+
+        if (intent != null) {
+            String s_action = intent.getAction();
+            Bundle extras = intent.getExtras();
+            if (extras != null) {
+                s_action += " : " + extras;
+            }
+            Log.info( "receiver onStartCommand intent=" + s_action);
+        } else {
+            Log.error( "receiver onStartCommand null intent");
+        }
+
+
+
+
         if (m_manager != null) {
             MediaButtonReceiver.handleIntent(m_manager.getSession(), intent);
         }
-
-        startForeground();
+        //startForeground();
 
         if (m_manager == null) {
+            // TODO: is it now an error to hit this
+            Log.error("receiver not sure if this is correct anymore");
             m_manager = new AudioManager(this);
 
         }
 
         if (intent != null) {
             String action = intent.getAction();
-            Log.info( "action intent: " + action);
+
+            Log.info( "receiver action intent: " + action);
 
             String token;
             String data;
@@ -547,14 +363,14 @@ public class AudioService extends MediaBrowserServiceCompat {
                         break;
                     default:
                         if (action.equals("android.intent.action.MEDIA_BUTTON")) {
-                            Log.info("weird action", action);
+                            Log.info("receiver weird action", action);
                             if (mediaIsPlaying()) {
                                 m_manager.pause();
                             } else {
                                 m_manager.play();
                             }
                         } else {
-                            Log.error("unknown action", action);
+                            Log.error("receiver unknown action", action);
                         }
 
 

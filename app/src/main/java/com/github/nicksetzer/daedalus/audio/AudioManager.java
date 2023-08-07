@@ -16,6 +16,8 @@ import android.media.browse.MediaBrowser;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
 import android.net.Uri;
+import android.os.Bundle;
+import android.os.ResultReceiver;
 import android.service.media.MediaBrowserService;
 import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
@@ -27,6 +29,7 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import com.github.nicksetzer.daedalus.audio.media2.ExoNotificationManager;
+import com.google.android.exoplayer2.ForwardingPlayer;
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
 
 //import androidx.media3.common.MediaItem;
@@ -58,6 +61,7 @@ import java.io.InputStreamReader;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.SimpleTimeZone;
 
 /*
 TODO: update the media session queue.
@@ -78,7 +82,7 @@ public class AudioManager {
     private MediaSessionCompat m_session;
     private MediaSessionConnector m_sessionConnector;
 
-    private ExoPlayer m_mediaPlayer;
+    private CustomPlayer m_mediaPlayer;
 
     private android.media.AudioManager m_manager;
 
@@ -114,9 +118,11 @@ public class AudioManager {
         public MediaDescriptionCompat getMediaDescription(Player player, int windowIndex) {
 
             if (windowIndex < m_queue.length()) {
+                Log.error("lifecycle getMediaDescription " + windowIndex);
                 return new MediaDescriptionCompat.Builder()
                         .setTitle("foo " + windowIndex)
                         .setSubtitle("bar " + windowIndex)
+
                         .build();
             }
             return new MediaDescriptionCompat.Builder().build();
@@ -212,33 +218,55 @@ public class AudioManager {
         // https://developer.android.com/reference/android/view/KeyEvent.html
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_MEDIA_BUTTON);
+        filter.addAction(PlayerNotificationManager.ACTION_NEXT);
+        filter.addAction(PlayerNotificationManager.ACTION_PREVIOUS);
+        filter.addAction(PlayerNotificationManager.ACTION_PAUSE);
+        filter.addAction(PlayerNotificationManager.ACTION_PLAY);
+        filter.addAction(PlayerNotificationManager.ACTION_STOP);
+        filter.addAction(PlayerNotificationManager.ACTION_FAST_FORWARD);
+        filter.addAction(PlayerNotificationManager.ACTION_REWIND);
 
         m_receiver = new BTReceiver();
-        context.registerReceiver(m_receiver, filter);
+        m_service.registerReceiver(m_receiver, filter);
 
         PackageManager pm = m_service.getPackageManager();
         String packageName = m_service.getApplicationContext().getPackageName();
         Intent sessionIntent = pm.getLaunchIntentForPackage(packageName);
         //Context context = m_service.getApplicationContext();
-        PendingIntent intent = PendingIntent.getActivity(context, 0, sessionIntent, PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent intent = PendingIntent.getActivity(m_service, 0, sessionIntent, PendingIntent.FLAG_IMMUTABLE);
 
         Log.info("lifecycle MediaSessionCompat");
-        m_session = new MediaSessionCompat(context, "AudioService");
+        m_session = new MediaSessionCompat(m_service, "AudioService");
         m_session.setSessionActivity(intent);
         //m_session.setActive(true);
         // These flags are now always set
         //m_session.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
 
+        /*
         PlaybackStateCompat state = new PlaybackStateCompat.Builder()
                 .setActions(
                         PlaybackStateCompat.ACTION_PLAY |
                                 PlaybackStateCompat.ACTION_PAUSE |
                                 PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
                                 PlaybackStateCompat.ACTION_PLAY_PAUSE).build();
-
         m_session.setPlaybackState(state);
         m_session.setCallback(new BTCallback(this));
-        m_session.setActive(true);
+        */
+
+        // TODO: put this behind a handler...
+        /*
+        PlaybackStateCompat state = new PlaybackStateCompat.Builder()
+                .setActions(PlaybackStateCompat.ACTION_SKIP_TO_NEXT|PlaybackStateCompat.ACTION_PLAY_PAUSE)
+                .setBufferedPosition(3000)
+                .build();
+        m_session.setPlaybackState(state);
+
+        MediaMetadataCompat data = new MediaMetadataCompat.Builder()
+                .p
+                .build();
+        m_session.setMetadata(data);
+        */
+
 
         AudioAttributes attrs = new AudioAttributes.Builder()
                 .setContentType(C.CONTENT_TYPE_MUSIC)
@@ -246,12 +274,12 @@ public class AudioManager {
                 .build();
 
         m_listener = new PlayerEventListener(this);
-        m_mediaPlayer = new SimpleExoPlayer.Builder(context).build();
 
-        m_mediaPlayer.setAudioAttributes(attrs, true);
-        m_mediaPlayer.setHandleAudioBecomingNoisy(true);
-        m_mediaPlayer.addListener(m_listener);
-
+        SimpleExoPlayer player = new SimpleExoPlayer.Builder(m_service).build();
+        player.setHandleAudioBecomingNoisy(true);
+        player.setAudioAttributes(attrs, true);
+        player.addListener(m_listener);
+        m_mediaPlayer = new CustomPlayer(player);
 
         m_notificationManager = new ExoNotificationManager(m_service, m_session.getSessionToken());
         m_notificationManager.showNotificationForPlayer(m_mediaPlayer);
@@ -261,12 +289,14 @@ public class AudioManager {
 
 
         m_sessionConnector = new MediaSessionConnector(m_session);
-        //m_sessionConnector.setPlaybackPreparer(new UampPlaybackPreparer());
+        m_sessionConnector.setPlaybackPreparer(new ExoPlaybackPreparer());
         m_sessionConnector.setQueueNavigator(new QueueNavigator(m_session));
 
-        SettingsTable tab = m_service.m_database.m_settingsTable;
-        tab.setInt("previous_session_id", m_mediaPlayer.getAudioSessionId());
-        Log.warn("Session Id: " + m_mediaPlayer.getAudioSessionId());
+        m_session.setActive(true);
+
+        //SettingsTable tab = m_service.m_database.m_settingsTable;
+        //tab.setInt("previous_session_id", m_mediaPlayer.getAudioSessionId());
+        //Log.warn("Session Id: " + m_mediaPlayer.getAudioSessionId());
 
         loadQueueData();
 
@@ -423,14 +453,15 @@ public class AudioManager {
 
         int index = m_queue.getCurrentIndex();
 
+        /*
         int session_id = -1;
         try {
             session_id = m_mediaPlayer.getAudioSessionId();
         }catch (RuntimeException e) {
             Log.error(e.getMessage());
-        }
+        }*/
 
-        Log.info("resume playback for index=" + index + " session id=" + session_id);
+        //Log.info("resume playback for index=" + index + " session id=" + session_id);
         loadUrl( m_queue.getUrl(index), true, m_pausedTimeMs);
 
         m_service.updateNotification();
@@ -772,5 +803,61 @@ public class AudioManager {
         tab.setLong("current_time", m_pausedTimeMs);
 
 
+    }
+
+    private class CustomPlayer extends ForwardingPlayer {
+        // https://exoplayer.dev/doc/reference/com/google/android/exoplayer2/ForwardingPlayer.html
+        public CustomPlayer(Player player) {
+            super(player);
+        }
+
+        public void play() {
+            super.play();
+            Log.info("custom-player: play");
+        }
+
+        public void pause() {
+            super.pause();
+            Log.info("custom-player: pause");
+        }
+
+    }
+
+    private class ExoPlaybackPreparer implements MediaSessionConnector.PlaybackPreparer {
+
+        @Override
+        public long getSupportedPrepareActions() {
+            return PlaybackStateCompat.ACTION_PREPARE_FROM_MEDIA_ID|PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID;
+        }
+
+        @Override
+        public void onPrepare(boolean playWhenReady) {
+            Log.error("lifecycle preparer: onPrepare");
+        }
+
+        @Override
+        public void onPrepareFromMediaId(String mediaId, boolean playWhenReady, @Nullable Bundle extras) {
+            Log.error("lifecycle preparer: onPrepareFromMediaId :" + mediaId);
+            int index = Integer.parseInt(mediaId.substring(mediaId.lastIndexOf('-') + 1));
+            loadIndex(index);
+        }
+
+        @Override
+        public void onPrepareFromSearch(String query, boolean playWhenReady, @Nullable Bundle extras) {
+
+        }
+
+        @Override
+        public void onPrepareFromUri(Uri uri, boolean playWhenReady, @Nullable Bundle extras) {
+            Log.error("lifecycle preparer: onPrepareFromUri :" + uri.toString());
+
+        }
+
+        @Override
+        public boolean onCommand(Player player, String command, @Nullable Bundle extras, @Nullable ResultReceiver cb) {
+            Log.error("lifecycle preparer: onCommand");
+
+            return false;
+        }
     }
 }

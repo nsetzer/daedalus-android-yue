@@ -3,17 +3,21 @@ package com.github.nicksetzer.daedalus.audio.media2;
 import android.app.PendingIntent;
 import android.content.Context;
 
+import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.R;
 import com.github.nicksetzer.daedalus.audio.AudioService;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.ui.PlayerNotificationManager;
 import android.app.NotificationManager;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.support.v4.media.session.MediaControllerCompat;
 import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.media.session.MediaButtonReceiver;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,15 +38,16 @@ public class ExoNotificationManager {
 
         Context context = service.getApplicationContext();
 
-        MediaControllerCompat mediaController = new MediaControllerCompat(context, sessionToken);
+        MediaControllerCompat mediaController = new MediaControllerCompat(m_service, sessionToken);
 
         m_platformMgr = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         // notifiation id is an arbitrary number
-        m_mgr = new CustomPlayerNotificationManager.Builder(context, 123, "com.github/nicksetzer.daedalus.channel")
+        m_mgr = new PlayerNotificationManager.Builder(m_service, 123, "com.github.nicksetzer.daedalus.audio.media2.NOW_PLAYING")
                 .setMediaDescriptionAdapter(new DescriptionAdapter(mediaController))
                 .setNotificationListener(new NotificationListener(m_service, m_platformMgr))
                 .setChannelNameResourceId(R.string.notification_channel)
                 .setChannelDescriptionResourceId(R.string.notification_channel_description)
+                .setCustomActionReceiver(new MyReceiver())
                 .build();
 
         m_mgr.setUsePreviousAction(true);
@@ -55,6 +60,7 @@ public class ExoNotificationManager {
         m_mgr.setMediaSessionToken(sessionToken);
         //m_mgr.setUseNavigationActionsInCompactView(true);
 
+
     }
 
     public void hideNotification() {
@@ -65,6 +71,29 @@ public class ExoNotificationManager {
         m_mgr.setPlayer(player);
     }
 
+    private class MyReceiver implements PlayerNotificationManager.CustomActionReceiver {
+        @Override
+        public Map<String, NotificationCompat.Action> createCustomActions(Context context, int instanceId) {
+            Log.error("receiver createCustomActions");
+            Map<String, NotificationCompat.Action> map = new HashMap<>();
+            PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(m_service, PlaybackStateCompat.ACTION_PAUSE);
+            map.put("pause", new NotificationCompat.Action(R.drawable.pause, "pause", intent));
+            return map;
+        }
+
+        @Override
+        public List<String> getCustomActions(Player player) {
+            Log.error("receiver getCustomActions");
+            List<String> lst = new ArrayList<>();
+            lst.add("pause");
+            return lst;
+        }
+
+        @Override
+        public void onCustomAction(Player player, String action, Intent intent) {
+            Log.error("receiver onCustomAction " + action);
+        }
+    }
     private class CustomPlayerNotificationManager extends PlayerNotificationManager {
         private Context context;
         private Map<String, NotificationCompat.Action> actionMap2 = new HashMap<>();
@@ -138,12 +167,12 @@ public class ExoNotificationManager {
         @Nullable
         @Override
         public CharSequence getCurrentContentText(Player player) {
-            return "!c:"; //+ m_controller.getMetadata().getDescription().getSubtitle().toString();
+            return "content"; //+ m_controller.getMetadata().getDescription().getSubtitle().toString();
         }
 
         @Override
         public CharSequence getCurrentContentTitle(Player player) {
-            return "!t:"; //+ m_controller.getMetadata().getDescription().getTitle().toString();
+            return "title"; //+ m_controller.getMetadata().getDescription().getTitle().toString();
         }
 
         @Nullable
