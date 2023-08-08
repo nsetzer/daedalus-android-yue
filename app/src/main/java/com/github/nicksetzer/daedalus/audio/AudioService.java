@@ -166,7 +166,11 @@ public class AudioService extends MediaBrowserServiceCompat {
 
                     updateNotification();
 
-                    m_exoHandler.postDelayed(this, 1000);
+                    if (m_manager.getSession().isActive()) {
+                        m_exoHandler.postDelayed(this, 1000);
+                    } else {
+                        Log.error("exo handler exit");
+                    }
                 }
             };
             m_exoHandler.postDelayed(myRunnable, 1000);
@@ -306,7 +310,11 @@ public class AudioService extends MediaBrowserServiceCompat {
                                 mediaIsPlaying()?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
                                 m_manager.getCurrentPosition(),
                                 1.0F)
-                        .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
+                        .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE|
+                                PlaybackStateCompat.ACTION_PLAY|
+                                PlaybackStateCompat.ACTION_PAUSE|
+                                PlaybackStateCompat.ACTION_SKIP_TO_NEXT|
+                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
                         .build());
             }
 
@@ -373,7 +381,7 @@ public class AudioService extends MediaBrowserServiceCompat {
                 .setSmallIcon(R.drawable.play)
                 .setPriority(NotificationManager.IMPORTANCE_HIGH)
                 .setCategory(Notification.CATEGORY_SERVICE)
-                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_CANCEL_CURRENT))
+                .setContentIntent(PendingIntent.getActivity(this, 0, openApp, PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_CANCEL_CURRENT))
                 .build();
 
         startForeground(1, notification);
@@ -404,7 +412,7 @@ public class AudioService extends MediaBrowserServiceCompat {
                 .setSmallIcon(R.drawable.play)
                 .setPriority(NotificationManager.IMPORTANCE_HIGH)
                 .setCategory(Notification.CATEGORY_SERVICE)
-                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
+                .setContentIntent(PendingIntent.getActivity(this, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
                 .build();
 
         startForeground(1, notification);

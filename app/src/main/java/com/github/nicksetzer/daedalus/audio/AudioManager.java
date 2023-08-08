@@ -13,6 +13,9 @@ import android.media.MediaPlayer;
 import android.media.browse.MediaBrowser;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.ResultReceiver;
 import android.service.media.MediaBrowserService;
 import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
@@ -20,6 +23,7 @@ import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.google.android.exoplayer2.ext.mediasession.MediaSessionConnector;
 
@@ -96,7 +100,11 @@ public class AudioManager {
         @Override
         @NonNullApi
         public long getSupportedQueueNavigatorActions(Player player) {
-            return PlaybackStateCompat.ACTION_SKIP_TO_NEXT|PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
+            return PlaybackStateCompat.ACTION_PLAY_PAUSE|
+                    PlaybackStateCompat.ACTION_PLAY|
+                    PlaybackStateCompat.ACTION_PAUSE|
+                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT|
+                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
         }
 
         @Override
@@ -200,20 +208,19 @@ public class AudioManager {
         // adb shell input key event <keycode>
         // keycode: 126: play, 85: pause
         // https://developer.android.com/reference/android/view/KeyEvent.html
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(Intent.ACTION_MEDIA_BUTTON);
-
-        m_receiver = new BTReceiver();
-        context.registerReceiver(m_receiver, filter);
+        //IntentFilter filter = new IntentFilter();
+        //filter.addAction(Intent.ACTION_MEDIA_BUTTON);
+        //m_receiver = new BTReceiver();
+        //context.registerReceiver(m_receiver, filter);
 
         PackageManager pm = m_service.getPackageManager();
         String packageName = m_service.getApplicationContext().getPackageName();
         Intent sessionIntent = pm.getLaunchIntentForPackage(packageName);
         //Context context = m_service.getApplicationContext();
-        PendingIntent intent = PendingIntent.getActivity(context, 0, sessionIntent, PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent intent = PendingIntent.getActivity(m_service, 0, sessionIntent, PendingIntent.FLAG_IMMUTABLE);
 
         Log.info("lifecycle MediaSessionCompat");
-        m_session = new MediaSessionCompat(context, "AudioService");
+        m_session = new MediaSessionCompat(m_service, "AudioService");
         m_session.setSessionActivity(intent);
         //m_session.setActive(true);
         // These flags are now always set
@@ -221,13 +228,14 @@ public class AudioManager {
 
         PlaybackStateCompat state = new PlaybackStateCompat.Builder()
                 .setActions(
-                        PlaybackStateCompat.ACTION_PLAY |
-                                PlaybackStateCompat.ACTION_PAUSE |
-                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
-                                PlaybackStateCompat.ACTION_PLAY_PAUSE).build();
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE|
+                                PlaybackStateCompat.ACTION_PLAY|
+                                PlaybackStateCompat.ACTION_PAUSE|
+                                PlaybackStateCompat.ACTION_SKIP_TO_NEXT|
+                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS).build();
 
         m_session.setPlaybackState(state);
-        m_session.setCallback(new BTCallback(this));
+        m_session.setCallback(new SessionCallback());
         m_session.setActive(true);
 
         AudioAttributes attrs = new AudioAttributes.Builder()
@@ -236,7 +244,7 @@ public class AudioManager {
                 .build();
 
         m_listener = new PlayerEventListener(this);
-        m_mediaPlayer = new SimpleExoPlayer.Builder(context).build();
+        m_mediaPlayer = new SimpleExoPlayer.Builder(m_service).build();
 
         m_mediaPlayer.setAudioAttributes(attrs, true);
         m_mediaPlayer.setHandleAudioBecomingNoisy(true);
@@ -333,7 +341,7 @@ public class AudioManager {
          */
 
         m_sessionConnector = new MediaSessionConnector(m_session);
-
+        m_sessionConnector.setPlaybackPreparer(new ExoPlaybackPreparer());
         m_sessionConnector.setQueueNavigator(new QueueNavigator(m_session));
 
         SettingsTable tab = m_service.m_database.m_settingsTable;
@@ -844,5 +852,50 @@ public class AudioManager {
         tab.setLong("current_time", m_pausedTimeMs);
 
 
+    }
+
+    private class ExoPlaybackPreparer implements MediaSessionConnector.PlaybackPreparer {
+
+        @Override
+        public long getSupportedPrepareActions() {
+            return PlaybackStateCompat.ACTION_PREPARE_FROM_MEDIA_ID|PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID;
+        }
+
+        @Override
+        public void onPrepare(boolean playWhenReady) {
+            Log.error("lifecycle preparer: onPrepare");
+        }
+
+        @Override
+        public void onPrepareFromMediaId(String mediaId, boolean playWhenReady, @Nullable Bundle extras) {
+            Log.error("lifecycle preparer: onPrepareFromMediaId :" + mediaId);
+            int index = Integer.parseInt(mediaId.substring(mediaId.lastIndexOf('-') + 1));
+            loadIndex(index);
+        }
+
+        @Override
+        public void onPrepareFromSearch(String query, boolean playWhenReady, @Nullable Bundle extras) {
+
+        }
+
+        @Override
+        public void onPrepareFromUri(Uri uri, boolean playWhenReady, @Nullable Bundle extras) {
+            Log.error("lifecycle preparer: onPrepareFromUri :" + uri.toString());
+
+        }
+
+        @Override
+        public boolean onCommand(Player player, String command, @Nullable Bundle extras, @Nullable ResultReceiver cb) {
+            Log.error("lifecycle preparer: onCommand");
+
+            return false;
+        }
+    }
+    private class SessionCallback extends MediaSessionCompat.Callback {
+        @Override
+        public boolean onMediaButtonEvent(Intent mediaButtonEvent) {
+            Log.error("onMediaButtonEvent");
+            return super.onMediaButtonEvent(mediaButtonEvent);
+        }
     }
 }
