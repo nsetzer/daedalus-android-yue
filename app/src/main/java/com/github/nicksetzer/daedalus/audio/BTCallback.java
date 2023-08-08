@@ -2,6 +2,7 @@ package com.github.nicksetzer.daedalus.audio;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.ResultReceiver;
 import android.support.v4.media.RatingCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.view.KeyEvent;
@@ -18,7 +19,7 @@ public class BTCallback extends MediaSessionCompat.Callback {
 
     @Override
     public boolean onMediaButtonEvent(Intent mediaButtonIntent) {
-        Log.warn("lifecycle onMediaButtonEvent");
+        Log.error("lifecycle onMediaButtonEvent");
         if (mediaButtonIntent.getAction().equals(Intent.ACTION_MEDIA_BUTTON)) {
             KeyEvent event = mediaButtonIntent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
             //event.getAction() == KeyEvent.ACTION_UP ||
@@ -100,7 +101,7 @@ public class BTCallback extends MediaSessionCompat.Callback {
 
     @Override
     public void onPlay() {
-        super.onPlay();
+        //super.onPlay();
 
         Log.info( "lifecycle onPlay");
         // some bluetooth devices only send play events
@@ -123,7 +124,7 @@ public class BTCallback extends MediaSessionCompat.Callback {
 
     @Override
     public void onPause() {
-        super.onPause();
+        //super.onPause();
 
         Log.info("lifecycle onpause");
         m_manager.pause();
@@ -176,8 +177,17 @@ public class BTCallback extends MediaSessionCompat.Callback {
     }
 
     @Override
+    public void onCommand(String command, Bundle extras, ResultReceiver cb) {
+        Log.info("lifecycle onCommand");
+
+        super.onCommand(command, extras, cb);
+    }
+
+    @Override
     public void onCustomAction(String action, Bundle extras) {
         Log.info("lifecycle onCustomAction");
         super.onCustomAction(action, extras);
     }
+
+
 }

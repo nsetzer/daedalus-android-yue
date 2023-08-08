@@ -254,7 +254,7 @@ public class WebActivity extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
 
-
+        Log.error("onKeyDown");
 
         switch (keyCode) {
             case KeyEvent.KEYCODE_BACK:

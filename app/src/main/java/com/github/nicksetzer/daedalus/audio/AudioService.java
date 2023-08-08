@@ -36,13 +36,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Process;
-import android.support.v4.media.MediaBrowserCompat;
-import android.support.v4.media.MediaDescriptionCompat;
-import android.support.v4.media.MediaMetadataCompat;
-import android.support.v4.media.session.MediaSessionCompat;
-import android.support.v4.media.session.PlaybackStateCompat;
-import android.text.TextUtils;
-import android.view.KeyEvent;
+
 
 
 import com.github.nicksetzer.daedalus.Log;
@@ -51,10 +45,10 @@ import com.github.nicksetzer.daedalus.audio.tasks.AudioFetchTask;
 import com.github.nicksetzer.daedalus.audio.tasks.AudioSyncTask;
 import com.github.nicksetzer.metallurgy.orm.dsl.DslException;
 
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
@@ -70,7 +64,9 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.media.MediaBrowserServiceCompat;
 import androidx.media.session.MediaButtonReceiver;
-
+import android.support.v4.media.MediaBrowserCompat;
+import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
 /**
  * Android 11 turned this from a default `Service` into a MediaBrowserServiceCompat
  * this was to support bluetooth again, under a new uniformed media api
@@ -166,7 +162,11 @@ public class AudioService extends MediaBrowserServiceCompat {
 
                     updateNotification();
 
-                    m_exoHandler.postDelayed(this, 1000);
+                    if (m_manager.getSession().isActive()) {
+                        m_exoHandler.postDelayed(this, 1000);
+                    } else {
+                        Log.error("exo handler exit");
+                    }
                 }
             };
             m_exoHandler.postDelayed(myRunnable, 1000);
@@ -302,11 +302,18 @@ public class AudioService extends MediaBrowserServiceCompat {
 
                 session.setMetadata(m_manager.m_queue.getMetadata(m_manager.m_queue.getCurrentIndex()));
                 session.setPlaybackState(new PlaybackStateCompat.Builder()
+
                         .setState(
                                 mediaIsPlaying()?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
                                 m_manager.getCurrentPosition(),
                                 1.0F)
-                        .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
+                        .setActions(
+                                PlaybackStateCompat.ACTION_PLAY_PAUSE|
+                                PlaybackStateCompat.ACTION_PLAY|
+                                PlaybackStateCompat.ACTION_PAUSE|
+                                PlaybackStateCompat.ACTION_SKIP_TO_NEXT|
+                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+                        )
                         .build());
             }
 
@@ -319,10 +326,18 @@ public class AudioService extends MediaBrowserServiceCompat {
                 //mediaIntent.setAction(AudioActions.ACTION_PAUSE);
                 //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
 
-                // OLD:
-                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PAUSE);
+                Intent intent = new Intent("com.github.nicksetzer.daedalus.pause").setPackage(context.getPackageName());
+                int instanceId = 1;
 
-                builder.addAction(R.drawable.pause, "pause", intent);
+                NotificationCompat.Action action = new NotificationCompat.Action(
+                        R.drawable.pause,
+                        "pause",
+                        PendingIntent.getBroadcast(context, instanceId, intent,
+                                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+                builder.addAction(action);
+                // OLD:
+                //PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PAUSE);
+                //builder.addAction(R.drawable.pause, "pause", intent);
 
                 // NEW:
                 //PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PLAY_PAUSE))
@@ -333,25 +348,28 @@ public class AudioService extends MediaBrowserServiceCompat {
                 //Intent mediaIntent = new Intent();
                 //mediaIntent.setAction(AudioActions.ACTION_PLAY);
                 //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
-                PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PLAY);
-                builder.addAction(R.drawable.play, "play", intent);
+
+                Intent intent = new Intent("com.google.android.exoplayer.play").setPackage(context.getPackageName());
+                int instanceId = 1;
+
+                NotificationCompat.Action action = new NotificationCompat.Action(
+                        R.drawable.play,
+                        "play",
+                        PendingIntent.getBroadcast(context, instanceId, intent,
+                                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+                builder.addAction(action);
+
+                //PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_PLAY);
+                //builder.addAction(R.drawable.play, "play", intent);
 
             }
 
             {
-                //Intent mediaIntent = new Intent(context, AudioService.class);
-                //Intent mediaIntent = new Intent();
-                //mediaIntent.setAction(AudioActions.ACTION_SKIPTOPREV);
-                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
                 PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS);
                 builder.addAction(R.drawable.previous, "previous", intent);
             }
 
             {
-                //Intent mediaIntent = new Intent(context, AudioService.class);
-                //Intent mediaIntent = new Intent();
-                //mediaIntent.setAction(AudioActions.ACTION_SKIPTONEXT);
-                //PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, mediaIntent, 0);
 
                 PendingIntent intent = MediaButtonReceiver.buildMediaButtonPendingIntent(this, PlaybackStateCompat.ACTION_SKIP_TO_NEXT);
                 builder.addAction(R.drawable.next, "forward", intent);
@@ -366,17 +384,19 @@ public class AudioService extends MediaBrowserServiceCompat {
             Log.warn("lifecycle notification :: no manager or queue");
         }
 
-
-
-        Notification notification = builder
+        builder
                 .setOngoing(true)
                 .setSmallIcon(R.drawable.play)
                 .setPriority(NotificationManager.IMPORTANCE_HIGH)
-                .setCategory(Notification.CATEGORY_SERVICE)
-                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_CANCEL_CURRENT))
+                //.setCategory(Notification.CATEGORY_SERVICE)
+                .setContentIntent(PendingIntent.getActivity(this, 0, openApp, PendingIntent.FLAG_MUTABLE|PendingIntent.FLAG_CANCEL_CURRENT))
                 .build();
 
-        startForeground(1, notification);
+        //Log.warn("update notification");
+
+        //startForeground(1, notification);
+        //notificationManager.notify(notificationId, notification);
+        m_notificationManager.notify(1, builder.build());
 
     }
 
@@ -400,23 +420,25 @@ public class AudioService extends MediaBrowserServiceCompat {
         openApp.setAction(Intent.ACTION_VIEW);
         openApp.setData(Uri.parse("daedalus://notification.click"));
 
-        Notification notification = builder.setOngoing(true)
+        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT);
+
+        builder.setOngoing(true)
                 .setSmallIcon(R.drawable.play)
                 .setPriority(NotificationManager.IMPORTANCE_HIGH)
-                .setCategory(Notification.CATEGORY_SERVICE)
-                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
-                .build();
+                //.setCategory(Notification.CATEGORY_SERVICE)
+                .setOngoing(true)
+                .setContentIntent(contentIntent);
 
-        startForeground(1, notification);
+
+        // startForeground(1, notification);
+        m_notificationManager.notify(1, builder.build());
 
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.error( "onStartCommand");
-        if (m_manager != null) {
-            MediaButtonReceiver.handleIntent(m_manager.getSession(), intent);
-        }
+        MediaButtonReceiver.handleIntent(m_manager.getSession(), intent);
 
         startForeground();
 
@@ -549,7 +571,7 @@ public class AudioService extends MediaBrowserServiceCompat {
                 }
             }
         }
-        return START_NOT_STICKY;
+        return super.onStartCommand(intent, flags, startId);
     }
 
 
@@ -564,6 +586,8 @@ public class AudioService extends MediaBrowserServiceCompat {
         if (m_manager != null && m_manager.isPlaying()) {
             m_manager.stop();
         }
+
+
 
         m_manager.release();
 
@@ -766,6 +790,5 @@ public class AudioService extends MediaBrowserServiceCompat {
 
         return obj.toString();
     }
-
 
 }

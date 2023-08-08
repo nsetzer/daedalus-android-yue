@@ -20,7 +20,7 @@ public class BTReceiver extends BroadcastReceiver {
 
         String action = intent.getAction();
 
-        android.util.Log.e("daedalus-js", "received action: " + action);
+        Log.error( "received action: " + action);
         final KeyEvent event = (KeyEvent) intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
 
         if (event != null) {

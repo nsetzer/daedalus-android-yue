@@ -4,6 +4,7 @@
     package="com.github.nicksetzer.daedalus">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.ACCESS_DOWNLOAD_MANAGER" />
@@ -62,20 +63,25 @@
             android:permission="android.permission.FOREGROUND_SERVICE"
             android:canRequestFilterKeyEvents="true"
             tools:ignore="ExportedService">
-            <intent-filter android:priority="1000000">
+            <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService" />
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
-                <action android:name="android.media.AUDIO_BECOMING_NOISY" />
+                <!--<action android:name="android.intent.action.MEDIA_BUTTON" />-->
+                <!--<action android:name="android.media.AUDIO_BECOMING_NOISY" />-->
             </intent-filter>
         </service>
 
-        <receiver
-            android:name="androidx.media.session.MediaButtonReceiver"
-            android:exported="true">
+        <receiver android:name="androidx.media.session.MediaButtonReceiver"  android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.MEDIA_BUTTON"/>
             </intent-filter>
         </receiver>
+        <!--
+        <receiver android:name=".audio.BTReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON"/>
+            </intent-filter>
+        </receiver>
+        -->
 
     </application>
 
