@@ -64,8 +64,10 @@
             tools:ignore="ExportedService">
             <intent-filter android:priority="1000000">
                 <action android:name="android.media.browse.MediaBrowserService" />
+                <!--
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
                 <action android:name="android.media.AUDIO_BECOMING_NOISY" />
+                -->
             </intent-filter>
         </service>
 

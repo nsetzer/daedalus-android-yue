@@ -130,7 +130,7 @@ public class AudioManager {
 
     }
 
-    static class PlayerEventListener implements Player.Listener {
+    class PlayerEventListener implements Player.Listener {
 
         private AudioManager m_manager = null;
         PlayerEventListener(AudioManager manager) {
@@ -179,8 +179,11 @@ public class AudioManager {
                     break;
 
                 case Player.STATE_IDLE:
+                    Log.info("idle state");
+                    break;
                 case Player.STATE_BUFFERING:
                 case Player.STATE_READY:
+                    m_notificationManager.showNotificationForPlayer(m_mediaPlayer);
                 default:
                     break;
             }
@@ -216,42 +219,26 @@ public class AudioManager {
         // adb shell input key event <keycode>
         // keycode: 126: play, 85: pause
         // https://developer.android.com/reference/android/view/KeyEvent.html
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(Intent.ACTION_MEDIA_BUTTON);
-        filter.addAction(PlayerNotificationManager.ACTION_NEXT);
-        filter.addAction(PlayerNotificationManager.ACTION_PREVIOUS);
-        filter.addAction(PlayerNotificationManager.ACTION_PAUSE);
-        filter.addAction(PlayerNotificationManager.ACTION_PLAY);
-        filter.addAction(PlayerNotificationManager.ACTION_STOP);
-        filter.addAction(PlayerNotificationManager.ACTION_FAST_FORWARD);
-        filter.addAction(PlayerNotificationManager.ACTION_REWIND);
 
-        m_receiver = new BTReceiver();
-        m_service.registerReceiver(m_receiver, filter);
 
         PackageManager pm = m_service.getPackageManager();
         String packageName = m_service.getApplicationContext().getPackageName();
         Intent sessionIntent = pm.getLaunchIntentForPackage(packageName);
-        //Context context = m_service.getApplicationContext();
         PendingIntent intent = PendingIntent.getActivity(m_service, 0, sessionIntent, PendingIntent.FLAG_IMMUTABLE);
 
         Log.info("lifecycle MediaSessionCompat");
         m_session = new MediaSessionCompat(m_service, "AudioService");
         m_session.setSessionActivity(intent);
-        //m_session.setActive(true);
-        // These flags are now always set
-        //m_session.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
 
-        /*
         PlaybackStateCompat state = new PlaybackStateCompat.Builder()
                 .setActions(
                         PlaybackStateCompat.ACTION_PLAY |
-                                PlaybackStateCompat.ACTION_PAUSE |
-                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
-                                PlaybackStateCompat.ACTION_PLAY_PAUSE).build();
+                        PlaybackStateCompat.ACTION_PAUSE |
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE).build();
         m_session.setPlaybackState(state);
-        m_session.setCallback(new BTCallback(this));
-        */
+        //m_session.setCallback(new BTCallback(this));
+
 
         // TODO: put this behind a handler...
         /*
@@ -267,7 +254,6 @@ public class AudioManager {
         m_session.setMetadata(data);
         */
 
-
         AudioAttributes attrs = new AudioAttributes.Builder()
                 .setContentType(C.CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
@@ -279,6 +265,7 @@ public class AudioManager {
         player.setHandleAudioBecomingNoisy(true);
         player.setAudioAttributes(attrs, true);
         player.addListener(m_listener);
+
         m_mediaPlayer = new CustomPlayer(player);
 
         m_notificationManager = new ExoNotificationManager(m_service, m_session.getSessionToken());
@@ -607,6 +594,9 @@ public class AudioManager {
 
         try {
             Log.info("service release");
+            m_session.setActive(false);
+            m_session.release();
+            m_mediaPlayer.removeListener(m_listener);
             m_mediaPlayer.release();
         }catch (RuntimeException e) {
             Log.error("failed to release", e.getMessage());

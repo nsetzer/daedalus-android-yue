@@ -7,10 +7,12 @@ import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.R;
 import com.github.nicksetzer.daedalus.audio.AudioService;
 import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.metadata.Metadata;
 import com.google.android.exoplayer2.ui.PlayerNotificationManager;
 import android.app.NotificationManager;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaControllerCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -49,15 +51,16 @@ public class ExoNotificationManager {
                 .setChannelDescriptionResourceId(R.string.notification_channel_description)
                 .setCustomActionReceiver(new MyReceiver())
                 .build();
-
+        m_mgr.setMediaSessionToken(sessionToken);
+        m_mgr.setSmallIcon(R.drawable.play);
         m_mgr.setUsePreviousAction(true);
         m_mgr.setUseNextAction(true);
         m_mgr.setUseRewindAction(false);
         m_mgr.setUseFastForwardAction(false);
 
-        m_mgr.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
-        m_mgr.setPriority(NotificationCompat.PRIORITY_HIGH);
-        m_mgr.setMediaSessionToken(sessionToken);
+        //m_mgr.setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+        //m_mgr.setPriority(NotificationCompat.PRIORITY_HIGH);
+
         //m_mgr.setUseNavigationActionsInCompactView(true);
 
 
@@ -167,12 +170,20 @@ public class ExoNotificationManager {
         @Nullable
         @Override
         public CharSequence getCurrentContentText(Player player) {
-            return "content"; //+ m_controller.getMetadata().getDescription().getSubtitle().toString();
+            MediaMetadataCompat data = m_controller.getMetadata();
+            if (data != null) {
+                return data.getDescription().getSubtitle().toString();
+            }
+            return "content";
         }
 
         @Override
         public CharSequence getCurrentContentTitle(Player player) {
-            return "title"; //+ m_controller.getMetadata().getDescription().getTitle().toString();
+            MediaMetadataCompat data = m_controller.getMetadata();
+            if (data != null) {
+                return data.getDescription().getTitle().toString();
+            }
+            return "title";
         }
 
         @Nullable
