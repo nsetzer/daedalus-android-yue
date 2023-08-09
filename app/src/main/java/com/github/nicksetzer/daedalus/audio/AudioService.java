@@ -263,8 +263,7 @@ public class AudioService extends MediaBrowserServiceCompat {
         if (m_manager != null && m_manager.m_queue != null) {
 
             if (session != null) {
-                // TODO: this looks redundant with AudioManager when the song is initially loaded
-                //session.setMetadata(m_manager.m_queue.getMetadata(m_manager.m_queue.getCurrentIndex()));
+                session.setMetadata(m_manager.m_queue.getMetadata(m_manager.m_queue.getCurrentIndex()));
                 session.setPlaybackState(new PlaybackStateCompat.Builder()
                         .setState(
                                 mediaIsPlaying()?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
@@ -334,7 +333,7 @@ public class AudioService extends MediaBrowserServiceCompat {
                 .setSmallIcon(R.drawable.play)
                 .setPriority(NotificationManager.IMPORTANCE_HIGH)
                 .setCategory(Notification.CATEGORY_SERVICE)
-                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
+                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_CANCEL_CURRENT))
                 .build();
 
         startForeground(1, notification);
@@ -365,7 +364,7 @@ public class AudioService extends MediaBrowserServiceCompat {
                 .setSmallIcon(R.drawable.play)
                 .setPriority(NotificationManager.IMPORTANCE_HIGH)
                 .setCategory(Notification.CATEGORY_SERVICE)
-                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_CANCEL_CURRENT))
+                .setContentIntent(PendingIntent.getActivity(context, 0, openApp, PendingIntent.FLAG_MUTABLE|PendingIntent.FLAG_CANCEL_CURRENT))
                 .build();
 
         startForeground(1, notification);

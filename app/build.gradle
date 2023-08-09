@@ -4,11 +4,11 @@ plugins {
 
 android {
     namespace 'com.github.nicksetzer.daedalus'
-    compileSdk 30
+    compileSdk 31
     defaultConfig {
         applicationId "com.github.nicksetzer.daedalus"
         minSdk 28
-        targetSdk 30
+        targetSdk 31
         versionCode 1
         versionName "1.0"
 
@@ -30,19 +30,19 @@ android {
 }
 
 dependencies {
+    // a tool for checking dependencies
+    // ./gradlew app:dependencies
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    //implementation 'androidx.appcompat:appcompat:1.4.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.core:core:1.5.0'
-    implementation 'androidx.media:media:1.4.0'
+    implementation 'androidx.media:media:1.6.0'
     implementation "androidx.webkit:webkit:1.4.0"
-    //implementation 'androidx.work:work-runtime-ktx:2.8.0-alpha01'
+    //implementation 'com.google.android.gms:play-services-cast-framework:20.6.0'
+    //implementation 'androidx.work:work-runtime:2.7.1'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20190722'
     
-    //androidTestImplementation 'com.android.support.test:runner:1.0.2'
-    //androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 
