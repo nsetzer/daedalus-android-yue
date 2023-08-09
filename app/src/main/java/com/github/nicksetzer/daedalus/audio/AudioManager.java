@@ -56,7 +56,7 @@ public class AudioManager {
     private String m_station = null;
 
     private String m_currentUrl = null;
-    private int m_pausedTimeMs = -1;
+    private long m_pausedTimeMs = -1;
 
     AudioQueue m_queue;
 
@@ -149,7 +149,7 @@ public class AudioManager {
                 }
 
                 if (m_pausedTimeMs >= 0) {
-                    m_mediaPlayer.seekTo(m_pausedTimeMs);
+                    m_mediaPlayer.seekTo((int)m_pausedTimeMs);
                 }
 
                 int ct = m_mediaPlayer.getCurrentPosition();
@@ -211,7 +211,11 @@ public class AudioManager {
         return m_session;
     }
 
-    public MediaPlayer getPlayer() { return m_mediaPlayer; }
+    //public MediaPlayer getPlayer() { return m_mediaPlayer; }
+
+    public long getCurrentPosition() {
+        return m_mediaPlayer.getCurrentPosition();
+    }
 
     public void setQueueData(final String data) {
 
@@ -253,7 +257,7 @@ public class AudioManager {
      * @param autoPlay begin playback when finished loading
      * @param initialTimeMs -1: play from beginning, >=0 begin playback from time T in MS
      */
-    public void loadUrl(final String url, boolean autoPlay, int initialTimeMs) {
+    public void loadUrl(final String url, boolean autoPlay, long initialTimeMs) {
         m_currentUrl = null;
         m_autoPlay = autoPlay;
         m_pausedTimeMs = initialTimeMs;
@@ -429,10 +433,10 @@ public class AudioManager {
         m_mediaPlayer.start();
 
         if (m_pausedTimeMs >= 0) {
-            m_mediaPlayer.seekTo(m_pausedTimeMs);
+            m_mediaPlayer.seekTo((int)m_pausedTimeMs);
         }
 
-        int ct = m_mediaPlayer.getCurrentPosition();
+        long ct = getCurrentPosition();
         Log.info("on play current_time=" + ct + " paused_time=" + m_pausedTimeMs);
 
         m_service.updateNotification();
@@ -454,7 +458,7 @@ public class AudioManager {
         m_service.sendEvent(event, "{}");
 
         // todo: implement resume by calling start() followed by seekto(saved_position)
-        m_pausedTimeMs = m_mediaPlayer.getCurrentPosition();
+        m_pausedTimeMs = getCurrentPosition();
 
         saveMediaPlayerState();
     }
@@ -617,22 +621,22 @@ public class AudioManager {
     }
 
     private void loadMediaPlayerState() {
-        EntityTable tab = m_service.m_database.m_settingsTable;
+        SettingsTable tab = m_service.m_database.m_settingsTable;
         Cursor cursor = null;
         JSONObject obj = null;
         int current_index = -1;
-        int current_time = -1;
+        long current_time = -1;
 
         long count = tab.count();
 
         try {
-            current_index = ((SettingsTable) tab).getInt("current_index");
+            current_index = tab.getInt("current_index");
         } catch (SettingsTable.MissingValue e) {
             current_index = -1;
         }
 
         try {
-            current_time = ((SettingsTable) tab).getInt("current_time");
+            current_time = tab.getLong("current_time");
         } catch (SettingsTable.MissingValue e) {
             current_time = -1;
         }
@@ -657,7 +661,7 @@ public class AudioManager {
         SettingsTable tab = m_service.m_database.m_settingsTable;
         //tab.delete_all_rows();
         tab.setInt("current_index", index);
-        tab.setInt("current_time", m_pausedTimeMs);
+        tab.setLong("current_time", m_pausedTimeMs);
 
 
     }

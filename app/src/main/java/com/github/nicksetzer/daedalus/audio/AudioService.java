@@ -268,7 +268,7 @@ public class AudioService extends MediaBrowserServiceCompat {
                 session.setPlaybackState(new PlaybackStateCompat.Builder()
                         .setState(
                                 mediaIsPlaying()?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
-                                m_manager.getPlayer().getCurrentPosition(),
+                                m_manager.getCurrentPosition(),
                                 1.0F)
                         .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
                         .build());
