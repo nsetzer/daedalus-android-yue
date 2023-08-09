@@ -5,8 +5,11 @@ import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.net.http.SslError;
 import android.webkit.SslErrorHandler;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.webkit.WebViewAssetLoader;
 
 import com.github.nicksetzer.daedalus.R;
 import com.github.nicksetzer.daedalus.WebActivity;
@@ -17,9 +20,21 @@ public class DaedalusWebViewClient extends WebViewClient {
     Activity m_activity;
     boolean m_devel;
 
+    WebViewAssetLoader m_assetLoader;
+
     public DaedalusWebViewClient(Activity activity, boolean devel) {
         m_activity = activity;
         m_devel = devel;
+
+        m_assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(activity))
+                .addPathHandler("/res/", new WebViewAssetLoader.ResourcesPathHandler(activity))
+                .build();
+    }
+    @Override
+    public WebResourceResponse shouldInterceptRequest(WebView view,
+                                                      WebResourceRequest request) {
+        return m_assetLoader.shouldInterceptRequest(request.getUrl());
     }
 
     @Override
@@ -67,5 +82,7 @@ public class DaedalusWebViewClient extends WebViewClient {
         final AlertDialog dialog = builder.create();
         dialog.show();
     }
+
+
 
 }

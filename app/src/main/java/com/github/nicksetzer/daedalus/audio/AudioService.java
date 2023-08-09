@@ -412,7 +412,7 @@ public class AudioService extends MediaBrowserServiceCompat {
                     case AudioActions.ACTION_LOAD_URL:
                         url = intent.getExtras().getString("url");
                         if (url != null) {
-                            m_manager.loadUrl(url);
+                            m_manager.loadUrl(url, false, -1);
                         } else {
                             android.util.Log.e("daedalus-js", "received null url");
                         }
