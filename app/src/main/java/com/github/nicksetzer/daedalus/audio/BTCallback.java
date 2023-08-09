@@ -140,7 +140,7 @@ public class BTCallback extends MediaSessionCompat.Callback {
     @Override
     public void onSeekTo(long pos) {
 
-        Log.info("onseek");
+        Log.info("onseek", pos);
         m_manager.seek(pos);
     }
 

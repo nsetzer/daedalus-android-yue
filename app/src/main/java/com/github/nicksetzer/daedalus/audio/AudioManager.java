@@ -524,6 +524,7 @@ public class AudioManager {
         // seek to a position, units: ms
         android.util.Log.e("daedalus-js", "seek to " + pos);
         m_mediaPlayer.seekTo(pos, MediaPlayer.SEEK_PREVIOUS_SYNC);
+        m_service.updateNotification();
     }
 
     public boolean isPlaying() {
