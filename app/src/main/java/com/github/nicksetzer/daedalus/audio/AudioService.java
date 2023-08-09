@@ -68,6 +68,7 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.media.MediaBrowserServiceCompat;
 import androidx.media.session.MediaButtonReceiver;
+import androidx.media.utils.MediaConstants;
 
 /**
  * Android 11 turned this from a default `Service` into a MediaBrowserServiceCompat
@@ -143,11 +144,9 @@ public class AudioService extends MediaBrowserServiceCompat {
 
         m_fetchRunning = false;
         m_fetchLock = new ReentrantLock();
-        //super.onCreate();
 
-        if (m_manager == null) {
-            m_manager = new AudioManager(this);
-        }
+
+        m_manager = new AudioManager(this);
     }
 
     @Override
@@ -159,29 +158,19 @@ public class AudioService extends MediaBrowserServiceCompat {
     @Override
     public BrowserRoot onGetRoot(String clientPackageName, int clientUid,
                                  Bundle rootHints) {
+        Log.info("service autolifecycle onGetRoot " + clientPackageName + " " + clientUid, rootHints);
 
-        // (Optional) Control the level of access for the specified package name.
-        // You'll need to write your own logic to do this.
-        /*
-        if (allowBrowsing(clientPackageName, clientUid)) {
-            // Returns a root ID that clients can use with onLoadChildren() to retrieve
-            // the content hierarchy.
-            return new BrowserRoot(MY_MEDIA_ROOT_ID, null);
-        } else {
-            // Clients can connect, but this BrowserRoot is an empty hierachy
-            // so onLoadChildren returns nothing. This disables the ability to browse for content.
-            return new BrowserRoot(MY_EMPTY_MEDIA_ROOT_ID, null);
-        }
-        */
-        Log.info("service onGetRoot");
+        Bundle extras = new Bundle();
+        extras.putInt(MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
+                MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM);
 
-        return new BrowserRoot(MY_MEDIA_ROOT_ID, null);
+        return new BrowserRoot(MY_MEDIA_ROOT_ID, extras);
     }
 
     @Override
     public void onLoadChildren(final String parentMediaId,
                                final Result<List<MediaBrowserCompat.MediaItem>> result) {
-        Log.info("service onLoadChildren:" + parentMediaId);
+        Log.info("service autolifecycle onLoadChildren:" + parentMediaId);
         //  Browsing not allowed
         if (MY_EMPTY_MEDIA_ROOT_ID.equals(parentMediaId)) {
             result.sendResult(null);
@@ -269,7 +258,12 @@ public class AudioService extends MediaBrowserServiceCompat {
                                 mediaIsPlaying()?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
                                 m_manager.getCurrentPosition(),
                                 1.0F)
-                        .setActions(PlaybackStateCompat.ACTION_SEEK_TO)
+                        .setActions(PlaybackStateCompat.ACTION_PLAY |
+                                PlaybackStateCompat.ACTION_PAUSE |
+                                PlaybackStateCompat.ACTION_SEEK_TO |
+                                PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                                PlaybackStateCompat.ACTION_PLAY_PAUSE)
                         .build());
             }
 
@@ -533,7 +527,10 @@ public class AudioService extends MediaBrowserServiceCompat {
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
-        Log.info("service onbind", m_binder!=null);
+        Log.info("service autolifecycle onbind: ", intent.getAction());
+        if (SERVICE_INTERFACE.equals(intent.getAction())) {
+            return super.onBind(intent);
+        }
         return m_binder;
     }
 

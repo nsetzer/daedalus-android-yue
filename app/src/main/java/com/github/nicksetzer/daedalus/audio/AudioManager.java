@@ -84,13 +84,16 @@ public class AudioManager {
         PlaybackStateCompat state = new PlaybackStateCompat.Builder()
                 .setActions(
                         PlaybackStateCompat.ACTION_PLAY |
-                                PlaybackStateCompat.ACTION_PAUSE |
-                                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
-                                PlaybackStateCompat.ACTION_PLAY_PAUSE).build();
+                        PlaybackStateCompat.ACTION_PAUSE |
+                        PlaybackStateCompat.ACTION_SEEK_TO |
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE).build();
 
         m_session.setPlaybackState(state);
         m_session.setCallback(new BTCallback(this));
         m_session.setActive(true);
+        m_service.setSessionToken(m_session.getSessionToken());
 
         m_mediaPlayer = new MediaPlayer();
 
