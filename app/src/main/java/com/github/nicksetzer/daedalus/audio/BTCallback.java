@@ -19,7 +19,7 @@ public class BTCallback extends MediaSessionCompat.Callback {
     public boolean onMediaButtonEvent(Intent mediaButtonIntent) {
 
         if (mediaButtonIntent.getAction().equals(Intent.ACTION_MEDIA_BUTTON)) {
-            KeyEvent event = mediaButtonIntent.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
+            KeyEvent event = mediaButtonIntent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent.class);
             //event.getAction() == KeyEvent.ACTION_UP ||
             // somethings send down and up, others only down
             if (event.getAction() == KeyEvent.ACTION_DOWN) {

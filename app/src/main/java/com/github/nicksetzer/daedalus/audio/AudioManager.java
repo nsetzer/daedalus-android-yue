@@ -78,8 +78,6 @@ public class AudioManager {
         context.registerReceiver(m_receiver, filter);
 
         m_session = new MediaSessionCompat(context, "AudioService");
-        // These flags are now always set
-        m_session.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
 
         PlaybackStateCompat state = new PlaybackStateCompat.Builder()
                 .setActions(

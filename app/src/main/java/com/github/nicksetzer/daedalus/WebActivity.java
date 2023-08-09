@@ -24,6 +24,8 @@ import android.view.KeyEvent;
 import android.webkit.ValueCallback;
 import android.webkit.WebView;
 import android.widget.Toast;
+import android.window.OnBackInvokedDispatcher;
+
 
 import com.github.nicksetzer.daedalus.audio.AudioActions;
 import com.github.nicksetzer.daedalus.audio.AudioEvents;
@@ -123,6 +125,8 @@ public class WebActivity extends Activity {
         registerReceiver(m_screen_receiver, filter);
 
 
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                ()->handleOnBackPressed());
         /*
         // use reflection to get a stack trace whenever a resource is not closed.
 
@@ -213,8 +217,7 @@ public class WebActivity extends Activity {
         m_timeHandler = null;
     }
 
-    @Override
-    public void onBackPressed() {
+    public void handleOnBackPressed() {
         /**
          * When the back button is pressed return to the previous page in the browser.
          *
@@ -247,13 +250,10 @@ public class WebActivity extends Activity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-
-
-
         switch (keyCode) {
             case KeyEvent.KEYCODE_BACK:
                 android.util.Log.i("daedalus-js", "KeyEvent.KEYCODE_BACK");
-                onBackPressed();
+                handleOnBackPressed();
                 break;
             default:
                 android.util.Log.e("daedalus-js", "android key code: " + keyCode);
