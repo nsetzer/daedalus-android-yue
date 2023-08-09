@@ -1,6 +1,7 @@
 package com.github.nicksetzer.daedalus.audio;
 
 import android.content.Intent;
+import android.os.Bundle;
 import android.support.v4.media.RatingCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.view.KeyEvent;
@@ -22,6 +23,13 @@ public class BTCallback extends MediaSessionCompat.Callback {
             KeyEvent event = mediaButtonIntent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent.class);
             //event.getAction() == KeyEvent.ACTION_UP ||
             // somethings send down and up, others only down
+            String button;
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                button = "down";
+            } else {
+                button = "up";
+            }
+            Log.info("onMediaButtonEvent ", button, event.getKeyCode());
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 switch (event.getKeyCode()) {
                     case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
@@ -31,7 +39,7 @@ public class BTCallback extends MediaSessionCompat.Callback {
                         m_manager.skipToNext();
                         return true;
                     case KeyEvent.KEYCODE_MEDIA_PLAY:
-                        m_manager.play();
+                        onPlay();
                         return true;
                     case KeyEvent.KEYCODE_MEDIA_PAUSE:
                         m_manager.pause();
@@ -59,6 +67,8 @@ public class BTCallback extends MediaSessionCompat.Callback {
                 Log.info(key, mediaButtonIntent.getExtras().get(key).toString());
             }
             */
+        } else {
+            Log.warn("invalid onMediaButtonEvent", mediaButtonIntent.getAction());
         }
 
         return super.onMediaButtonEvent(mediaButtonIntent);
@@ -99,8 +109,9 @@ public class BTCallback extends MediaSessionCompat.Callback {
     @Override
     public void onPlay() {
 
-        Log.info( "onplay");
+
         // some bluetooth devices only send play events
+        Log.info( "onplay isplaying=", m_manager.isPlaying(), m_manager.isPlaying()?"-->pause":"-->play");
         if (m_manager.isPlaying()) {
             m_manager.pause();
         } else {
@@ -161,5 +172,12 @@ public class BTCallback extends MediaSessionCompat.Callback {
 
         Log.info("onsetrating");
     }
+    @Override
+    public void onPlayFromMediaId(String mediaId, Bundle extras) {
+        super.onPlayFromMediaId(mediaId, extras);
+        Log.info( "lifecycle onPlayFromMediaId:" + mediaId + " : " +extras.toString());
+        int index = Integer.parseInt(mediaId.substring(mediaId.lastIndexOf('-') + 1));
+        m_manager.loadIndex(index);
 
+    }
 }
