@@ -272,6 +272,8 @@ public class SongsTable extends EntityTable {
             }
         }
 
+        cursor.close();
+
         return forest;
     }
 
@@ -357,6 +359,8 @@ public class SongsTable extends EntityTable {
             }
         }
 
+        cursor.close();
+
         return array;
     }
 
@@ -378,6 +382,8 @@ public class SongsTable extends EntityTable {
                 cursor.moveToNext();
             }
         }
+
+        cursor.close();
 
         return array;
     }

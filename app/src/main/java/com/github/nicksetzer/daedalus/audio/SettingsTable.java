@@ -33,19 +33,25 @@ public class SettingsTable extends EntityTable {
     }
 
     public int getInt(String key) throws MissingValue {
+
+        NaturalPrimaryKey npk1 = new NaturalPrimaryKey();
+        npk1.set("key", key);
+        Cursor cursor = this.select(npk1, 1, 0);
+
+        int value;
         try {
-            NaturalPrimaryKey npk1 = new NaturalPrimaryKey();
-            npk1.set("key", key);
-            Cursor cursor = this.select(npk1, 1, 0);
             JSONObject obj = this.getFirstObject(cursor);
-            if (obj != null) {
-                return Integer.parseInt(obj.getString("value"));
-            } else {
+            if (obj == null) {
                 throw new MissingValue();
             }
+            value = Integer.parseInt(obj.getString("value"));
         } catch (JSONException e) {
+            cursor.close();
             throw new MissingValue();
         }
+
+        cursor.close();
+        return value;
     }
 
     public void setLong(String key, long value) {
@@ -64,19 +70,24 @@ public class SettingsTable extends EntityTable {
     }
 
     public long getLong(String key) throws MissingValue {
+        NaturalPrimaryKey npk1 = new NaturalPrimaryKey();
+        npk1.set("key", key);
+        Cursor cursor = this.select(npk1, 1, 0);
+
+        long value;
         try {
-            NaturalPrimaryKey npk1 = new NaturalPrimaryKey();
-            npk1.set("key", key);
-            Cursor cursor = this.select(npk1, 1, 0);
             JSONObject obj = this.getFirstObject(cursor);
-            if (obj != null) {
-                return Long.parseLong(obj.getString("value"));
-            } else {
+            if (obj == null) {
                 throw new MissingValue();
             }
+            value = Long.parseLong(obj.getString("value"));
         } catch (JSONException e) {
+            cursor.close();
             throw new MissingValue();
         }
+
+        cursor.close();
+        return value;
     }
     public class MissingValue extends Exception {
     }

@@ -181,7 +181,7 @@ public class YueApi {
         return arr;
     }
 
-    public static void download(String token, String uid, String filepath, Callback callback) throws IOException {
+    public static boolean download(String token, String uid, String filepath, Callback callback) throws IOException {
 
         URL url = new URL(PROTOCOL, DOMAIN,PORT, "/api/library/" + uid + "/audio");
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -198,16 +198,16 @@ public class YueApi {
         try {
             conn.connect();
         } catch (Exception e) {
-            android.util.Log.e("daedalus-js-api", "failed to connect: " + e.toString());
-            return;
+            Log.error("failed to connect: " + e.toString());
+            return false;
         }
 
         int status = conn.getResponseCode();
         android.util.Log.e("daedalus-js-api", "status: " + status);
         if (status != HttpURLConnection.HTTP_OK) {
             String text = readResponseText(conn.getErrorStream());
-            android.util.Log.e("daedalus-js-api", "body:" + text);
-            return;
+            Log.error("error body:" + text);
+            return false;
         }
 
         String contentLength = conn.getHeaderField("Content-Length");
@@ -246,6 +246,7 @@ public class YueApi {
             fileStream.close();
         }
 
+        return true;
     }
 
     public static String librarySongAudioUrl(final String token, final String uid) throws IOException{

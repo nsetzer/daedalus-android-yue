@@ -53,7 +53,7 @@ public class AudioSyncTask implements Runnable {
                 }
 
                 try {
-
+                    // TODO: notify user number that failed to sync
                     _syncOne(index, filtered.size(), obj);
 
                 } catch (JSONException e) {
@@ -64,8 +64,28 @@ public class AudioSyncTask implements Runnable {
                 index += 1;
             }
 
+
+
             array = m_service.m_database.m_songsTable.getSyncDeleteTracks();
             Log.info("found " + array.size() + " tracks to remove");
+            index = 0;
+            for (JSONObject obj : array) {
+                if (m_service.taskIsKill()) {
+                    break;
+                }
+
+                try {
+
+                    _removeOne(index, filtered.size(), obj);
+
+                } catch (JSONException e) {
+                    Log.error("json", e);
+                } catch (IOException e) {
+                    Log.error("io", e);
+                }
+                index += 1;
+            }
+
 
         } finally {
             m_service.syncComplete();
@@ -113,7 +133,7 @@ public class AudioSyncTask implements Runnable {
         return !synced;
 
     }
-    void _syncOne(int index, int length, JSONObject obj) throws JSONException, IOException {
+    boolean _syncOne(int index, int length, JSONObject obj) throws JSONException, IOException {
 
         long spk = obj.getLong("spk");
         //boolean sync = obj.getBoolean("sync");
@@ -122,12 +142,13 @@ public class AudioSyncTask implements Runnable {
 
         String file_path =  _getFilePath(obj);
 
-        Log.info("path=" + file_path + ", uid=" + uid);
+        Log.info("sync path=" + file_path + ", uid=" + uid);
 
 
+        boolean result;
 
         try {
-            YueApi.download(m_token, uid, file_path, (a, b) -> {
+            result = YueApi.download(m_token, uid, file_path, (a, b) -> {
                 String message = (a / 1024) + "/" + (b / 1024) + " kb";
                 m_service.syncProgressUpdate(index + 1, length, message);
             });
@@ -135,14 +156,42 @@ public class AudioSyncTask implements Runnable {
             Log.info("failed to download song: " + uid);
             Log.info("download path: " + file_path);
 
-            return;
+            return false;
         }
 
         JSONObject newObject = new JSONObject();
-        newObject.put("synced", 1);
-        newObject.put("file_path", file_path);
+        newObject.put("synced", result?1:0);
+        newObject.put("file_path", result?file_path:"");
+        if (!result) {
+            Log.info("clearing entry for " + uid);
+        }
 
         m_service.m_database.m_songsTable.update(spk, newObject);
+
+        return result;
     }
 
+    void _removeOne(int index, int length, JSONObject obj) throws JSONException, IOException {
+
+        long spk = obj.getLong("spk");
+
+        String file_path = obj.getString("file_path");
+
+        Log.info("remove path=" + file_path);
+
+        JSONObject newObject = new JSONObject();
+        newObject.put("synced", 0);
+        newObject.put("file_path", "");
+
+        File file = new File(file_path);
+        if (file.exists()) {
+            file.delete();
+        }
+
+        m_service.m_database.m_songsTable.update(spk, newObject);
+
+        String message = "removed " + (index+1) + "/" + (length);
+        m_service.syncProgressUpdate(index + 1, length, message);
+
+    }
 }
