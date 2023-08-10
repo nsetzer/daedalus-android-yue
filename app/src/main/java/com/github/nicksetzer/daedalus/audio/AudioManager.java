@@ -4,13 +4,21 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.Cursor;
-import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
-import android.media.MediaPlayer;
+
+import android.os.Handler;
+import android.os.Looper;
 import android.service.media.MediaBrowserService;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
+
+import androidx.media3.common.AudioAttributes;
+import androidx.media3.common.C;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.ExoPlayer;
 
 import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.audio.tasks.RadioNextTrackTask;
@@ -45,7 +53,7 @@ public class AudioManager {
 
     private MediaSessionCompat m_session;
 
-    private MediaPlayer m_mediaPlayer;
+    private ExoPlayer m_mediaPlayer;
 
     private android.media.AudioManager m_manager;
 
@@ -59,6 +67,8 @@ public class AudioManager {
     private long m_pausedTimeMs = -1;
 
     AudioQueue m_queue;
+
+    private boolean m_isPlaying = false;
 
     public AudioManager(AudioService service) {
 
@@ -93,12 +103,21 @@ public class AudioManager {
         m_session.setActive(true);
         m_service.setSessionToken(m_session.getSessionToken());
 
-        m_mediaPlayer = new MediaPlayer();
+        m_mediaPlayer = new ExoPlayer.Builder(m_service).build();
+        AudioAttributes attrs = new AudioAttributes.Builder()
+                .setContentType(C.CONTENT_TYPE_MUSIC)
+                .setUsage(C.USAGE_MEDIA)
+                .build();
+        m_mediaPlayer.setAudioAttributes(attrs, true);
+        m_mediaPlayer.setHandleAudioBecomingNoisy(true);
+        m_mediaPlayer.addListener(new PlayerEventListener(this));
+
 
         //m_mediaPlayer.setAudioStreamType(android.media.AudioManager.STREAM_MUSIC);
-        m_mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
+        //m_mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
+        //        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
 
+        /*
         m_mediaPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
             @Override
             public boolean onError(MediaPlayer mp, int what, int extra) {
@@ -174,14 +193,16 @@ public class AudioManager {
                 onSongEnd();
             }
         });
+        *
+         */
 
         m_manager = (android.media.AudioManager) context.getSystemService(context.AUDIO_SERVICE);
         m_manager.setMode(android.media.AudioManager.MODE_NORMAL);
 
-        SettingsTable tab = m_service.m_database.m_settingsTable;
+        //SettingsTable tab = m_service.m_database.m_settingsTable;
         // store current session id
-        tab.setInt("previous_session_id", m_mediaPlayer.getAudioSessionId());
-        Log.warn("Session Id: " + m_mediaPlayer.getAudioSessionId());
+        //tab.setInt("previous_session_id", m_mediaPlayer.getAudioSessionId());
+        //Log.warn("Session Id: " + m_mediaPlayer.getAudioSessionId());
 
         loadQueueData();
 
@@ -193,7 +214,7 @@ public class AudioManager {
     public String formatTimeUpdate() {
         JSONObject update = new JSONObject();
         // position is the time in milliseconds
-        int duration = m_mediaPlayer.getDuration();
+        long duration = m_mediaPlayer.getDuration();
         // duration is -1 during streaming
         if (duration < 0) {
             duration = 0;
@@ -267,22 +288,19 @@ public class AudioManager {
             android.util.Log.e("daedalus-js", "null url given");
             return;
         }
-        try {
-            if (m_mediaPlayer.isPlaying()) {
-                m_mediaPlayer.stop();
-            }
-            m_mediaPlayer.reset();
 
-            // note: logging the url may Log the user token
-            android.util.Log.i("daedalus-js", "url: " + url);
-            m_mediaPlayer.setDataSource(url);
-            m_mediaPlayer.prepareAsync();
-
-            m_currentUrl = url;
-
-        } catch(IOException e) {
-            android.util.Log.e("daedalus-js", e.toString());
+        if (m_mediaPlayer.isPlaying()) {
+            m_mediaPlayer.stop();
         }
+
+        MediaItem item = new MediaItem.Builder()
+                .setMediaId("0")
+                .setUri(url).build();
+        m_mediaPlayer.setMediaItem(item);
+        m_mediaPlayer.setPlayWhenReady(m_autoPlay);
+        m_mediaPlayer.prepare();
+
+        m_currentUrl = url;
     }
 
     @Deprecated
@@ -294,22 +312,17 @@ public class AudioManager {
             android.util.Log.e("daedalus-js", "null url given");
             return;
         }
-        try {
-            if (m_mediaPlayer.isPlaying()) {
-                m_mediaPlayer.stop();
-            }
-            m_mediaPlayer.reset();
 
-            // note: logging the url may Log the user token
-            android.util.Log.i("daedalus-js", "url: " + url);
-            m_mediaPlayer.setDataSource(url);
-            m_mediaPlayer.prepareAsync();
-
-            m_currentUrl = url;
-
-        } catch(IOException e) {
-            android.util.Log.e("daedalus-js", e.toString());
+        if (m_mediaPlayer.isPlaying()) {
+            m_mediaPlayer.stop();
         }
+
+        MediaItem item = new MediaItem.Builder()
+                .setMediaId(url)
+                .setUri(url).build();
+        m_mediaPlayer.setMediaItem(item);
+        m_mediaPlayer.prepare();
+        m_currentUrl = url;
     }
 
     public void loadResume() {
@@ -406,9 +419,11 @@ public class AudioManager {
         } else {
             Log.info("mediaplayer play");
         }
+        android.util.Log.d("myapp", android.util.Log.getStackTraceString(new Exception()));
 
         // somewhat undocumented feature. must call start then seek
 
+        /*
         AudioAttributes audioAttributes =
                 new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -429,13 +444,15 @@ public class AudioManager {
                         .setAudioAttributes(audioAttributes)
                         .build();
 
-        m_manager.requestAudioFocus(mAudioFocusRequest);
 
-        m_mediaPlayer.start();
+        m_manager.requestAudioFocus(mAudioFocusRequest);
+         */
 
         if (m_pausedTimeMs >= 0) {
             m_mediaPlayer.seekTo((int)m_pausedTimeMs);
         }
+
+        m_mediaPlayer.play();
 
         long ct = getCurrentPosition();
         Log.info("on play current_time=" + ct + " paused_time=" + m_pausedTimeMs);
@@ -452,6 +469,7 @@ public class AudioManager {
 
     public void pause() {
         Log.info("mediaplayer pause");
+        android.util.Log.d("myapp", android.util.Log.getStackTraceString(new Exception()));
         m_mediaPlayer.pause();
         m_service.updateNotification();
 
@@ -520,20 +538,13 @@ public class AudioManager {
 
     public void seek(long pos) {
         // seek to a position, units: ms
-        android.util.Log.e("daedalus-js", "seek to " + pos);
-        m_mediaPlayer.seekTo(pos, MediaPlayer.SEEK_PREVIOUS_SYNC);
+        Log.info("seek to " + pos);
+        m_mediaPlayer.seekTo(pos);
         m_service.updateNotification();
     }
 
     public boolean isPlaying() {
-        try {
-            if (m_mediaPlayer != null) {
-                return m_mediaPlayer.isPlaying();
-            }
-        } catch (java.lang.IllegalStateException e) {
-            Log.warn("illegal player state");
-        }
-        return false;
+        return m_isPlaying;
     }
 
     public void setToken(final String token) {
@@ -666,5 +677,110 @@ public class AudioManager {
         tab.setLong("current_time", m_pausedTimeMs);
 
 
+    }
+
+    static class PlayerEventListener implements Player.Listener {
+
+        private AudioManager m_manager = null;
+        PlayerEventListener(AudioManager manager) {
+            m_manager = manager;
+        }
+
+        private String stateName(int state) {
+            switch (state){
+                case Player.STATE_IDLE:
+                    return "IDLE";
+                case Player.STATE_BUFFERING:
+                    return "BUFFERING";
+                case Player.STATE_READY:
+                    return "READY";
+                case Player.STATE_ENDED:
+                    return "ENDED";
+                default:
+                    return "UNKNOWN";
+            }
+        }
+
+        @Override
+        public void onIsPlayingChanged(boolean isPlaying) {
+            m_manager.m_isPlaying = isPlaying;
+        }
+
+        @Override
+        public void onPositionDiscontinuity(Player.PositionInfo oldPosition, Player.PositionInfo newPosition, int reason) {
+
+            Log.warn("player discontinuity " + reason + " : " + oldPosition.positionMs + " => " + newPosition.positionMs);
+        }
+
+        @Override
+        public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
+
+            //Player.STATE_IDLE // 1
+            //Player.STATE_READY // 3
+            //Player.STATE_ENDED // 4
+            //Player.STATE_BUFFERING// 2
+            Log.warn("player state changed. playWhenReady: " + playWhenReady + " state: " + playbackState + " " + stateName(playbackState));
+
+            switch (playbackState) {
+
+                case Player.STATE_ENDED:
+                    m_manager.onSongEnd();
+                    break;
+
+                case Player.STATE_IDLE:
+                case Player.STATE_BUFFERING:
+                case Player.STATE_READY:
+                default:
+                    m_manager.updateProgressBar();
+                    break;
+            }
+            //Player.Listener.super.onPlayerStateChanged(playWhenReady, playbackState);
+        }
+
+        @Override
+        public void onEvents(Player player, Player.Events events) {
+            //Player.Listener.super.onEvents(player, events);
+            Log.error("lifecycle playback event: " + events.toString());
+        }
+
+        @Override
+        public void onPlayerError(PlaybackException error) {
+            Log.error("lifecycle playback error: " + error.getMessage());
+            //Player.Listener.super.onPlayerError(error);
+            //onSongEnd();
+        }
+
+
+
+    }
+
+    private Handler m_exoHandler = new Handler(Looper.getMainLooper());
+    private final Runnable updateProgressAction = new Runnable() {
+        @Override
+        public void run() {
+            updateProgressBar();
+        }
+    };
+    private void updateProgressBar() {
+
+        m_service.updateNotification();
+
+        m_exoHandler.removeCallbacks(updateProgressAction);
+
+        int playbackState = m_mediaPlayer.getPlaybackState();
+
+        long delayMS=1000;
+        if (m_mediaPlayer.getPlayWhenReady() && playbackState == Player.STATE_READY) {
+            long delta = 1000 - m_mediaPlayer.getCurrentPosition() % 1000;
+            if (delta < 200) {
+                delta = 200;
+            }
+            delayMS = delta;
+        }
+
+        if (playbackState != Player.STATE_IDLE && playbackState != Player.STATE_ENDED) {
+            m_exoHandler.postDelayed(updateProgressAction, delayMS);
+            m_service.updateNotification();
+        }
     }
 }

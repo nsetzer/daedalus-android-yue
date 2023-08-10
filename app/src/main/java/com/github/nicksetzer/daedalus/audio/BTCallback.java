@@ -164,7 +164,7 @@ public class BTCallback extends MediaSessionCompat.Callback {
     @Override
     public void onRewind() {
 
-        Log.info("onwind");
+        Log.info("onrewind");
     }
 
     @Override
@@ -179,5 +179,11 @@ public class BTCallback extends MediaSessionCompat.Callback {
         int index = Integer.parseInt(mediaId.substring(mediaId.lastIndexOf('-') + 1));
         m_manager.loadIndex(index);
 
+    }
+
+    @Override
+    public void onCustomAction(String action, Bundle extras) {
+        Log.warn("onCustomAction", action, extras);
+        super.onCustomAction(action, extras);
     }
 }
