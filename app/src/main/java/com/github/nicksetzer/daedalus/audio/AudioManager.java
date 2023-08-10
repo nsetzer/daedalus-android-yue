@@ -3,16 +3,14 @@ package com.github.nicksetzer.daedalus.audio;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.database.Cursor;
-import android.media.AudioFocusRequest;
 
 import android.os.Handler;
 import android.os.Looper;
-import android.service.media.MediaBrowserService;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 
+import androidx.annotation.NonNull;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
@@ -22,7 +20,6 @@ import androidx.media3.exoplayer.ExoPlayer;
 
 import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.audio.tasks.RadioNextTrackTask;
-import com.github.nicksetzer.metallurgy.orm.EntityTable;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -45,17 +42,17 @@ TODO: update the media session queue.
  */
 public class AudioManager {
 
-    private AudioService m_service;
+    private final AudioService m_service;
 
     //final String MP3URL = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
 
-    private BTReceiver m_receiver;
+    private final BTReceiver m_receiver;
 
-    private MediaSessionCompat m_session;
+    private final MediaSessionCompat m_session;
 
     private ExoPlayer m_mediaPlayer;
 
-    private android.media.AudioManager m_manager;
+    private final android.media.AudioManager m_manager;
 
     private boolean m_autoPlay = true;
     private int m_playback_mode = 0;
@@ -115,7 +112,7 @@ public class AudioManager {
         m_mediaListener = new PlayerEventListener(this);
         m_mediaPlayer.addListener(m_mediaListener);
 
-        m_manager = (android.media.AudioManager) context.getSystemService(context.AUDIO_SERVICE);
+        m_manager = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         m_manager.setMode(android.media.AudioManager.MODE_NORMAL);
 
         loadQueueData();
@@ -239,27 +236,6 @@ public class AudioManager {
         m_mediaPlayer.setMediaItem(item);
         m_mediaPlayer.prepare();
         m_currentUrl = url;
-    }
-
-    public void loadResume() {
-        if (m_playback_mode != 0) {
-            Log.warn("unable to resume in current m_playback_mode=" + m_playback_mode);
-            return;
-        }
-
-        int index = m_queue.getCurrentIndex();
-
-        int session_id = -1;
-        try {
-            session_id = m_mediaPlayer.getAudioSessionId();
-        }catch (RuntimeException e) {
-            Log.error(e.getMessage());
-        }
-
-        Log.info("resume playback for index=" + index + " session id=" + session_id);
-        loadUrl( m_queue.getUrl(index), true, m_pausedTimeMs);
-
-        m_service.updateNotification();
     }
 
     public void loadRadioUrl(final String url) {
@@ -474,17 +450,15 @@ public class AudioManager {
 
             android.util.Log.e("daedalus-js", "saved queue data: " +  m_queue.length());
         }
-        catch (IOException e) {
-            android.util.Log.e("Exception", "File write failed: " + e.toString());
+        catch (IOException|RuntimeException e) {
+            android.util.Log.e("Exception", "File write failed: " + e);
         }
-        catch (RuntimeException e) {
-            android.util.Log.e("Exception", "File write failed: " + e.toString());
-        } finally {
+        finally {
             if (stream != null) {
                 try {
                     stream.close();
                 } catch (IOException e) {
-                    android.util.Log.e("daedalus-js", "File close failed: " + e.toString());
+                    android.util.Log.e("daedalus-js", "File close failed: " + e);
                 }
             }
         }
@@ -520,16 +494,15 @@ public class AudioManager {
             m_queue.setData(data);
 
             android.util.Log.e("daedalus-js", "loaded queue data: " + m_queue.length());
-        } catch (IOException e) {
-            android.util.Log.e("daedalus-js", "File read failed: " + e.toString());
-        } catch (RuntimeException e) {
-            android.util.Log.e("daedalus-js", "File read failed: " + e.toString());
-        } finally {
+        } catch (IOException|RuntimeException e) {
+            android.util.Log.e("daedalus-js", "File read failed: " + e);
+        }
+        finally {
             if (stream != null) {
                 try {
                     stream.close();
                 } catch (IOException e) {
-                    android.util.Log.e("daedalus-js", "File close failed: " + e.toString());
+                    android.util.Log.e("daedalus-js", "File close failed: " + e);
                 }
             }
         }
@@ -537,10 +510,8 @@ public class AudioManager {
 
     private void loadMediaPlayerState() {
         SettingsTable tab = m_service.m_database.m_settingsTable;
-        Cursor cursor = null;
-        JSONObject obj = null;
-        int current_index = -1;
-        long current_time = -1;
+        int current_index;
+        long current_time;
 
         long count = tab.count();
 
@@ -583,7 +554,7 @@ public class AudioManager {
 
     static class PlayerEventListener implements Player.Listener {
 
-        private AudioManager m_manager = null;
+        private final AudioManager m_manager;
         PlayerEventListener(AudioManager manager) {
             m_manager = manager;
         }
@@ -634,7 +605,7 @@ public class AudioManager {
         }
 
         @Override
-        public void onEvents(Player player, Player.Events events) {
+        public void onEvents(@NonNull Player player, Player.Events events) {
             //Player.Listener.super.onEvents(player, events);
             Log.error("lifecycle playback event: " + events.toString());
         }
@@ -650,13 +621,8 @@ public class AudioManager {
 
     }
 
-    private Handler m_exoHandler = new Handler(Looper.getMainLooper());
-    private final Runnable updateProgressAction = new Runnable() {
-        @Override
-        public void run() {
-            updateProgressBar();
-        }
-    };
+    private final Handler m_exoHandler = new Handler(Looper.getMainLooper());
+    private final Runnable updateProgressAction = this::updateProgressBar;
     private void updateProgressBar() {
 
 
