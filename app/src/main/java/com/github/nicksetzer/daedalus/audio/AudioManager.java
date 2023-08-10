@@ -106,7 +106,7 @@ public class AudioManager {
 
         m_mediaPlayer = new ExoPlayer.Builder(m_service).build();
         AudioAttributes attrs = new AudioAttributes.Builder()
-                .setContentType(C.CONTENT_TYPE_MUSIC)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
                 .build();
         m_mediaPlayer.setAudioAttributes(attrs, true);
@@ -115,97 +115,8 @@ public class AudioManager {
         m_mediaListener = new PlayerEventListener(this);
         m_mediaPlayer.addListener(m_mediaListener);
 
-
-        //m_mediaPlayer.setAudioStreamType(android.media.AudioManager.STREAM_MUSIC);
-        //m_mediaPlayer.setAudioAttributes(new AudioAttributes.Builder()
-        //        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
-
-        /*
-        m_mediaPlayer.setOnErrorListener(new MediaPlayer.OnErrorListener() {
-            @Override
-            public boolean onError(MediaPlayer mp, int what, int extra) {
-
-                // what:
-                //MediaPlayer.MEDIA_ERROR_UNKNOWN
-                //MediaPlayer.MEDIA_ERROR_SERVER_DIED
-                String s_what = "";
-                switch (what) {
-                    case MediaPlayer.MEDIA_ERROR_UNKNOWN:
-                        s_what = "unknown";
-                        break;
-                    case MediaPlayer.MEDIA_ERROR_UNSUPPORTED:
-                        s_what = "unsupported";
-                        break;
-                    case -38: // undocumented error for when app is paused for too long
-                        loadResume();
-                        s_what = "state error";
-                        break;
-                    default:
-                        s_what = "other";
-                        break;
-                }
-                s_what += " (" + what + ")";
-
-
-                // extra:
-                //MediaPlayer.MEDIA_ERROR_IO
-                //MediaPlayer.MEDIA_ERROR_MALFORMED
-                //MediaPlayer.MEDIA_ERROR_UNSUPPORTED
-                //MediaPlayer.MEDIA_ERROR_TIMED_OUT
-                //MEDIA_ERROR_SYSTEM
-                String payload = "{\"what\": " + what + ", \"extra\": " + extra + "}";
-                Log.error("sending error to javascript: " + s_what + " extra=" + extra);
-                if (what != -38) {
-                    m_service.sendEvent(AudioEvents.ONERROR, payload);
-                }
-
-                return true; // true when error is handled
-            }
-        });
-
-        m_mediaPlayer.setOnPreparedListener (new MediaPlayer.OnPreparedListener() {
-            @Override
-            public void onPrepared(MediaPlayer mp) {
-                // do stuff here
-                if (m_autoPlay) {
-                    m_mediaPlayer.start();
-                }
-
-                if (m_pausedTimeMs >= 0) {
-                    m_mediaPlayer.seekTo((int)m_pausedTimeMs);
-                }
-
-                int ct = m_mediaPlayer.getCurrentPosition();
-                Log.info("on play current_time=" + ct + " paused_time=" + m_pausedTimeMs);
-
-                if (m_autoPlay) {
-                    m_service.updateNotification();
-                    m_service.sendEvent(AudioEvents.ONPLAY, "{}");
-                }
-
-                m_service.sendEvent("onprepared", "{}");
-
-                m_service.sendEvent("ontimeupdate", AudioManager.this.formatTimeUpdate());
-
-            }
-        });
-
-        m_mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-            @Override
-            public void onCompletion(MediaPlayer mp) {
-                onSongEnd();
-            }
-        });
-        *
-         */
-
         m_manager = (android.media.AudioManager) context.getSystemService(context.AUDIO_SERVICE);
         m_manager.setMode(android.media.AudioManager.MODE_NORMAL);
-
-        //SettingsTable tab = m_service.m_database.m_settingsTable;
-        // store current session id
-        //tab.setInt("previous_session_id", m_mediaPlayer.getAudioSessionId());
-        //Log.warn("Session Id: " + m_mediaPlayer.getAudioSessionId());
 
         loadQueueData();
 
@@ -704,13 +615,8 @@ public class AudioManager {
         }
 
         @Override
-        public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
-
-            //Player.STATE_IDLE // 1
-            //Player.STATE_READY // 3
-            //Player.STATE_ENDED // 4
-            //Player.STATE_BUFFERING// 2
-            Log.warn("player state changed. playWhenReady: " + playWhenReady + " state: " + playbackState + " " + stateName(playbackState));
+        public void onPlaybackStateChanged(int playbackState) {
+            Log.warn("player state changed. state: " + playbackState + " " + stateName(playbackState));
 
             switch (playbackState) {
 
@@ -725,7 +631,6 @@ public class AudioManager {
                     m_manager.updateProgressBar();
                     break;
             }
-            //Player.Listener.super.onPlayerStateChanged(playWhenReady, playbackState);
         }
 
         @Override
