@@ -69,6 +69,7 @@ public class AudioManager {
     AudioQueue m_queue;
 
     private boolean m_isPlaying = false;
+    PlayerEventListener m_mediaListener;
 
     public AudioManager(AudioService service) {
 
@@ -110,7 +111,9 @@ public class AudioManager {
                 .build();
         m_mediaPlayer.setAudioAttributes(attrs, true);
         m_mediaPlayer.setHandleAudioBecomingNoisy(true);
-        m_mediaPlayer.addListener(new PlayerEventListener(this));
+
+        m_mediaListener = new PlayerEventListener(this);
+        m_mediaPlayer.addListener(m_mediaListener);
 
 
         //m_mediaPlayer.setAudioStreamType(android.media.AudioManager.STREAM_MUSIC);
@@ -250,6 +253,8 @@ public class AudioManager {
         }
 
         saveQueueData(data, m_queue.getCurrentIndex());
+
+
     }
 
     public String getQueueData() {
@@ -421,33 +426,6 @@ public class AudioManager {
         }
         android.util.Log.d("myapp", android.util.Log.getStackTraceString(new Exception()));
 
-        // somewhat undocumented feature. must call start then seek
-
-        /*
-        AudioAttributes audioAttributes =
-                new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build();
-
-        AudioFocusRequest mAudioFocusRequest =
-                new AudioFocusRequest.Builder(m_manager.AUDIOFOCUS_GAIN)
-                        .setOnAudioFocusChangeListener(new android.media.AudioManager.OnAudioFocusChangeListener() {
-                            @Override
-                            public void onAudioFocusChange(int focusChange) {
-
-
-                            }
-                        })
-                        .setAcceptsDelayedFocusGain(false)
-                        .setWillPauseWhenDucked(true)
-                        .setAudioAttributes(audioAttributes)
-                        .build();
-
-
-        m_manager.requestAudioFocus(mAudioFocusRequest);
-         */
-
         if (m_pausedTimeMs >= 0) {
             m_mediaPlayer.seekTo((int)m_pausedTimeMs);
         }
@@ -490,7 +468,16 @@ public class AudioManager {
 
         try {
             Log.info("service release");
+            if (m_mediaPlayer.isPlaying()) {
+                m_mediaPlayer.stop();
+            }
+
+            m_mediaPlayer.removeListener(m_mediaListener);
             m_mediaPlayer.release();
+
+            m_exoHandler.removeCallbacks(updateProgressAction);
+
+            m_mediaPlayer = null;
         }catch (RuntimeException e) {
             Log.error("failed to release", e.getMessage());
         }
@@ -539,6 +526,10 @@ public class AudioManager {
     public void seek(long pos) {
         // seek to a position, units: ms
         Log.info("seek to " + pos);
+        android.util.Log.d("myapp", android.util.Log.getStackTraceString(new Exception()));
+        if (!m_isPlaying) {
+            m_pausedTimeMs = pos;
+        }
         m_mediaPlayer.seekTo(pos);
         m_service.updateNotification();
     }
@@ -763,7 +754,27 @@ public class AudioManager {
     };
     private void updateProgressBar() {
 
-        m_service.updateNotification();
+
+        // updating the notification here breaks seeing in android auto
+        // only the session state needs to be updated
+        // the notification and android auto progress will be updated.
+
+        if (m_mediaPlayer == null) {
+            return;
+        }
+
+        m_session.setPlaybackState(new PlaybackStateCompat.Builder()
+                .setState(
+                        m_isPlaying?PlaybackStateCompat.STATE_PLAYING:PlaybackStateCompat.STATE_PAUSED,
+                        m_mediaPlayer.getCurrentPosition(),
+                        1.0F)
+                .setActions(PlaybackStateCompat.ACTION_PLAY |
+                        PlaybackStateCompat.ACTION_PAUSE |
+                        PlaybackStateCompat.ACTION_SEEK_TO |
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE)
+                .build());
 
         m_exoHandler.removeCallbacks(updateProgressAction);
 
@@ -780,7 +791,7 @@ public class AudioManager {
 
         if (playbackState != Player.STATE_IDLE && playbackState != Player.STATE_ENDED) {
             m_exoHandler.postDelayed(updateProgressAction, delayMS);
-            m_service.updateNotification();
         }
+
     }
 }

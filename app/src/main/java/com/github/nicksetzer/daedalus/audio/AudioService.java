@@ -392,11 +392,15 @@ public class AudioService extends MediaBrowserServiceCompat {
                     case AudioActions.ACTION_SET_QUEUE:
                         data = intent.getExtras().getString("data");
                         m_manager.setQueueData(data);
+                        // tell android auto that the current playlist changed
+                        notifyChildrenChanged(MY_MEDIA_ROOT_ID);
                         break;
                     case AudioActions.ACTION_UPDATE_QUEUE:
                         data = intent.getExtras().getString("data");
                         index = intent.getExtras().getInt("index");
                         m_manager.updateQueueData(index, data);
+                        // tell android auto that the current playlist changed
+                        notifyChildrenChanged(MY_MEDIA_ROOT_ID);
                         break;
                     case AudioActions.ACTION_LOAD_INDEX:
                         index = intent.getExtras().getInt("index");
@@ -528,9 +532,11 @@ public class AudioService extends MediaBrowserServiceCompat {
     @Override
     public IBinder onBind(Intent intent) {
         Log.info("service autolifecycle onbind: ", intent.getAction());
+        // check if android auto is trying to bind
         if (SERVICE_INTERFACE.equals(intent.getAction())) {
             return super.onBind(intent);
         }
+        // otherwise when intent is null assume it is the main activity.
         return m_binder;
     }
 
