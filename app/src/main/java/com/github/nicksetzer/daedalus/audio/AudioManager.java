@@ -6,6 +6,8 @@ import android.content.IntentFilter;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.support.v4.media.MediaBrowserCompat;
+import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -21,6 +23,7 @@ import androidx.media3.exoplayer.ExoPlayer;
 import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.audio.tasks.RadioNextTrackTask;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -31,6 +34,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 /*
 TODO: update the media session queue.
@@ -118,6 +124,8 @@ public class AudioManager {
         loadQueueData();
 
         loadMediaPlayerState();
+
+        initQuickList();
 
         Log.info("media session created");
     }
@@ -533,6 +541,115 @@ public class AudioManager {
             m_queue.setCurrentIndex(current_index);
             loadUrl(m_queue.getUrl(current_index), false, current_time);
         }
+    }
+
+    private void _arraySwap(JSONArray array, int i, int j) throws JSONException {
+        Object a = array.get(i);
+        Object b = array.get(j);
+        array.put(j, a);
+        array.put(i, b);
+    }
+
+    private void _shuffle(JSONArray array) {
+        Random rand = new Random();
+        try {
+            int end = array.length();
+            while (end-- > 1) {
+                int idx = rand.nextInt(end);
+                Log.info("swap", idx, end);
+                _arraySwap(array, idx, end);
+            }
+        } catch (JSONException e) {
+            Log.error(e.getMessage());
+        }
+    }
+
+    public class QuickItem {
+        public String m_desc;
+        public String m_query;
+
+        public QuickItem(String desc, String query) {
+            m_desc = desc;
+            m_query = query;
+        }
+
+        public String getDesc() {
+            return m_desc;
+        }
+
+        public String getQuery() {
+            return m_query;
+        }
+    }
+
+    private List<QuickItem> m_quicklist;
+
+    private void initQuickList() {
+        m_quicklist = new ArrayList<>();
+
+        m_quicklist.add(new QuickItem("Driving Hits Volume 1", "comment=\":DRV\" && p lt -14d"));
+        m_quicklist.add(new QuickItem("Driving Hits Volume 2", "comment=\":VL2\" && p lt -14d"));
+        m_quicklist.add(new QuickItem("Driving Hits Volume 3", "(comment=\":DRV\" || comment=\":VL2\") && p lt -14d"));
+        m_quicklist.add(new QuickItem("Best Albums", "comment=\":BEST\" && p lt -14d"));
+        m_quicklist.add(new QuickItem("STP Radio", "\"stone temple pilots\" not STPLIGHT && p lt -14d"));
+        m_quicklist.add(new QuickItem("Mark Lanegan Radio", "lanegan && rte gt 3 && p lt -14d"));
+        m_quicklist.add(new QuickItem("Soundwith Radio", "soundwitch"));
+        m_quicklist.add(new QuickItem("Gothic Emily", "\"gothic emily\""));
+
+
+
+    }
+
+    List<MediaBrowserCompat.MediaItem> getQuickListMediaItems() {
+
+        List<MediaBrowserCompat.MediaItem> mediaItems = new ArrayList<>();
+
+        int idx = 0;
+        for (QuickItem item : m_quicklist) {
+            mediaItems.add(new MediaBrowserCompat.MediaItem(new MediaDescriptionCompat.Builder()
+                    .setMediaId("/quicklist/" + idx)
+                    .setTitle(item.getDesc())
+                    .build(),
+                    MediaBrowserCompat.MediaItem.FLAG_PLAYABLE));
+            idx += 1;
+        }
+
+        return mediaItems;
+    }
+
+
+    public void buildQuickList(int index) {
+
+        if (index < 0 || index >= m_quicklist.size()) {
+            return;
+        }
+
+        String query = m_quicklist.get(index).getQuery();
+
+        JSONArray tracks = m_service.querySongs(query);
+
+        Log.info("found tracks: " + tracks.length());
+
+        if (tracks.length()==0) {
+            return;
+        }
+
+        _shuffle(tracks);
+
+        while (tracks.length() > 200) {
+            tracks.remove(tracks.length()-1);
+        }
+
+        String data = tracks.toString();
+
+        this.setQueueData(data);
+
+        this.loadIndex(0);
+
+        m_service.notifyChildrenChanged("/nowplaying");
+
+        // TODO: notify UI that playlist changed
+        // there is no api for this
     }
 
 

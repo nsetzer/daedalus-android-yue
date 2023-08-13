@@ -106,6 +106,8 @@ public class AudioQueue {
                 .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, obj.optString("album", "Unknown Album"))
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, obj.optString("title", "Unknown Title"))
                 .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, obj.optLong("length", 0) * 1000)
+                .putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, index)
+                .putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS,  m_queue.length())
                 .build();
 
     }
@@ -115,7 +117,7 @@ public class AudioQueue {
      * @param index
      * @return
      */
-    public MediaBrowserCompat.MediaItem getMediaItem(int index) {
+    public MediaBrowserCompat.MediaItem getMediaItem(int index, String mediaRoot) {
 
         if (m_queue == null) {
             return null;
@@ -140,8 +142,9 @@ public class AudioQueue {
         duration.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, obj.optLong("length", 0));
 
         MediaDescriptionCompat desc = new MediaDescriptionCompat.Builder()
-                .setMediaId(obj.optString("uid", "null") + "-" + index)
-                .setTitle(obj.optString("title", "Unknown Album"))
+                //.setMediaId(obj.optString("uid", "null") + "-" + index)
+                .setMediaId(mediaRoot + "/" + index)
+                .setTitle(obj.optString("title", "Unknown Title"))
                 .setSubtitle(obj.optString("artist", "Unknown Album"))
                 .setExtras(duration)
                 .build();
@@ -152,7 +155,7 @@ public class AudioQueue {
         return item;
     }
 
-    public List<MediaBrowserCompat.MediaItem> getMediaItems() {
+    public List<MediaBrowserCompat.MediaItem> getMediaItems(String mediaRoot) {
 
         if (m_queue == null) {
             return null;
@@ -165,7 +168,7 @@ public class AudioQueue {
         List<MediaBrowserCompat.MediaItem> mediaItems = new ArrayList<>();
 
         for (int i=0; i < m_queue.length(); i++) {
-            mediaItems.add(this.getMediaItem(i));
+            mediaItems.add(this.getMediaItem(i, mediaRoot));
         }
 
         return mediaItems;

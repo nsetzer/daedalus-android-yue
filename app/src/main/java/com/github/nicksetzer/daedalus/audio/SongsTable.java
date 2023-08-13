@@ -100,16 +100,13 @@ public class SongsTable extends EntityTable {
         return count;
     }
 
-    public JSONArray queryForest(String query, int syncState, int showBannished) throws DslException {
-
-        Log.error(query);
+    private String _buildQuery(String query, int syncState, int showBannished, List<String> params) throws DslException {
 
         StringBuilder sb = new StringBuilder();
         sb.append("SELECT spk, uid, artist, artist_key, album, album_index, year, title, length, sync, synced, file_path, play_count, rating FROM songs");
 
         Token token = null;
         Pair<String, List<String>> result;
-        List<String> params = new ArrayList<>();
 
         if (!query.isEmpty() || syncState > 0) {
 
@@ -133,7 +130,7 @@ public class SongsTable extends EntityTable {
             sb.append(result.first);
             sb.append(")");
 
-            params = result.second;
+            params.addAll(result.second);
         }
 
 
@@ -195,6 +192,45 @@ public class SongsTable extends EntityTable {
         sb.append(" ORDER BY artist_key COLLATE NOCASE, album COLLATE NOCASE, title COLLATE NOCASE");
 
         String sql = sb.toString();
+        return sql;
+    }
+    public JSONArray query(String query, int syncState, int showBannished) throws DslException {
+        List<String> params = new ArrayList<>();
+        String sql = _buildQuery(query, syncState, showBannished, params);
+
+        Log.error(sql);
+        Log.error(String.join(", ", params));
+
+        Cursor cursor = m_db.query(sql, params.toArray(new String[]{}));
+
+        Log.info("query returned " + cursor.getCount() + " rows");
+
+        JSONArray tracks = new JSONArray();
+
+        if (cursor != null && cursor.moveToFirst()) {
+            while(!cursor.isAfterLast()) {
+                try {
+                    JSONObject track = getObject(cursor);
+                    tracks.put(track);
+                } catch (JSONException e) {
+                    android.util.Log.e("daeadalus-js","failed to build forest node: " + e.getMessage());
+                }
+                cursor.moveToNext();
+            }
+        } else {
+            Log.error("query failed to return result");
+        }
+
+        cursor.close();
+
+        return tracks;
+
+    }
+    public JSONArray queryForest(String query, int syncState, int showBannished) throws DslException {
+
+        List<String> params = new ArrayList<>();
+        String sql = _buildQuery(query, syncState, showBannished, params);
+
         Log.error(sql);
         Log.error(String.join(", ", params));
 

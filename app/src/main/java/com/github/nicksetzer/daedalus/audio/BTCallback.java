@@ -175,9 +175,23 @@ public class BTCallback extends MediaSessionCompat.Callback {
     @Override
     public void onPlayFromMediaId(String mediaId, Bundle extras) {
         super.onPlayFromMediaId(mediaId, extras);
+
         Log.info( "lifecycle onPlayFromMediaId:" + mediaId + " : " +extras.toString());
-        int index = Integer.parseInt(mediaId.substring(mediaId.lastIndexOf('-') + 1));
-        m_manager.loadIndex(index);
+
+        if (mediaId.startsWith("/nowplaying")) {
+            int index = Integer.parseInt(mediaId.substring(mediaId.lastIndexOf('/') + 1));
+            m_manager.loadIndex(index);
+        }
+        else if (mediaId.startsWith("/quicklist")) {
+            int index = Integer.parseInt(mediaId.substring(mediaId.lastIndexOf('/') + 1));
+
+            // tracks = m_service.m_songTable.query()
+            // shuffle tracks
+            // select top 200
+            // set playlist
+            m_manager.buildQuickList(index);
+            Log.warn("load media id: " + index);
+        }
 
     }
 

@@ -30,68 +30,86 @@ public class AudioSyncTask implements Runnable {
     public void run() {
 
         try {
-            ArrayList<JSONObject> array = m_service.m_database.m_songsTable.getSyncDownloadTracks();
 
-            ArrayList<JSONObject> filtered = new ArrayList<>();
-            for (JSONObject obj : array) {
-                try {
-                    if (_filterOne(obj)) {
-                        filtered.add(obj);
-                    }
-                } catch (JSONException e) {
-                    Log.error(e.getMessage());
-                }
-            }
+            int errors = _syncAll();
 
-            Log.info("found " + filtered.size() + "/" + array.size() + " tracks to download");
-
-            int index = 0;
-            for (JSONObject obj : filtered) {
-
-                if (m_service.taskIsKill()) {
-                    break;
-                }
-
-                try {
-                    // TODO: notify user number that failed to sync
-                    _syncOne(index, filtered.size(), obj);
-
-                } catch (JSONException e) {
-                    Log.error("json", e);
-                } catch (IOException e) {
-                    Log.error("io", e);
-                }
-                index += 1;
-            }
-
-
-
-            array = m_service.m_database.m_songsTable.getSyncDeleteTracks();
-            Log.info("found " + array.size() + " tracks to remove");
-            index = 0;
-            for (JSONObject obj : array) {
-                if (m_service.taskIsKill()) {
-                    break;
-                }
-
-                try {
-
-                    _removeOne(index, filtered.size(), obj);
-
-                } catch (JSONException e) {
-                    Log.error("json", e);
-                } catch (IOException e) {
-                    Log.error("io", e);
-                }
-                index += 1;
-            }
-
+            _removeAll();
 
         } finally {
             m_service.syncComplete();
         }
     }
 
+
+
+    int _syncAll() {
+        ArrayList<JSONObject> array = m_service.m_database.m_songsTable.getSyncDownloadTracks();
+
+        ArrayList<JSONObject> filtered = new ArrayList<>();
+        for (JSONObject obj : array) {
+            try {
+                if (_filterOne(obj)) {
+                    filtered.add(obj);
+                }
+            } catch (JSONException e) {
+                Log.error(e.getMessage());
+            }
+        }
+
+        Log.info("found " + filtered.size() + "/" + array.size() + " tracks to download");
+
+        int error_count = 0;
+
+        int index = 0;
+        for (JSONObject obj : filtered) {
+
+            if (m_service.taskIsKill()) {
+                break;
+            }
+
+            try {
+                // TODO: notify user number that failed to sync
+                if (!_syncOne(index, filtered.size(), obj)) {
+                    error_count += 1;
+                };
+
+            } catch (JSONException e) {
+                Log.error("json", e);
+            } catch (IOException e) {
+                Log.error("io", e);
+            }
+            index += 1;
+        }
+
+        return error_count;
+    }
+
+    void _removeAll() {
+        ArrayList<JSONObject> array = m_service.m_database.m_songsTable.getSyncDeleteTracks();
+        Log.info("found " + array.size() + " tracks to remove");
+        int index = 0;
+        int length = array.size();
+
+        for (JSONObject obj : array) {
+            if (m_service.taskIsKill()) {
+                break;
+            }
+
+            try {
+
+                _removeOne(obj);
+
+                String message = "removed " + (index+1) + "/" + (length);
+                m_service.syncProgressUpdate(index + 1, length, message);
+
+            } catch (JSONException e) {
+                Log.error("json", e);
+            } catch (IOException e) {
+                Log.error("io", e);
+            }
+            index += 1;
+        }
+    }
     String _getFilePath(JSONObject obj) throws JSONException {
         String uid = obj.getString("uid");
         String pattern = "['\"\\/\\^\\$\\|\\?\\*\\:\\<\\>\\[\\]]";
@@ -108,6 +126,8 @@ public class AudioSyncTask implements Runnable {
     boolean _filterOne(JSONObject obj) throws JSONException {
         // remove files that have already been synced
         // double check that the file size is correct
+        // return true if the file has not been synced.
+
         boolean synced = obj.getInt("synced")!=0;
 
         if (synced) {
@@ -144,7 +164,6 @@ public class AudioSyncTask implements Runnable {
 
         Log.info("sync path=" + file_path + ", uid=" + uid);
 
-
         boolean result;
 
         try {
@@ -171,7 +190,7 @@ public class AudioSyncTask implements Runnable {
         return result;
     }
 
-    void _removeOne(int index, int length, JSONObject obj) throws JSONException, IOException {
+    void _removeOne(JSONObject obj) throws JSONException, IOException {
 
         long spk = obj.getLong("spk");
 
@@ -189,9 +208,6 @@ public class AudioSyncTask implements Runnable {
         }
 
         m_service.m_database.m_songsTable.update(spk, newObject);
-
-        String message = "removed " + (index+1) + "/" + (length);
-        m_service.syncProgressUpdate(index + 1, length, message);
 
     }
 }

@@ -49,6 +49,7 @@ import com.github.nicksetzer.daedalus.audio.tasks.AudioFetchTask;
 import com.github.nicksetzer.daedalus.audio.tasks.AudioSyncTask;
 import com.github.nicksetzer.metallurgy.orm.dsl.DslException;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -76,8 +77,10 @@ import androidx.media.utils.MediaConstants;
  */
 public class AudioService extends MediaBrowserServiceCompat {
 
-    private static final String MY_MEDIA_ROOT_ID = "media_root_id";
-    private static final String MY_EMPTY_MEDIA_ROOT_ID = "empty_root_id";
+    private static final String TREE_MEDIA_ROOT_ID = "/";
+    private static final String TREE_MEDIA_NOW_PLAYING_ID = "/nowplaying";
+    private static final String TREE_MEDIA_QUICK_LIST_ID = "/quicklist";
+    private static final String TREE_MEDIA_ROOT_EMPTY_ID = "empty_root_id";
 
 
     public AudioManager m_manager;
@@ -164,7 +167,7 @@ public class AudioService extends MediaBrowserServiceCompat {
         extras.putInt(MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
                 MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM);
 
-        return new BrowserRoot(MY_MEDIA_ROOT_ID, extras);
+        return new BrowserRoot(TREE_MEDIA_ROOT_ID, extras);
     }
 
     @Override
@@ -172,15 +175,42 @@ public class AudioService extends MediaBrowserServiceCompat {
                                final Result<List<MediaBrowserCompat.MediaItem>> result) {
         Log.info("service autolifecycle onLoadChildren:" + parentMediaId);
         //  Browsing not allowed
-        if (MY_EMPTY_MEDIA_ROOT_ID.equals(parentMediaId)) {
+        if (TREE_MEDIA_ROOT_EMPTY_ID.equals(parentMediaId)) {
             result.sendResult(null);
             return;
         }
 
         // Check if this is the root menu:
-        if (MY_MEDIA_ROOT_ID.equals(parentMediaId)) {
-            result.sendResult(m_manager.m_queue.getMediaItems());
-        } else {
+        if (TREE_MEDIA_ROOT_ID.equals(parentMediaId)) {
+            List<MediaBrowserCompat.MediaItem> mediaItems = new ArrayList<>();
+
+            mediaItems.add(new MediaBrowserCompat.MediaItem(new MediaDescriptionCompat.Builder()
+                    .setMediaId(TREE_MEDIA_NOW_PLAYING_ID)
+                    .setTitle("Now Playing")
+                    .build(),
+                    MediaBrowserCompat.MediaItem.FLAG_BROWSABLE));
+
+            mediaItems.add(new MediaBrowserCompat.MediaItem(new MediaDescriptionCompat.Builder()
+                    .setMediaId(TREE_MEDIA_QUICK_LIST_ID)
+                    .setTitle("Quick Lists")
+                    .build(),
+                    MediaBrowserCompat.MediaItem.FLAG_BROWSABLE));
+
+            result.sendResult(mediaItems);
+
+        }
+        else if (TREE_MEDIA_NOW_PLAYING_ID.equals(parentMediaId)) {
+
+            result.sendResult(m_manager.m_queue.getMediaItems(TREE_MEDIA_NOW_PLAYING_ID));
+
+        }
+        else if (TREE_MEDIA_QUICK_LIST_ID.equals(parentMediaId)) {
+
+            List<MediaBrowserCompat.MediaItem> mediaItems = m_manager.getQuickListMediaItems();
+            result.sendResult(mediaItems);
+
+        }
+        else {
             result.sendResult(null);
         }
 
@@ -393,14 +423,14 @@ public class AudioService extends MediaBrowserServiceCompat {
                         data = intent.getExtras().getString("data");
                         m_manager.setQueueData(data);
                         // tell android auto that the current playlist changed
-                        notifyChildrenChanged(MY_MEDIA_ROOT_ID);
+                        notifyChildrenChanged(TREE_MEDIA_NOW_PLAYING_ID);
                         break;
                     case AudioActions.ACTION_UPDATE_QUEUE:
                         data = intent.getExtras().getString("data");
                         index = intent.getExtras().getInt("index");
                         m_manager.updateQueueData(index, data);
                         // tell android auto that the current playlist changed
-                        notifyChildrenChanged(MY_MEDIA_ROOT_ID);
+                        notifyChildrenChanged(TREE_MEDIA_NOW_PLAYING_ID);
                         break;
                     case AudioActions.ACTION_LOAD_INDEX:
                         index = intent.getExtras().getInt("index");
@@ -707,6 +737,13 @@ public class AudioService extends MediaBrowserServiceCompat {
 
     }
 
+    public JSONArray querySongs(String query) {
+        try {
+            return m_database.m_songsTable.query(query, 1, 0);
+        } catch (DslException e) {
+            return new JSONArray();
+        }
+    }
     public String getSyncInfo() {
 
         JSONObject obj = new JSONObject();
