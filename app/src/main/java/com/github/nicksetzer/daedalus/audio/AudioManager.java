@@ -319,7 +319,7 @@ public class AudioManager {
         } else {
             Log.info("mediaplayer play");
         }
-        android.util.Log.d("myapp", android.util.Log.getStackTraceString(new Exception()));
+        //android.util.Log.d("myapp", android.util.Log.getStackTraceString(new Exception()));
 
         if (m_pausedTimeMs >= 0) {
             m_mediaPlayer.seekTo((int)m_pausedTimeMs);
@@ -342,7 +342,7 @@ public class AudioManager {
 
     public void pause() {
         Log.info("mediaplayer pause");
-        android.util.Log.d("myapp", android.util.Log.getStackTraceString(new Exception()));
+        //android.util.Log.d("myapp", android.util.Log.getStackTraceString(new Exception()));
         m_mediaPlayer.pause();
         m_service.updateNotification();
 
@@ -556,7 +556,6 @@ public class AudioManager {
             int end = array.length();
             while (end-- > 1) {
                 int idx = rand.nextInt(end);
-                Log.info("swap", idx, end);
                 _arraySwap(array, idx, end);
             }
         } catch (JSONException e) {
@@ -640,6 +639,16 @@ public class AudioManager {
             tracks.remove(tracks.length()-1);
         }
 
+        // TODO: client expects id, not uid
+        for (int i=0; i < tracks.length(); i++) {
+            try {
+                JSONObject track = (JSONObject) tracks.get(i);
+                track.put("id", track.get("uid"));
+            } catch (JSONException e) {
+                Log.error("unable to update track id");
+            }
+        }
+
         String data = tracks.toString();
 
         this.setQueueData(data);
@@ -648,8 +657,8 @@ public class AudioManager {
 
         m_service.notifyChildrenChanged("/nowplaying");
 
-        // TODO: notify UI that playlist changed
-        // there is no api for this
+        Log.info("oninvalidateplaylist");
+        m_service.sendEvent("oninvalidateplaylist", "{}");
     }
 
 

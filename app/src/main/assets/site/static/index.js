@@ -4522,6 +4522,7 @@ pages.audio=(function(api,daedalus){
             this.device=device;
             console.error("-------------------------------------");
             const bind=(x)=>{
+              console.log("registerAndroidEvent "+x);
               registerAndroidEvent('on'+x,this['on'+x].bind(this));
             };
             bind('prepared');
@@ -4532,6 +4533,7 @@ pages.audio=(function(api,daedalus){
             bind('timeupdate');
             bind('indexchanged');
             bind('trackchanged');
+            bind('invalidateplaylist');
             this._currentTime=0;
             this._duration=0;
           }
@@ -4658,6 +4660,10 @@ pages.audio=(function(api,daedalus){
             if(song!=null){
               this.device._sendEvent('handleAudioSongChanged',song);
             }
+          }
+          oninvalidateplaylist(payload){
+            console.log("oninvalidateplaylist load queue");
+            this.device.queueLoad();
           }
           ontrackchanged(payload){
             this.device.current_track=payload;
@@ -4865,10 +4871,12 @@ pages.audio=(function(api,daedalus){
                     this.queue=result.result;
                     if(daedalus.platform.isAndroid){
                       this.impl.getCurrentIndex().then(result=>{
+                          console.error("load queue: success");
                           this.current_index=result;
                           this._sendEvent('handleAudioQueueChanged',this.queue);
                         }).catch(error=>{
-                          console.error("error getting index");
+                          console.error("load queue: error getting index "+error);
+                          
                         });
                     }else{
                       this._sendEvent('handleAudioQueueChanged',this.queue);
@@ -5121,11 +5129,14 @@ pages.audio=(function(api,daedalus){
           _sendEvent(eventname,event){
             this.connected_elements=this.connected_elements.filter(e=>e.isMounted(
                             ));
+            let found=0;
             this.connected_elements.forEach(e=>{
                 if(e&&e[eventname]){
                   e[eventname](event);
+                  found+=1;
                 }
               });
+            console.log(`queue event dispatch: ${eventname} = ${found}`);
           }
         };
         AudioDevice.instance=function(){
@@ -5133,10 +5144,13 @@ pages.audio=(function(api,daedalus){
             device_instance=new AudioDevice();
             let impl;
             if(daedalus.platform.isAndroid){
+              console.log("construct device: android audio");
               impl=new NativeDeviceImpl(device_instance);
             }else if(daedalus.platform.isQt){
+              console.log("construct device: qt audio");
               impl=new QDeviceImpl(device_instance);
             }else{
+              console.log("construct device: web audio");
               impl=new RemoteDeviceImpl(device_instance);
             }
             device_instance.setImpl(impl);
@@ -7101,14 +7115,7 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
             }
             elementMounted(){
               this.attrs.device.connectView(this);
-              if(this.attrs.device.queueLength()==0){
-                this.attrs.device.queueLoad();
-              }else{
-                const song=this.attrs.device.currentSong();
-                this.attrs.header.setSong(song);
-                this.handleAudioQueueChanged(this.attrs.device.queue);
-                ;
-              }
+              this.attrs.device.queueLoad();
               if(daedalus.platform.isAndroid){
                 registerAndroidEvent('onresume',this.handleResume.bind(this));
               }
@@ -7117,7 +7124,6 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
               let playid=daedalus.util.parseParameters()['play'];
               if(!!playid){
                 const songList=[playid[0]];
-                console.log("playid",songList);
                 api.queueSetQueue(songList).then(result=>{
                     console.log(audio.AudioDevice.instance());
                     audio.AudioDevice.instance().queueLoad().then(result=>{
@@ -7126,7 +7132,6 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
                   });
                 ;
               }
-              console.log(this.attrs.device.currentSong());
             }
             elementUnmounted(){
               this.attrs.device.disconnectView(this);
@@ -7241,6 +7246,10 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
               }
             }
             handleAudioQueueChanged(songList){
+              console.log(`update queue with new list`);
+              if(songList.length>1){
+                console.log("queue[0] = "+JSON.stringify(songList[0]));
+              }
               const current_id=audio.AudioDevice.instance().currentSongId();
               const current_index=audio.AudioDevice.instance().currentSongIndex();
               
@@ -7287,7 +7296,8 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
               }
               const song=this.attrs.device.currentSong();
               this.attrs.header.setSong(song);
-              console.log(`miss rate hit: ${hit} miss: ${miss} del: ${del}`);
+              console.log(`update queue miss rate hit: ${hit} miss: ${miss} del: ${del}`);
+              
             }
           };
           return[PlaylistPage];
