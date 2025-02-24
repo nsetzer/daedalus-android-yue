@@ -5,13 +5,13 @@
 .dcs-e0b5d60f-0 {flex-direction:row;flex-grow:1}
 .dcs-56473361-0 {cursor:pointer}
 .dcs-2cc64f69-0 {position:fixed;left:0px;top:0px}
-.dcs-2cc64f69-1 {width:1em;height:100vh;background:rgba(0,0,0,0);border-right-width:1px;border-right-style:solid;border-right-color:#00000033;transition:background .7s linear, width 0s .7s, height 0s .7s}
+.dcs-2cc64f69-1 {width:1em;height:100vh;background:rgba(0,0,0,0);border-right-width:1px;border-right-style:solid;border-right-color:#00000033;transition:background .5s linear, width 0s .7s, height 0s .7s}
 .dcs-2cc64f69-2 {position:fixed;right:0px;top:0px;width:1em;height:100vh;background:rgba(0,0,0,0);border-left-width:1px;border-left-style:solid;border-left-color:#00000033}
-.dcs-2cc64f69-3 {width:100vw;height:120vh;background:rgba(0,0,0,.6);transition:background .7s linear}
+.dcs-2cc64f69-3 {width:100vw;height:120vh;background:rgba(0,0,0,.8);transition:background .5s linear}
 .dcs-2cc64f69-4 {position:fixed;top:0px;width:300px;min-width:200px;height:100vh;background:white;border-right-style:solid;border-right-width:2px;border-right-color:black;box-shadow:.25em 0 .5em 0 rgba(0,0,0,0.50)}
 .dcs-2cc64f69-5 {overflow:auto;height:calc(100vh - 120px)}
-.dcs-2cc64f69-6 {left:-300px;transition:left .5s ease-in-out}
-.dcs-2cc64f69-7 {left:0px;transition:left .5s ease-in-out}
+.dcs-2cc64f69-6 {left:-300px;transition:left 0.2s ease-in-out}
+.dcs-2cc64f69-7 {left:0px;transition:left 0.2s ease-in-out}
 .dcs-2cc64f69-8 {left:0px}
 .dcs-2cc64f69-9 {left:-300px}
 .dcs-2cc64f69-10 {min-width:50px;min-height:50px;width:50px;height:50px;margin-right:0.5em;margin-left:0.5em;display:flex;justify-content:center;align-items:center}

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.support.v4.media.MediaBrowserCompat;
@@ -18,7 +19,14 @@ import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.datasource.DataSource;
+import androidx.media3.datasource.DataSpec;
+import androidx.media3.datasource.FileDataSource;
+import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.extractor.DefaultExtractorInput;
+import androidx.media3.extractor.ExtractorInput;
+import androidx.media3.extractor.ogg.OggExtractor;
 
 import com.github.nicksetzer.daedalus.Log;
 import com.github.nicksetzer.daedalus.audio.tasks.RadioNextTrackTask;
@@ -34,6 +42,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.StringWriter;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -214,9 +224,18 @@ public class AudioManager {
             m_mediaPlayer.stop();
         }
 
+        Uri uri;
+        if (url.startsWith("/storage")) {
+            // support local files with '#' and other special uri characters
+            uri = Uri.fromFile(new File(url));
+        } else {
+            uri = Uri.parse(url);
+        }
+
         MediaItem item = new MediaItem.Builder()
-                .setMediaId("0")
-                .setUri(url).build();
+                .setMediaId(url)
+                .setUri(uri).build();
+
         m_mediaPlayer.setMediaItem(item);
         m_mediaPlayer.setPlayWhenReady(m_autoPlay);
         m_mediaPlayer.prepare();
@@ -238,9 +257,19 @@ public class AudioManager {
             m_mediaPlayer.stop();
         }
 
+
+        Uri uri;
+        if (url.startsWith("/storage")) {
+            // support local files with '#' and other special uri characters
+            uri = Uri.fromFile(new File(url));
+        } else {
+            uri = Uri.parse(url);
+        }
+
         MediaItem item = new MediaItem.Builder()
                 .setMediaId(url)
-                .setUri(url).build();
+                .setUri(uri).build();
+
         m_mediaPlayer.setMediaItem(item);
         m_mediaPlayer.prepare();
         m_currentUrl = url;
@@ -592,7 +621,7 @@ public class AudioManager {
         m_quicklist.add(new QuickItem("Best Albums", "comment=\":BEST\" && p lt -14d"));
         m_quicklist.add(new QuickItem("STP Radio", "\"stone temple pilots\" not STPLIGHT && p lt -14d"));
         m_quicklist.add(new QuickItem("Mark Lanegan Radio", "lanegan && rte gt 3 && p lt -14d"));
-        m_quicklist.add(new QuickItem("Soundwith Radio", "soundwitch"));
+        m_quicklist.add(new QuickItem("Soundwitch Radio", "soundwitch"));
         m_quicklist.add(new QuickItem("Gothic Emily", "\"gothic emily\""));
 
 
@@ -730,15 +759,81 @@ public class AudioManager {
             }
         }
 
-        @Override
-        public void onEvents(@NonNull Player player, Player.Events events) {
-            //Player.Listener.super.onEvents(player, events);
-            Log.error("lifecycle playback event: " + events.toString());
+        // implementing this prevents onPlayerError from being handled
+//        @Override
+//        public void onEvents(@NonNull Player player, Player.Events events) {
+//            //Player.Listener.super.onEvents(player, events);
+//            Log.error("lifecycle playback event: " + events.toString());
+//
+//
+//        }
+
+        public static long getFileSize(String filePath) {
+            File file = new File(filePath);
+            if (file.exists() && file.isFile()) {
+                return file.length();
+            } else {
+                return -1;
+            }
         }
+
+//        public static boolean isOggFile(String filePath) {
+//            File file = new File(filePath);
+//
+//            if (!file.exists() || !file.isFile()) {
+//                System.out.println("File does not exist or is not a valid file: " + filePath);
+//                return false;
+//            }
+//
+//            DataSource dataSource = new FileDataSource();
+//            DataSpec dataSpec = new DataSpec(Uri.fromFile(file));
+//
+//            try {
+//                dataSource.open(dataSpec);
+//                ExtractorInput extractorInput = new DefaultExtractorInput(
+//                        dataSource, 0, file.length()
+//                );
+//
+//                OggExtractor oggExtractor = new OggExtractor();
+//                return oggExtractor.sniff(extractorInput);
+//            } catch (IOException e) {
+//                System.out.println("Error reading file: " + e.getMessage());
+//                return false;
+//            } finally {
+//                try {
+//                    dataSource.close();
+//                } catch (IOException ignored) {
+//                }
+//            }
+//        }
 
         @Override
         public void onPlayerError(PlaybackException error) {
-            Log.error("lifecycle playback error: " + error.getMessage());
+            String name = PlaybackException.getErrorCodeName(error.errorCode);
+            int index = m_manager.m_queue.getCurrentIndex();
+            try {
+                long spk = m_manager.m_queue.getSpk(index);
+                String path = m_manager.m_service.m_database.m_songsTable.getFilePath(spk);
+                Log.error(path + " : size = " + getFileSize(path) );
+
+            } catch (JSONException e) {
+                android.util.Log.e("daedalus-js", "unable update song playtime");
+            }
+
+
+            String url = m_manager.m_queue.getUrl(index);
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("lifecycle playback error: ");
+            sb.append(name);
+            sb.append(" : ");
+            sb.append(error.getMessage());
+            sb.append(" : ");
+            sb.append(index);
+            sb.append(" : ");
+            sb.append(url);
+
+            Log.error(sb.toString());
             //Player.Listener.super.onPlayerError(error);
             //onSongEnd();
         }

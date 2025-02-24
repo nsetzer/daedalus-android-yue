@@ -1938,7 +1938,8 @@ Object.assign(api,(function(requests,daedalus){
               radioStationSave,radioStationSearch,radioStationShutdown,radioStationTracks,
               radioStationUpdates,radioStationUrl,radioStationVote,radioVideoInfo,recipeGetContent,
               recipeGetRecipes,userDoc,validate_token]=(function(){
-          const env={'baseUrl':(((((daedalus)||{}).env)||{}).baseUrl)??""};
+          const env={'baseUrl':(((((daedalus)||{}).env)||{}).baseUrl)??window.origin};
+          
           env.websocket_protocol=(window.location.protocol==='http:')?'ws:':'wss:';
           
           env.websocket_base_url=window.location.origin.replace(window.location.protocol,
@@ -2273,26 +2274,6 @@ Object.assign(api,(function(requests,daedalus){
             const cfg=getPublicConfig();
             return api.requests.post_json(url,track,cfg);
           };
-          /**
-           * params:
-           *   crypt: One of: client, server, system, none. default: none
-           *          client and system are not supported
-           *
-           *          none: no encryption is performed
-           *          client: file is encrypted, key is managed by the user client side
-           *            files are encrypted and decrypted by the client
-           *            files can only be decrypted by the owner
-           *            the server (and database) never have access to the decrypted key
-           *          server: file is encrypted, key is managed by the user server side
-           *            files are encrypted and decrypted by the server
-           *            files can only be decrypted by the owner
-           *            man in the middle attacks could determine the encryption key
-           *          system: file is encrypted, key is managed by the application
-           *            files are encrypted and decrypted by the server
-           *            files can be decrypted by users other than the file owner
-           *            the encryption key is compromised if the database is compromised
-           */
-
           function fsUploadFile(root,path,headers,params,success=null,failure=null,
                       progress=null){
             const urlbase=env.baseUrl+daedalus.util.joinpath('/api/fs',root,'path',
@@ -2591,6 +2572,7 @@ components=(function(api,daedalus,resources){
                   'navMenuShow':'dcs-2cc64f69-7','navMenuShowFixed':'dcs-2cc64f69-8','navMenuHideFixed':'dcs-2cc64f69-9',
                   'svgDiv':'dcs-2cc64f69-10','actionItem':'dcs-2cc64f69-11','subActionItem':'dcs-2cc64f69-12',
                   'header':'dcs-2cc64f69-13'};
+        console.log("initial build .2");
         ;
         ;
         class NavMenuSvgImpl extends DomElement {
@@ -3339,15 +3321,6 @@ components=(function(api,daedalus,resources){
         return[ErrorDrawer];
       })();
     const[Refresh]=(function(){
-        /**
-        a pull to refresh widget
-        
-        add this widget as a child to a page
-        use connect() to connect events from an existing element to handlers
-        pull down to trigger a callback
-        
-        */
-
         const style={'refresh':'dcs-88280dc5-0'};
         class Refresh extends DomElement {
           constructor(cbk=null){
@@ -5136,7 +5109,6 @@ pages.audio=(function(api,daedalus){
                   found+=1;
                 }
               });
-            console.log(`queue event dispatch: ${eventname} = ${found}`);
           }
         };
         AudioDevice.instance=function(){
@@ -5477,22 +5449,6 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
         })();
       const[FileSystemPage,PublicFilePage,StoragePage,StoragePreviewPage]=(function(
                 ){
-          /**
-          SERVER SIDE TODO:
-          - limit simultaneous transcodes using the task engine
-            each request submits a task and waits until the task completes
-            before returning the response
-          
-          
-          */
-
-          /**
-          
-          download:
-              <a href="url" download></a>
-              <a href="url" download="filename"></a>
-          */
-
           const thumbnailFormats={'jpg':true,'png':true,'webm':true,'mp4':true,'gif':true};
           
           const style={'item_file':'dcs-370f94ee-0','list':'dcs-370f94ee-1','listItem':'dcs-370f94ee-2',
@@ -7115,7 +7071,18 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
             }
             elementMounted(){
               this.attrs.device.connectView(this);
-              this.attrs.device.queueLoad();
+              if(daedalus.platform.isAndroid){
+                this.attrs.device.queueLoad();
+              }else{
+                if(this.attrs.device.queueLength()==0){
+                  this.attrs.device.queueLoad();
+                }else{
+                  const song=this.attrs.device.currentSong();
+                  this.attrs.header.setSong(song);
+                  this.handleAudioQueueChanged(this.attrs.device.queue);
+                  ;
+                }
+              }
               if(daedalus.platform.isAndroid){
                 registerAndroidEvent('onresume',this.handleResume.bind(this));
               }
@@ -7247,9 +7214,6 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
             }
             handleAudioQueueChanged(songList){
               console.log(`update queue with new list`);
-              if(songList.length>1){
-                console.log("queue[0] = "+JSON.stringify(songList[0]));
-              }
               const current_id=audio.AudioDevice.instance().currentSongId();
               const current_index=audio.AudioDevice.instance().currentSongIndex();
               
@@ -7700,10 +7664,6 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
                   this._collectTrack(result,child,artist,obj.name,selected);
                 });
             }
-            /**
-                collect a track when the node exists and is selected
-                */
-
             _chkTrackSelection(result,node,artist,album){
               if(this.attrs.selectMode==components.TreeItem.SELECTION_MODE_CHECK){
               
@@ -7726,14 +7686,6 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
                 }
               }
             }
-            /**
-                collect a track when the node does not exist
-                and a parent, which exists, is selected
-            
-                TODO: the optimization to use is: was this or a parent
-                modified by the user, if not then dont descend.
-                */
-
             _collectTrack(result,obj,artist,album,selected){
               if(this.attrs.selectMode==components.TreeItem.SELECTION_MODE_CHECK){
               
@@ -8247,13 +8199,36 @@ Object.assign(pages,(function(api,components,daedalus,audio,resources,router,sto
           const savedSearches=[{'name':"stoner best",'query':"stoner rating >= 5"},
                       {'name':"grunge best",'query':"grunge rating >= 5"},{'name':"english best",
                           'query':"language = english rating >= 5"},{'name':"visual best",'query':"\"visual kei\" rating >= 5"},
-                      {'name':"jrock best",'query':"language = japanese rating >= 2"},{'name':"stone temple pilots",
-                          'query':qt?"\"stone temple pilots\" !STPLIGHT":"\"stone temple pilots\" not STPLIGHT"},
-                      {'name':"soundwitch",'query':"soundwitch"},{'name':"Gothic Emily",'query':"\"gothic emily\""},
-                      {'name':"Driving Hits Volume 1",'query':qt?"\":DRV\" && pcnt < -14d":"\":DRV\" && p lt -14d"},
-                      {'name':"Driving Hits Volume 2",'query':qt?"\":VL2\" && pcnt < -14d":"\":VL2\" && p lt -14d"},
-                      {'name':"Driving Hits Volume 3",'query':"(comment=\":DRV\" or comment=\":VL2\") && p lt -14d"},
-                      {'name':"Best Albums",'query':"comment=\":BEST\" && p lt -14d"}];
+                      {'name':"jrock best",'query':"language = japanese rating >= 2"},{'name':"Gothic Emily",
+                          'query':"\"gothic emily\""},{'name':"Soundwitch Radio",'query':"soundwitch"}];
+          
+          if(daedalus.platform.isAndroid){
+            savedSearches.push({'name':"STP Radio",'query':"\"stone temple pilots\" not STPLIGHT"});
+            
+            savedSearches.push({'name':"Lanegan Radio",'query':"(lanegan || \"screaming trees\") && rating > 3 && p lt -14d"});
+            
+            savedSearches.push({'name':"Driving Hits Volume 1",'query':":DRV && p lt -14d"});
+            
+            savedSearches.push({'name':"Driving Hits Volume 2",'query':":VL2 && p lt -14d"});
+            
+            savedSearches.push({'name':"Driving Hits Volume 3",'query':"(comment=:DRV or comment=:VL2) && p lt -14d"});
+            
+            savedSearches.push({'name':"Best Albums",'query':"comment=:BEST && p lt -14d"});
+            
+          }else{
+            savedSearches.push({'name':"STP Radio",'query':qt?"\"stone temple pilots\" !STPLIGHT":"\"stone temple pilots\" not STPLIGHT"});
+            
+            savedSearches.push({'name':"Lanegan Radio",'query':"(lanegan || \"screaming trees\") && rating > 3"});
+            
+            savedSearches.push({'name':"Driving Hits Volume 1",'query':qt?"comment=:DRV && pcnt < -14d":"comment=:DRV"});
+            
+            savedSearches.push({'name':"Driving Hits Volume 2",'query':qt?"comment=:VL2 && pcnt < -14d":"comment=:VL2"});
+            
+            savedSearches.push({'name':"Driving Hits Volume 3",'query':qt?"(comment=:DRV or comment=:VL2) && pcnt < -14d":"(comment=:DRV or comment=:VL2)"});
+            
+            savedSearches.push({'name':"Best Albums",'query':qt?"comment=:BEST && pcnt < -14d":"comment=:BEST"});
+            
+          }
           class SavedSearchList extends DomElement {
             constructor(parent){
               super("div",{'className':style.savedSearchList},[]);
@@ -10969,24 +10944,6 @@ app=(function(api,components,daedalus,pages,resources,router,store){
     const TextElement=daedalus.TextElement;
     const AuthenticatedRouter=daedalus.AuthenticatedRouter;
     const Router=daedalus.Router;
-    /**
-    TODO: investigate dynamically loading pages
-    
-        store each page in a separate js file to be loaded on demand
-        display a default loading page while the script loads
-        once fully loaded replace the loading page with the actual page
-    
-        requires daedalus and router integration
-    
-        let script = document.createElement('script');
-        script.onload = function () {
-            router replace...
-        };
-        script.src = something;
-        document.head.appendChild(script); // initiate script load
-    
-    */
-
     const style={'body':'dcs-54555cd8-0','navMenu':'dcs-54555cd8-1','rootWebDesktop':'dcs-54555cd8-2',
           'rootWebMobile':'dcs-54555cd8-3','rootMobile':'dcs-54555cd8-4','margin':'dcs-54555cd8-5',
           'fullsize':'dcs-54555cd8-6','show':'dcs-54555cd8-7','hide':'dcs-54555cd8-8',

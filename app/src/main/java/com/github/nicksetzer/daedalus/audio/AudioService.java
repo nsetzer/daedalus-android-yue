@@ -513,11 +513,13 @@ public class AudioService extends MediaBrowserServiceCompat {
                         Log.info("cancel task");
                         taskKill();
                     case AudioActions.ACTION_INIT_RADIO:
-                        Log.info( "init radio");
+                        Log.info( "init radio - not implemented");
+                        /*
                         token = intent.getExtras().getString("token");
                         m_manager.setToken(token);
                         token = intent.getExtras().getString("station");
                         m_manager.setStation(token);
+                        */
                         break;
                     default:
                         if (action.equals("android.intent.action.MEDIA_BUTTON")) {

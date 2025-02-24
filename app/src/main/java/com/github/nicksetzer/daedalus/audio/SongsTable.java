@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class SongsTable extends EntityTable {
@@ -89,6 +90,17 @@ public class SongsTable extends EntityTable {
         }
 
         return count;
+    }
+
+    public String getFilePath(long spk) {
+        String query = "SELECT file_path from songs where spk == ?";
+        List<String> params = new ArrayList<>();
+        params.add(Long.toString(spk));
+        Cursor cursor = m_db.query(query,  params.toArray(new String[]{}));
+        cursor.moveToFirst();
+        String path = cursor.getString(0);
+        cursor.close();
+        return path;
     }
 
     public int removeInvalid() {
@@ -194,6 +206,7 @@ public class SongsTable extends EntityTable {
         String sql = sb.toString();
         return sql;
     }
+
     public JSONArray query(String query, int syncState, int showBannished) throws DslException {
         List<String> params = new ArrayList<>();
         String sql = _buildQuery(query, syncState, showBannished, params);
@@ -240,7 +253,10 @@ public class SongsTable extends EntityTable {
 
         JSONArray forest = new JSONArray();
         JSONObject artist = null;
+        String current_artist = null;
         JSONObject album = null;
+        String current_album = null;
+
         boolean selected_all_art = false; // initial state of sync checkbox in tree view
         boolean selected_any_art = false;
         boolean selected_all_abm = false;
@@ -253,7 +269,10 @@ public class SongsTable extends EntityTable {
 
                     JSONObject track = getObject(cursor);
 
-                    if (artist == null || !track.getString("artist").equals(artist.getString("name"))) {
+                    String track_artist = track.getString("artist").toLowerCase(Locale.ROOT);
+                    String track_album = track.getString("album").toLowerCase(Locale.ROOT);
+
+                    if (current_artist == null || !track_artist.equals(current_artist)) {
                         _setObjectSelected(artist, selected_all_art, selected_any_art);
                         _setObjectSelected(album, selected_all_abm, selected_any_abm);
                         artist = new JSONObject();
@@ -263,19 +282,23 @@ public class SongsTable extends EntityTable {
                         selected_any_art = false;
                         selected_all_abm = true;
                         selected_any_abm = false;
+                        current_artist = track_artist;
+                        current_album = null;
 
                         album = null;
 
                         forest.put(artist);
                     }
 
-                    if (album == null || !track.getString("album").equals(album.getString("name"))) {
+                    if (current_album == null || !track_album.equals(current_album)) {
                         _setObjectSelected(album, selected_all_abm, selected_any_abm);
                         album = new JSONObject();
                         album.put("name", track.getString("album"));
                         album.put("tracks", new JSONArray());
                         selected_all_abm = true;
                         selected_any_abm = false;
+
+                        current_album = track_album;
 
                         artist.getJSONArray("albums").put(album);
                     }
