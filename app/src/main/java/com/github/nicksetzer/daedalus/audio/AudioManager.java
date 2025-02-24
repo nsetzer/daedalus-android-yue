@@ -99,7 +99,7 @@ public class AudioManager {
         filter.addAction(Intent.ACTION_MEDIA_BUTTON);
 
         m_receiver = new BTReceiver();
-        context.registerReceiver(m_receiver, filter);
+        context.registerReceiver(m_receiver, filter, Context.RECEIVER_NOT_EXPORTED);
 
         m_session = new MediaSessionCompat(context, "AudioService");
 
@@ -770,6 +770,9 @@ public class AudioManager {
 
         public static long getFileSize(String filePath) {
             File file = new File(filePath);
+            if (file.equals(null)) {
+                return -2;
+            }
             if (file.exists() && file.isFile()) {
                 return file.length();
             } else {
@@ -817,7 +820,7 @@ public class AudioManager {
                 Log.error(path + " : size = " + getFileSize(path) );
 
             } catch (JSONException e) {
-                android.util.Log.e("daedalus-js", "unable update song playtime");
+                Log.error("unable update song playtime");
             }
 
 

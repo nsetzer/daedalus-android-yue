@@ -29,6 +29,7 @@ public class YueApi {
 
     public static final String PROTOCOL = "https";
     public static final String DOMAIN = "yueapp.duckdns.org";
+    //public static final String DOMAIN = "104.248.122.206";
     public static final int PORT = 443;
 
     public static class ApiException extends IOException {
@@ -75,7 +76,7 @@ public class YueApi {
     static void dumpResponseHeaders(HttpURLConnection conn) {
         for (Map.Entry<String, List<String>> entry :  conn.getHeaderFields().entrySet()) {
             String text = entry.getKey() + ": " + String.join(",", entry.getValue());
-            android.util.Log.e("daedalus-js-api", "content header: " + text);
+            Log.error( "content header: " + text);
         }
     }
 
@@ -114,25 +115,17 @@ public class YueApi {
         conn.setConnectTimeout(10000);
         //conn.setDoOutput(true);
 
-        android.util.Log.e("daedalus-js-api", "protocol: " + url.getProtocol());
-        android.util.Log.e("daedalus-js-api", "method: " + conn.getRequestMethod());
-        android.util.Log.e("daedalus-js-api", "file: " + url.getFile());
-        android.util.Log.e("daedalus-js-api", "query: " + url.getQuery());
-
         try {
             conn.connect();
         } catch (Exception e) {
-            android.util.Log.e("daedalus-js-api", "failed to connect: " + e.toString());
+            Log.error( "failed to connect: " + e.toString());
             return null;
         }
 
-        android.util.Log.e("daedalus-js-api", "connected");
-
         int status = conn.getResponseCode();
-        android.util.Log.e("daedalus-js-api", "status: " + status);
         if (status != HttpURLConnection.HTTP_OK) {
             String text = readResponseText(conn.getErrorStream());
-            android.util.Log.e("daedalus-js-api", "body:" + text);
+            Log.error("body:" + text);
 
             return null;
         }
@@ -190,11 +183,6 @@ public class YueApi {
         conn.setReadTimeout(10000);
         conn.setConnectTimeout(10000);
 
-        android.util.Log.e("daedalus-js-api", "protocol: " + url.getProtocol());
-        android.util.Log.e("daedalus-js-api", "method: " + conn.getRequestMethod());
-        android.util.Log.e("daedalus-js-api", "file: " + url.getFile());
-        android.util.Log.e("daedalus-js-api", "query: " + url.getQuery());
-
         try {
             conn.connect();
         } catch (Exception e) {
@@ -203,7 +191,6 @@ public class YueApi {
         }
 
         int status = conn.getResponseCode();
-        android.util.Log.e("daedalus-js-api", "status: " + status);
         if (status != HttpURLConnection.HTTP_OK) {
             String text = readResponseText(conn.getErrorStream());
             Log.error("error body:" + text);
@@ -264,22 +251,17 @@ public class YueApi {
         conn.setReadTimeout(10000);
         conn.setConnectTimeout(10000);
 
-        android.util.Log.e("daedalus-js-api", "protocol: " + url.getProtocol());
-        android.util.Log.e("daedalus-js-api", "method: " + conn.getRequestMethod());
-        android.util.Log.e("daedalus-js-api", "url: " + url.toString());
-
         try {
             conn.connect();
         } catch (Exception e) {
-            android.util.Log.e("daedalus-js-api", "failed to connect: " + e.toString());
+            Log.error("failed to connect: " + e.toString());
             return null;
         }
 
         int status = conn.getResponseCode();
-        android.util.Log.e("daedalus-js-api", "status: " + status);
         if (status != HttpURLConnection.HTTP_OK) {
             String text = readResponseText(conn.getErrorStream());
-            android.util.Log.e("daedalus-js-api", "body:" + text);
+            Log.error( "body:" + text);
             return null;
         }
 

@@ -147,7 +147,7 @@ public class WebActivity extends Activity {
 
         android.util.Log.e("daedalus-js", "register receiver: ");
 
-        registerReceiver(m_receiver, new IntentFilter(AudioActions.ACTION_EVENT));
+        registerReceiver(m_receiver, new IntentFilter(AudioActions.ACTION_EVENT), Context.RECEIVER_NOT_EXPORTED);
 
 
         Intent intent = new Intent(this, AudioService.class);
