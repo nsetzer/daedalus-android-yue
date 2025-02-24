@@ -17,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.datasource.DataSource;
@@ -24,6 +25,8 @@ import androidx.media3.datasource.DataSpec;
 import androidx.media3.datasource.FileDataSource;
 import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.extractor.DefaultExtractorInput;
 import androidx.media3.extractor.ExtractorInput;
 import androidx.media3.extractor.ogg.OggExtractor;
@@ -117,7 +120,9 @@ public class AudioManager {
         m_session.setActive(true);
         m_service.setSessionToken(m_session.getSessionToken());
 
-        m_mediaPlayer = new ExoPlayer.Builder(m_service).build();
+        m_mediaPlayer = new ExoPlayer.Builder(m_service)
+                .build();
+
         AudioAttributes attrs = new AudioAttributes.Builder()
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
@@ -268,6 +273,7 @@ public class AudioManager {
 
         MediaItem item = new MediaItem.Builder()
                 .setMediaId(url)
+                .setMimeType(MimeTypes.AUDIO_OGG)
                 .setUri(uri).build();
 
         m_mediaPlayer.setMediaItem(item);

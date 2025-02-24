@@ -1,6 +1,7 @@
 package com.github.nicksetzer.daedalus;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
@@ -11,6 +12,11 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -21,6 +27,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.provider.Settings;
 import android.view.KeyEvent;
+import android.view.ViewGroup;
 import android.webkit.ValueCallback;
 import android.webkit.WebView;
 import android.widget.Toast;
@@ -51,6 +58,7 @@ public class WebActivity extends Activity {
 
     boolean m_isPaused = false;
 
+    @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         Log.info("lifecycle onCreate");
@@ -65,12 +73,23 @@ public class WebActivity extends Activity {
 
         AudioWebView view = findViewById(R.id.DaedalusView);
 
-        view.setWebContentsDebuggingEnabled(true);
+        WebView.setWebContentsDebuggingEnabled(true);
 
         view.getSettings().setJavaScriptEnabled(true);
 
+        ViewCompat.setOnApplyWindowInsetsListener(view, (v, windowInsets) -> {
+            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
+            mlp.leftMargin = insets.left;
+            mlp.bottomMargin = insets.bottom;
+            mlp.rightMargin = insets.right;
+            mlp.topMargin = insets.top;
+            v.setLayoutParams(mlp);
+            return WindowInsetsCompat.CONSUMED;
+        });
+
         view.setWebChromeClient(new DaedalusWebChromeClient());
-        view.setWebViewClient(new DaedalusWebViewClient(this, this.profile == "dev"));
+        view.setWebViewClient(new DaedalusWebViewClient(this, this.profile.equals("dev")));
         m_storage = new LocalStorage(this);
         view.addJavascriptInterface(m_storage, "LocalStorage");
         view.addJavascriptInterface(new AndroidClient(this), "Client");
@@ -78,7 +97,7 @@ public class WebActivity extends Activity {
 
         //view.getSettings().setAllowUniversalAccessFromFileURLs(true);
 
-        if (this.profile == "dev") {
+        if (this.profile.equals("dev")) {
             // 192.168.1.149
             view.loadUrl("http://10.0.2.2:4100");
         } else {
