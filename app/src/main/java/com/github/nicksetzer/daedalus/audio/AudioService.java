@@ -610,8 +610,9 @@ public class AudioService extends MediaBrowserServiceCompat {
 
         Intent intent = new Intent();
         intent.setAction(AudioActions.ACTION_EVENT);
-        intent.putExtra( "name",name);
-        intent.putExtra( "payload",payload);
+        intent.putExtra( "name", name);
+        intent.putExtra( "payload", payload);
+        //Log.info("sending event: " + name);
         sendBroadcast(intent);
     }
 

@@ -45,6 +45,7 @@
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
         </activity>
 
         <service
@@ -60,6 +61,14 @@
                 <action android:name="android.media.AUDIO_BECOMING_NOISY" />
             </intent-filter>
         </service>
+
+        <receiver
+            android:name="com.github.nicksetzer.daedalus.WebActivity$ServiceEventReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="daedalus.audio.event" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name="androidx.media.session.MediaButtonReceiver"

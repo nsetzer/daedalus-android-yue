@@ -69,7 +69,7 @@ public class WebActivity extends Activity {
 
         m_timeHandler = new Handler(Looper.getMainLooper());
 
-        m_receiver = new ServiceEventReceiver();
+        m_receiver = new ServiceEventReceiver(this);
 
         AudioWebView view = findViewById(R.id.DaedalusView);
 
@@ -164,10 +164,11 @@ public class WebActivity extends Activity {
         Log.info("lifecycle onStart");
         super.onStart();
 
-        android.util.Log.e("daedalus-js", "register receiver: ");
+        Log.info("daedalus-js", "register receiver custom for event filter ");
 
-        registerReceiver(m_receiver, new IntentFilter(AudioActions.ACTION_EVENT), Context.RECEIVER_NOT_EXPORTED);
-
+        registerReceiver(m_receiver,
+                new IntentFilter(AudioActions.ACTION_EVENT),
+                Context.RECEIVER_EXPORTED);
 
         Intent intent = new Intent(this, AudioService.class);
         bindService(intent, m_serviceConnection, Context.BIND_AUTO_CREATE);
@@ -364,22 +365,37 @@ public class WebActivity extends Activity {
         view.loadUrl("javascript:invokeAndroidEvent('" + name + "', '" + payload.replace("\'", "\\\'") + "')");
     }
 
-    class ServiceEventReceiver extends BroadcastReceiver {
+    static class ServiceEventReceiver extends BroadcastReceiver {
 
+        private final WebActivity m_activity;
+        ServiceEventReceiver(WebActivity activity) {
+            m_activity = activity;
+        }
+        ServiceEventReceiver() {
+            m_activity = null;
+        }
         @Override
         public void onReceive(Context context, Intent intent) {
-            if(intent.getAction().equals(AudioActions.ACTION_EVENT))
+            String action = intent.getAction();
+            Bundle extras = intent.getExtras();
+            if (action == null || extras == null) {
+                Log.error("received event : null information");
+            }
+            else if(action.equals(AudioActions.ACTION_EVENT))
             {
-                final String name = intent.getExtras().getString("name");
+                final String name = extras.getString("name");
                 final String payload = intent.getExtras().getString("payload");
-                invokeJavascriptCallback(name, payload);
+                //Log.info("received event : " + name);
+                if (m_activity != null) {
+                    m_activity.invokeJavascriptCallback(name, payload);
+                }
 
             }
         }
 
     }
 
-    class ScreenEventReceiver extends BroadcastReceiver {
+    static class ScreenEventReceiver extends BroadcastReceiver {
 
         public boolean wasScreenOn = true;
 
