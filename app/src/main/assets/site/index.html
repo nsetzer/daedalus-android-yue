@@ -1,18 +1,24 @@
 <!--daedalus build --platform android --env baseUrl=https://yueapp.duckdns.org --static ../yue-react-flask/frontend/resources ../yue-react-flask/frontend/src/app.js ./app/src/main/assets/site-->
 <!DOCTYPE html>
+<!-- android -->
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no,user-scalable=no">
 <html lang="en">
 <head>
+<link rel="icon" type="image/x-icon" href="/android_asset/site/favicon.ico" />
 <title>Daedalus</title>
-<link rel="icon" type="image/x-icon" href="file:///android_asset/site/favicon.ico" />
-<link rel="stylesheet" type="text/css" href="file:///android_asset/site/static/index.css">
+<link rel="stylesheet" href="file:///android_asset/site/static/leaflet/leaflet.css" />
+<script src="file:///android_asset/site/static/leaflet/leaflet.js"></script>
+<script src="file:///android_asset/site/static/chart.js/chart-2.9.3.min.js"></script>
+<script src="file:///android_asset/site/static/zipcodes.js"></script>
+<link rel="stylesheet" type="text/css" href="/android_asset/site/static/index.css">
 <script type="text/javascript">
 AndroidEvents = {}
 function registerAndroidEvent(name, callback) {
     AndroidEvents[name] = callback;
 }
 function invokeAndroidEvent(name, payload) {
+    //console.log(`invoke event '${name}': ${payload}`)
     if (!!AndroidEvents[name]) {
         AndroidEvents[name](JSON.parse(payload));
     } else {
@@ -20,17 +26,17 @@ function invokeAndroidEvent(name, payload) {
     }
 }
 </script>
-
-<script type="text/javascript" src="file:///android_asset/site/static/index.js"></script>
+<script type="text/javascript" src="/android_asset/site/static/index.js"></script>
 </head>
 <body>
 <div id="root">Enable Javascript to render site.</div>
 </body>
 <script type="text/javascript">
-const document_root = document.getElementById("root")
+const document_node = new app.Root();
+const document_root = document.getElementById("root");
 while (document_root.hasChildNodes()) {
     document_root.removeChild(document_root.lastChild);
 }
-daedalus.render(document_root, new app.Root())
+daedalus.render(document_root, document_node)
 </script>
 </html>

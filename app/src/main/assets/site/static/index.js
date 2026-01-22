@@ -1,5 +1,4 @@
 api={"requests":{}};
-pages={"audio":{}};
 daedalus=(function(){
     "use strict";
     const env={"baseUrl":"https://yueapp.duckdns.org"};
@@ -209,6 +208,31 @@ daedalus=(function(){
             selector=args[0];
             style=args[1];
             name=selector;
+          }
+          if(args.length>=3){
+            let str="";
+            for(let i=0;i<args.length;i++)
+            {
+              if(i>0){
+                str+=", ";
+              }
+              if(typeof(args[i])==="object"){
+                str+=JSON.stringify(args[i]);
+              }else{
+                str+=args[i];
+              }
+            }
+            ;
+            console.error(`Invalid Style Sheet StyleSheet(${str})`);
+            return;
+            ;
+          }
+          if(style===undefined){
+            console.log(`$nargs=${args.length}`);
+            console.log(`${args[0]}, ${args[1]}, ${args[2]}`);
+            console.log(`StyleSheet(name=${name}, selector=${selector}, style=${style})`);
+            
+            throw new Error("style must be defined");
           }
           if(css_sheet===null){
             css_sheet=document.createElement('style');
@@ -814,6 +838,252 @@ daedalus=(function(){
           });
         return[];
       })();
+    const[downloadFile,uploadFile]=(function(){
+        /**
+         * Daedalus File API
+         *
+         * Methods for uploading and downloading files to a webserver
+         *
+         * Compatability Notes:
+         *   uploadFile does not work for Android WebView.
+         *   Instead an API is needed for background file uploads using
+         *   Android APIs.
+         *
+         *   downloadFile does not work for Android WebView.
+         *   Instead generate an anchor tag with the href and download proptery.
+         *
+         *   e.g.
+         *      <a href="url" download="filename">Click Here</a>
+         *
+         *   Alternativley, an android API can be implemented to support downloads
+         *
+         */
+
+        function saveBlob(blob,fileName){
+          let a=document.createElement('a');
+          a.href=window.URL.createObjectURL(blob);
+          a.download=fileName;
+          a.dispatchEvent(new MouseEvent('click'));
+        };
+        function downloadFile(url,headers={},params={},success=null,failure=null){
+        
+          const postData=new FormData();
+          const queryString=util.serializeParameters(params);
+          const xhr=new XMLHttpRequest();
+          xhr.open('GET',url+queryString);
+          for(let key in headers){
+            xhr.setRequestHeader(key,headers[key]);
+            ;
+          }
+          xhr.responseType='blob';
+          xhr.onload=function(this_,event_){
+            let blob=this_.target.response;
+            if(!blob||this_.target.status!=200){
+              if(failure!==null){
+                failure({'status':this_.target.status,'blob':blob});
+              }
+            }else{
+              let contentDispo=xhr.getResponseHeader('Content-Disposition');
+              console.log(xhr);
+              let fileName;
+              if(contentDispo!==null){
+                fileName=contentDispo.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)[
+                                1];
+              }
+              if(!fileName){
+                console.error("filename not found in xhr request header 'Content-Disposition'");
+                
+                let parts;
+                parts=xhr.responseURL.split('/');
+                parts=parts[parts.length-1].split('?');
+                fileName=parts[0]||'resource.bin';
+                ;
+              }
+              saveBlob(blob,fileName);
+              if(success!==null){
+                success({'url':url,'fileName':fileName,'blob':blob});
+              }
+              ;
+              ;
+            }
+          };
+          xhr.send(postData);
+        };
+        function _uploadFileImpl(elem,urlbase,headers={},params={},success=null,failure=null,
+                  progress=null){
+          let queryString=util.serializeParameters(params);
+          let arrayLength=elem.files.length;
+          for(let i=0;i<arrayLength;i++)
+          {
+            let file=elem.files[i];
+            let bytesTransfered=0;
+            let url;
+            if(urlbase.endsWith('/')){
+              url=urlbase+file.name;
+            }else{
+              url=urlbase+'/'+file.name;
+            }
+            url+=queryString;
+            let xhr=new XMLHttpRequest();
+            xhr.open('POST',url,true);
+            for(let key in headers){
+              xhr.setRequestHeader(key,headers[key]);
+              ;
+            }
+            xhr.upload.onprogress=function(event){
+              if(event.lengthComputable){
+                if(progress!==null){
+                  bytesTransfered=event.loaded;
+                  progress({'bytesTransfered':bytesTransfered,'fileSize':file.size,
+                                          'fileName':file.name,'finished':false});
+                }
+              }
+            };
+            xhr.onreadystatechange=function(){
+              if(xhr.readyState==4&&xhr.status==200){
+                if(success!==null){
+                  let params={'fileName':file.name,'url':url,'lastModified':file.lastModified,
+                                      'size':file.size,'type':file.type};
+                  success(params);
+                  if(progress!==null){
+                    progress({'bytesTransfered':file.size,'fileSize':file.size,'fileName':file.name,
+                                              'finished':true});
+                  }
+                  ;
+                }
+              }else if(xhr.status>=400){
+                if(failure!==null){
+                  let params={'fileName':file.name,'url':url,'status':xhr.status};
+                  
+                  failure(params);
+                  if(progress!==null){
+                    progress({'bytesTransfered':bytesTransfered,'fileSize':file.size,
+                                              'fileName':file.name,'finished':true});
+                  }
+                  ;
+                }
+              }else{
+                console.log("xhr status changed: "+xhr.status);
+              }
+            };
+            if(progress!==null){
+              progress({'bytesTransfered':bytesTransfered,'fileSize':file.size,'fileName':file.name,
+                                  'finished':false,'first':true});
+            }
+            let fd=new FormData();
+            fd.append('upload',file);
+            xhr.send(fd);
+          }
+          ;
+          ;
+          ;
+          ;
+          ;
+          ;
+        };
+        function uploadFile(urlbase,headers={},params={},success=null,failure=null,
+                  progress=null){
+          let element=document.createElement('input');
+          element.type='file';
+          element.hidden=true;
+          element.onchange=(event)=>{
+            _uploadFileImpl(element,urlbase,headers,params,success,failure,progress);
+            
+          };
+          element.dispatchEvent(new MouseEvent('click'));
+        };
+        return[downloadFile,uploadFile];
+      })();
+    const[OSName,platform]=(function(){
+        let nVer=navigator.appVersion;
+        let nAgt=navigator.userAgent;
+        let browserName=navigator.appName;
+        let fullVersion=''+parseFloat(navigator.appVersion);
+        let majorVersion=parseInt(navigator.appVersion,10);
+        let nameOffset,verOffset,ix;
+        if((verOffset=nAgt.indexOf("Opera"))!=-1){
+          browserName="Opera";
+          fullVersion=nAgt.substring(verOffset+6);
+          if((verOffset=nAgt.indexOf("Version"))!=-1){
+            fullVersion=nAgt.substring(verOffset+8);
+          }
+        }else if((verOffset=nAgt.indexOf("MSIE"))!=-1){
+          browserName="Microsoft Internet Explorer";
+          fullVersion=nAgt.substring(verOffset+5);
+        }else if((verOffset=nAgt.indexOf("Chrome"))!=-1){
+          browserName="Chrome";
+          fullVersion=nAgt.substring(verOffset+7);
+        }else if((verOffset=nAgt.indexOf("Safari"))!=-1){
+          browserName="Safari";
+          fullVersion=nAgt.substring(verOffset+7);
+          if((verOffset=nAgt.indexOf("Version"))!=-1){
+            fullVersion=nAgt.substring(verOffset+8);
+          }
+        }else if((verOffset=nAgt.indexOf("Firefox"))!=-1){
+          browserName="Firefox";
+          fullVersion=nAgt.substring(verOffset+8);
+        }else if((nameOffset=nAgt.lastIndexOf(' ')+1)<(verOffset=nAgt.lastIndexOf(
+                          '/'))){
+          browserName=nAgt.substring(nameOffset,verOffset);
+          fullVersion=nAgt.substring(verOffset+1);
+          if(browserName.toLowerCase()==browserName.toUpperCase()){
+            browserName=navigator.appName;
+          }
+        }
+        if((ix=fullVersion.indexOf(";"))!=-1){
+          fullVersion=fullVersion.substring(0,ix);
+        }
+        if((ix=fullVersion.indexOf(" "))!=-1){
+          fullVersion=fullVersion.substring(0,ix);
+        }
+        majorVersion=parseInt(''+fullVersion,10);
+        if(isNaN(majorVersion)){
+          fullVersion=''+parseFloat(navigator.appVersion);
+          majorVersion=parseInt(navigator.appVersion,10);
+        }
+        let OSName="Unknown OS";
+        if(navigator.appVersion.indexOf("Win")!=-1){
+          OSName="Windows";
+        }
+        if(navigator.appVersion.indexOf("Mac")!=-1){
+          OSName="MacOS";
+        }
+        if(navigator.appVersion.indexOf("X11")!=-1){
+          OSName="UNIX";
+        }
+        if(navigator.appVersion.indexOf("Linux")!=-1){
+          OSName="Linux";
+        }
+        function getDefaultFontSize(parentElement){
+          parentElement=parentElement||document.body;
+          let div=document.createElement('div');
+          div.style.width="1000em";
+          parentElement.appendChild(div);
+          let pixels=div.offsetWidth/1000;
+          parentElement.removeChild(div);
+          return pixels;
+        };
+        const isMobile={'Android':function(){
+            return navigator.userAgent.match(/Android/i);
+          },'BlackBerry':function(){
+            return navigator.userAgent.match(/BlackBerry/i);
+          },'iOS':function(){
+            return navigator.userAgent.match(/iPhone|iPad|iPod/i);
+          },'Opera':function(){
+            return navigator.userAgent.match(/Opera Mini/i);
+          },'Windows':function(){
+            return navigator.userAgent.match(/IEMobile/i)||navigator.userAgent.match(
+                          /WPDesktop/i);
+          },'any':function(){
+            return(isMobile.Android()||isMobile.BlackBerry()||isMobile.iOS()||isMobile.Opera(
+                            )||isMobile.Windows());
+          }};
+        const platform={'OSName':OSName,'browser':browserName,'fullVersion':fullVersion,
+                  'majorVersion':majorVersion,'appName':navigator.appName,'userAgent':navigator.userAgent,
+                  'platform':build_platform||'web','isAndroid':build_platform==='android',
+                  'isQt':build_platform==='qt','isMobile':(!!isMobile.any())};
+        return[OSName,platform];
+      })();
     const[AuthenticatedRouter,Router,locationMatch,patternCompile,patternToRegexp]=(
           function(){
         function patternCompile(pattern){
@@ -1081,252 +1351,6 @@ daedalus=(function(){
         };
         return[AuthenticatedRouter,Router,locationMatch,patternCompile,patternToRegexp];
         
-      })();
-    const[downloadFile,uploadFile]=(function(){
-        /**
-         * Daedalus File API
-         *
-         * Methods for uploading and downloading files to a webserver
-         *
-         * Compatability Notes:
-         *   uploadFile does not work for Android WebView.
-         *   Instead an API is needed for background file uploads using
-         *   Android APIs.
-         *
-         *   downloadFile does not work for Android WebView.
-         *   Instead generate an anchor tag with the href and download proptery.
-         *
-         *   e.g.
-         *      <a href="url" download="filename">Click Here</a>
-         *
-         *   Alternativley, an android API can be implemented to support downloads
-         *
-         */
-
-        function saveBlob(blob,fileName){
-          let a=document.createElement('a');
-          a.href=window.URL.createObjectURL(blob);
-          a.download=fileName;
-          a.dispatchEvent(new MouseEvent('click'));
-        };
-        function downloadFile(url,headers={},params={},success=null,failure=null){
-        
-          const postData=new FormData();
-          const queryString=util.serializeParameters(params);
-          const xhr=new XMLHttpRequest();
-          xhr.open('GET',url+queryString);
-          for(let key in headers){
-            xhr.setRequestHeader(key,headers[key]);
-            ;
-          }
-          xhr.responseType='blob';
-          xhr.onload=function(this_,event_){
-            let blob=this_.target.response;
-            if(!blob||this_.target.status!=200){
-              if(failure!==null){
-                failure({'status':this_.target.status,'blob':blob});
-              }
-            }else{
-              let contentDispo=xhr.getResponseHeader('Content-Disposition');
-              console.log(xhr);
-              let fileName;
-              if(contentDispo!==null){
-                fileName=contentDispo.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)[
-                                1];
-              }
-              if(!fileName){
-                console.error("filename not found in xhr request header 'Content-Disposition'");
-                
-                let parts;
-                parts=xhr.responseURL.split('/');
-                parts=parts[parts.length-1].split('?');
-                fileName=parts[0]||'resource.bin';
-                ;
-              }
-              saveBlob(blob,fileName);
-              if(success!==null){
-                success({'url':url,'fileName':fileName,'blob':blob});
-              }
-              ;
-              ;
-            }
-          };
-          xhr.send(postData);
-        };
-        function _uploadFileImpl(elem,urlbase,headers={},params={},success=null,failure=null,
-                  progress=null){
-          let queryString=util.serializeParameters(params);
-          let arrayLength=elem.files.length;
-          for(let i=0;i<arrayLength;i++)
-          {
-            let file=elem.files[i];
-            let bytesTransfered=0;
-            let url;
-            if(urlbase.endsWith('/')){
-              url=urlbase+file.name;
-            }else{
-              url=urlbase+'/'+file.name;
-            }
-            url+=queryString;
-            let xhr=new XMLHttpRequest();
-            xhr.open('POST',url,true);
-            for(let key in headers){
-              xhr.setRequestHeader(key,headers[key]);
-              ;
-            }
-            xhr.upload.onprogress=function(event){
-              if(event.lengthComputable){
-                if(progress!==null){
-                  bytesTransfered=event.loaded;
-                  progress({'bytesTransfered':bytesTransfered,'fileSize':file.size,
-                                          'fileName':file.name,'finished':false});
-                }
-              }
-            };
-            xhr.onreadystatechange=function(){
-              if(xhr.readyState==4&&xhr.status==200){
-                if(success!==null){
-                  let params={'fileName':file.name,'url':url,'lastModified':file.lastModified,
-                                      'size':file.size,'type':file.type};
-                  success(params);
-                  if(progress!==null){
-                    progress({'bytesTransfered':file.size,'fileSize':file.size,'fileName':file.name,
-                                              'finished':true});
-                  }
-                  ;
-                }
-              }else if(xhr.status>=400){
-                if(failure!==null){
-                  let params={'fileName':file.name,'url':url,'status':xhr.status};
-                  
-                  failure(params);
-                  if(progress!==null){
-                    progress({'bytesTransfered':bytesTransfered,'fileSize':file.size,
-                                              'fileName':file.name,'finished':true});
-                  }
-                  ;
-                }
-              }else{
-                console.log("xhr status changed: "+xhr.status);
-              }
-            };
-            if(progress!==null){
-              progress({'bytesTransfered':bytesTransfered,'fileSize':file.size,'fileName':file.name,
-                                  'finished':false,'first':true});
-            }
-            let fd=new FormData();
-            fd.append('upload',file);
-            xhr.send(fd);
-          }
-          ;
-          ;
-          ;
-          ;
-          ;
-          ;
-        };
-        function uploadFile(urlbase,headers={},params={},success=null,failure=null,
-                  progress=null){
-          let element=document.createElement('input');
-          element.type='file';
-          element.hidden=true;
-          element.onchange=(event)=>{
-            _uploadFileImpl(element,urlbase,headers,params,success,failure,progress);
-            
-          };
-          element.dispatchEvent(new MouseEvent('click'));
-        };
-        return[downloadFile,uploadFile];
-      })();
-    const[OSName,platform]=(function(){
-        let nVer=navigator.appVersion;
-        let nAgt=navigator.userAgent;
-        let browserName=navigator.appName;
-        let fullVersion=''+parseFloat(navigator.appVersion);
-        let majorVersion=parseInt(navigator.appVersion,10);
-        let nameOffset,verOffset,ix;
-        if((verOffset=nAgt.indexOf("Opera"))!=-1){
-          browserName="Opera";
-          fullVersion=nAgt.substring(verOffset+6);
-          if((verOffset=nAgt.indexOf("Version"))!=-1){
-            fullVersion=nAgt.substring(verOffset+8);
-          }
-        }else if((verOffset=nAgt.indexOf("MSIE"))!=-1){
-          browserName="Microsoft Internet Explorer";
-          fullVersion=nAgt.substring(verOffset+5);
-        }else if((verOffset=nAgt.indexOf("Chrome"))!=-1){
-          browserName="Chrome";
-          fullVersion=nAgt.substring(verOffset+7);
-        }else if((verOffset=nAgt.indexOf("Safari"))!=-1){
-          browserName="Safari";
-          fullVersion=nAgt.substring(verOffset+7);
-          if((verOffset=nAgt.indexOf("Version"))!=-1){
-            fullVersion=nAgt.substring(verOffset+8);
-          }
-        }else if((verOffset=nAgt.indexOf("Firefox"))!=-1){
-          browserName="Firefox";
-          fullVersion=nAgt.substring(verOffset+8);
-        }else if((nameOffset=nAgt.lastIndexOf(' ')+1)<(verOffset=nAgt.lastIndexOf(
-                          '/'))){
-          browserName=nAgt.substring(nameOffset,verOffset);
-          fullVersion=nAgt.substring(verOffset+1);
-          if(browserName.toLowerCase()==browserName.toUpperCase()){
-            browserName=navigator.appName;
-          }
-        }
-        if((ix=fullVersion.indexOf(";"))!=-1){
-          fullVersion=fullVersion.substring(0,ix);
-        }
-        if((ix=fullVersion.indexOf(" "))!=-1){
-          fullVersion=fullVersion.substring(0,ix);
-        }
-        majorVersion=parseInt(''+fullVersion,10);
-        if(isNaN(majorVersion)){
-          fullVersion=''+parseFloat(navigator.appVersion);
-          majorVersion=parseInt(navigator.appVersion,10);
-        }
-        let OSName="Unknown OS";
-        if(navigator.appVersion.indexOf("Win")!=-1){
-          OSName="Windows";
-        }
-        if(navigator.appVersion.indexOf("Mac")!=-1){
-          OSName="MacOS";
-        }
-        if(navigator.appVersion.indexOf("X11")!=-1){
-          OSName="UNIX";
-        }
-        if(navigator.appVersion.indexOf("Linux")!=-1){
-          OSName="Linux";
-        }
-        function getDefaultFontSize(parentElement){
-          parentElement=parentElement||document.body;
-          let div=document.createElement('div');
-          div.style.width="1000em";
-          parentElement.appendChild(div);
-          let pixels=div.offsetWidth/1000;
-          parentElement.removeChild(div);
-          return pixels;
-        };
-        const isMobile={'Android':function(){
-            return navigator.userAgent.match(/Android/i);
-          },'BlackBerry':function(){
-            return navigator.userAgent.match(/BlackBerry/i);
-          },'iOS':function(){
-            return navigator.userAgent.match(/iPhone|iPad|iPod/i);
-          },'Opera':function(){
-            return navigator.userAgent.match(/Opera Mini/i);
-          },'Windows':function(){
-            return navigator.userAgent.match(/IEMobile/i)||navigator.userAgent.match(
-                          /WPDesktop/i);
-          },'any':function(){
-            return(isMobile.Android()||isMobile.BlackBerry()||isMobile.iOS()||isMobile.Opera(
-                            )||isMobile.Windows());
-          }};
-        const platform={'OSName':OSName,'browser':browserName,'fullVersion':fullVersion,
-                  'majorVersion':majorVersion,'appName':navigator.appName,'userAgent':navigator.userAgent,
-                  'platform':build_platform||'web','isAndroid':build_platform==='android',
-                  'isQt':build_platform==='qt','isMobile':(!!isMobile.any())};
-        return[OSName,platform];
       })();
     const[render,render_update]=(function(){
         if(window.requestIdleCallback===undefined){
@@ -1664,6 +1688,9 @@ daedalus=(function(){
           _removeDomNode_elementFixUp(fiber.element);
         };
         return[render,render_update];
+      })();
+    const[]=(function(){
+        return[];
       })();
     return{'AuthenticatedRouter':AuthenticatedRouter,'ButtonElement':ButtonElement,
           'DomElement':DomElement,'DraggableList':DraggableList,'DraggableListItem':DraggableListItem,
@@ -2789,7 +2816,9 @@ components=(function(api,daedalus,resources){
                                   resources.svg.plus,this.handleToggleExpand.bind(this)));
             }else{
               this.attrs.btn=this.attrs.container1.appendChild(new SvgButtonElement(
-                                  resources.svg.dot,()=>{}));
+                                  resources.svg.dot,()=>{
+
+                  }));
             }
             this.attrs.txt=this.attrs.container1.appendChild(new components.MiddleText(
                               title));
@@ -3545,8 +3574,7 @@ components=(function(api,daedalus,resources){
               for(let c=-1;c<=7;c++)
               {
                 if(col+c<=-1||this.moduleCount<=col+c)continue;
-                if((0<=r&&r<=6&&(c==0||c==6))||(0<=c&&c<=6&&(r==0||r==6))||(2<=r&&r<=4&&2<=c&&c<=4)){
-                
+                if((0<=r&&r<=6&&(c==0||c==6))){
                   this.modules[row+r][col+c]=true;
                 }else{
                   this.modules[row+r][col+c]=false;
@@ -3629,7 +3657,7 @@ components=(function(api,daedalus,resources){
                 {
                   for(let c=-2;c<=2;c++)
                   {
-                    if(r==-2||r==2||c==-2||c==2||(r==0&&c==0)){
+                    if(r==-2||r==2||c==-2||c==2){
                       this.modules[row+r][col+c]=true;
                     }else{
                       this.modules[row+r][col+c]=false;
@@ -3755,8 +3783,7 @@ components=(function(api,daedalus,resources){
           }
           ;
           if(buffer.getLengthInBits()>totalDataCount*8){
-            throw new Error("code length overflow. ("+buffer.getLengthInBits()+">"+totalDataCount*8+")");
-            
+            throw new Error("code length overflow. (");
           }
           if(buffer.getLengthInBits()+4<=totalDataCount*8){
             buffer.put(0,4);
@@ -3991,9 +4018,7 @@ components=(function(api,daedalus,resources){
             {
               for(let col=0;col<moduleCount-6;col++)
               {
-                if(qrCode.isDark(row,col)&&!qrCode.isDark(row,col+1)&&qrCode.isDark(
-                                      row,col+2)&&qrCode.isDark(row,col+3)&&qrCode.isDark(row,col+4)&&!qrCode.isDark(
-                                      row,col+5)&&qrCode.isDark(row,col+6)){
+                if(qrCode.isDark(row,col)){
                   lostPoint+=40;
                 }
               }
@@ -4004,9 +4029,7 @@ components=(function(api,daedalus,resources){
             {
               for(let row=0;row<moduleCount-6;row++)
               {
-                if(qrCode.isDark(row,col)&&!qrCode.isDark(row+1,col)&&qrCode.isDark(
-                                      row+2,col)&&qrCode.isDark(row+3,col)&&qrCode.isDark(row+4,col)&&!qrCode.isDark(
-                                      row+5,col)&&qrCode.isDark(row+6,col)){
+                if(qrCode.isDark(row,col)){
                   lostPoint+=40;
                 }
               }
@@ -4050,8 +4073,7 @@ components=(function(api,daedalus,resources){
         ;
         for(let i=8;i<256;i++)
         {
-          QRMath.EXP_TABLE[i]=QRMath.EXP_TABLE[i-4]^QRMath.EXP_TABLE[i-5]^QRMath.EXP_TABLE[
-                    i-6]^QRMath.EXP_TABLE[i-8];
+          QRMath.EXP_TABLE[i]=QRMath.EXP_TABLE[i-4];
         }
         ;
         for(let i=0;i<255;i++)
@@ -4343,7 +4365,7 @@ router=(function(api,daedalus){
           'userRadioStationHistory':"/u/radio/:station/history",'userWildCard':"/u/:path*",
           'login':"/login",'apiDoc':"/doc",'publicFile':"/p/:uid/:filename",'publicRadioSearch':"/radio/:station/search",
           'publicRadioHistory':"/radio/:station/history",'publicRadio':"/radio/:station",
-          'recipeList':"/recipe",'recipeContent':"/recipe/:path",'wildCard':"/:path*"};
+          'recipeList':"/recipe",'recipeContent':"/recipe/:path+",'password':"/pwd",'wildCard':"/:path*"};
     
     const routes={};
     Object.keys(route_urls).map(key=>{
@@ -4357,7 +4379,7 @@ store=(function(){
     const globals={};
     return{'globals':globals};
   })();
-pages.audio=(function(api,daedalus){
+audio=(function(api,daedalus){
     "use strict";
     const StyleSheet=daedalus.StyleSheet;
     const DomElement=daedalus.DomElement;
@@ -4448,8 +4470,7 @@ pages.audio=(function(api,daedalus){
             this.audio_instance.volume=volume;
           }
           isPlaying(){
-            return this.audio_instance&&this.audio_instance.currentTime>=0&&!this.audio_instance.paused&&!this.audio_instance.ended&&this.audio_instance.readyState>2;
-            
+            return this.audio_instance;
           }
           onplay(event){
             this.parent._sendEvent('handleAudioPlay',{});
@@ -4758,8 +4779,7 @@ pages.audio=(function(api,daedalus){
             this.audio_instance.volume=volume;
           }
           isPlaying(){
-            return this.audio_instance&&this.audio_instance.currentTime>0&&!this.audio_instance.paused&&!this.audio_instance.ended&&this.audio_instance.readyState>2;
-            
+            return this.audio_instance;
           }
           onplay(event){
             this.parent._sendEvent('handleAudioPlay',{});
@@ -4823,8 +4843,9 @@ pages.audio=(function(api,daedalus){
           }
           queueSet(songList){
             this.queue=songList;
-            this.impl.updateQueue(-1,this.queue).then((result)=>{}).catch((error)=>{
-              
+            this.impl.updateQueue(-1,this.queue).then((result)=>{
+
+              }).catch((error)=>{
                 if(error!=="not implemented"){
                   console.error(error);
                 }
@@ -4832,7 +4853,9 @@ pages.audio=(function(api,daedalus){
             this.stop();
           }
           queueSave(){
-            this.impl.setQueue(this.queue).then((result)=>{}).catch((error)=>{
+            this.impl.setQueue(this.queue).then((result)=>{
+
+              }).catch((error)=>{
                 if(error!=="not implemented"){
                   console.error(error);
                 }
@@ -4887,7 +4910,9 @@ pages.audio=(function(api,daedalus){
                 this.current_index+=1;
               }
               this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
-                                }).catch((error)=>{
+                
+
+                }).catch((error)=>{
                   if(error!=="not implemented"){
                     console.error(error);
                   }
@@ -4908,7 +4933,9 @@ pages.audio=(function(api,daedalus){
                 this.current_index-=1;
               }
               this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
-                                }).catch((error)=>{
+                
+
+                }).catch((error)=>{
                   if(error!=="not implemented"){
                     console.error(error);
                   }
@@ -4928,7 +4955,9 @@ pages.audio=(function(api,daedalus){
               this.current_index+=1;
             }
             this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
-                            }).catch((error)=>{
+              
+
+              }).catch((error)=>{
                 if(error!=="not implemented"){
                   console.error(error);
                 }
@@ -4947,7 +4976,9 @@ pages.audio=(function(api,daedalus){
               this._sendEvent('handleAudioSongChanged',null);
             }
             this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
-                            }).catch((error)=>{
+              
+
+              }).catch((error)=>{
                 if(error!=="not implemented"){
                   console.error(error);
                 }
@@ -4969,7 +5000,9 @@ pages.audio=(function(api,daedalus){
                 this.current_index-=1;
               }
               this.impl.updateQueue(this.current_index,this.queue).then((result)=>{
-                                }).catch((error)=>{
+                
+
+                }).catch((error)=>{
                   if(error!=="not implemented"){
                     console.error(error);
                   }
@@ -5339,5603 +5372,5780 @@ pages.audio=(function(api,daedalus){
           'QDeviceImpl':QDeviceImpl,'RemoteDeviceImpl':RemoteDeviceImpl,'WhiteNoiseContext':WhiteNoiseContext};
     
   })(api,daedalus);
-Object.assign(pages,(function(api,components,daedalus,audio,resources,router,store){
-    
-      "use strict";
-      const StyleSheet=daedalus.StyleSheet;
-      const DomElement=daedalus.DomElement;
-      const ButtonElement=daedalus.ButtonElement;
-      const TextElement=daedalus.TextElement;
-      const Router=daedalus.Router;
-      const TextInputElement=daedalus.TextInputElement;
-      const patternCompile=daedalus.patternCompile;
-      const LinkElement=daedalus.LinkElement;
-      const routes=router.routes;
-      const[fmtEpochTime]=(function(){
-          function fmtEpochTime(ms_time){
-            const dt=new Date(ms_time);
-            let d=dt.getDate();
-            let m=dt.getMonth()+1;
-            let y=dt.getFullYear();
-            let H=dt.getHours();
-            let M=dt.getMinutes();
-            let S=dt.getSeconds();
-            let Z=dt.getTimezoneOffset();
-            let zh=-Math.floor(Z/60);
-            let zm=Math.abs(Z)%60;
-            if(zm<9){
-              zm='0'+zm;
-            }
-            return`${y}/${m}/${d} ${H}:${M}:${S} ${zh}:${zm}`;
-          };
-          return[fmtEpochTime];
-        })();
-      const[LandingPage]=(function(){
-          const styles={'main':'dcs-25fcefae-0','btn_center':'dcs-25fcefae-1'};
-          class LandingPage extends DomElement {
-            constructor(){
-              super("div",{'className':styles.main},[]);
-              this.attrs={'btn':new ButtonElement("Login",()=>{
-                    history.pushState({},"","/login");
-                  })};
-              this.attrs.btn.updateProps({'className':styles.btn_center});
-              this.appendChild(this.attrs.btn);
-              this.appendChild(new TextElement(daedalus.env.buildDate));
-            }
-          };
-          return[LandingPage];
-        })();
-      const[LoginPage]=(function(){
-          const style={'main':'dcs-240dd88a-0','btn_center':'dcs-240dd88a-1','edit':'dcs-240dd88a-2',
-                      'edit2':'dcs-240dd88a-3','btnt':'dcs-240dd88a-4','warning':'dcs-240dd88a-5',
-                      'hbox':'dcs-240dd88a-6','hide':'dcs-240dd88a-7'};
-          class LoginPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              this.btn1=new ButtonElement("Login",this.handleLoginClicked.bind(this));
-              
-              this.btn2=new ButtonElement("Cancel",()=>{
-                  history.pushState({},"","/");
-                });
-              this.edit_username=new TextInputElement("");
-              this.edit_password=new TextInputElement("");
-              this.btn_toggle_visible=new ButtonElement("\uD83D\uDC41",this.onTogglePasswordVisible.bind(
-                                  this));
-              this.warning=new DomElement("div",{'className':style.warning},[new TextElement(
-                                      "Invalid Username or Password")]);
-              this.hbox_username=new DomElement("div",{'className':style.hbox},[this.edit_username]);
-              
-              this.hbox_password=new DomElement("div",{'className':style.hbox},[this.edit_password,
-                                  this.btn_toggle_visible]);
-              this.btn1.addClassName(style.btn_center);
-              this.btn2.addClassName(style.btn_center);
-              this.edit_username.addClassName(style.edit);
-              this.edit_password.addClassName(style.edit2);
-              this.btn_toggle_visible.addClassName(style.btnt);
-              this.edit_username.updateProps({'placeholder':'Username'});
-              this.edit_password.updateProps({'placeholder':'Password','type':'password'});
-              
-              this.warning.addClassName(style.hide);
-              this.appendChild(this.hbox_username);
-              this.appendChild(this.hbox_password);
-              this.appendChild(this.warning);
-              this.appendChild(this.btn1);
-              this.appendChild(this.btn2);
-            }
-            handleLoginClicked(){
-              const username=this.edit_username.getText();
-              const password=this.edit_password.getText();
-              api.authenticate(username,password).then((data)=>{
-                  if(data.token){
-                    api.setUsertoken(data.token);
-                    this.warning.addClassName(style.hide);
-                    history.pushState({},"",routes.userLibraryList());
-                  }else{
-                    this.warning.removeClassName(style.hide);
-                    console.error(data.error);
-                  }
-                }).catch((err)=>{
+pages=(function(api,audio,components,daedalus,resources,router,store){
+    "use strict";
+    const StyleSheet=daedalus.StyleSheet;
+    const DomElement=daedalus.DomElement;
+    const ButtonElement=daedalus.ButtonElement;
+    const TextInputElement=daedalus.TextInputElement;
+    const Router=daedalus.Router;
+    const TextElement=daedalus.TextElement;
+    const patternCompile=daedalus.patternCompile;
+    const LinkElement=daedalus.LinkElement;
+    const routes=router.routes;
+    const[fmtEpochTime]=(function(){
+        function fmtEpochTime(ms_time){
+          const dt=new Date(ms_time);
+          let d=dt.getDate();
+          let m=dt.getMonth()+1;
+          let y=dt.getFullYear();
+          let H=dt.getHours();
+          let M=dt.getMinutes();
+          let S=dt.getSeconds();
+          let Z=dt.getTimezoneOffset();
+          let zh=-Math.floor(Z/60);
+          let zm=Math.abs(Z)%60;
+          if(zm<9){
+            zm='0'+zm;
+          }
+          return`${y}/${m}/${d} ${H}:${M}:${S} ${zh}:${zm}`;
+        };
+        return[fmtEpochTime];
+      })();
+    const[LandingPage]=(function(){
+        const styles={'main':'dcs-25fcefae-0','btn_center':'dcs-25fcefae-1'};
+        class LandingPage extends DomElement {
+          constructor(){
+            super("div",{'className':styles.main},[]);
+            this.attrs={'btn':new ButtonElement("Login",()=>{
+                  history.pushState({},"","/login");
+                })};
+            this.attrs.btn.updateProps({'className':styles.btn_center});
+            this.appendChild(this.attrs.btn);
+            this.appendChild(new TextElement(daedalus.env.buildDate));
+          }
+        };
+        return[LandingPage];
+      })();
+    const[LoginPage]=(function(){
+        const style={'main':'dcs-240dd88a-0','btn_center':'dcs-240dd88a-1','edit':'dcs-240dd88a-2',
+                  'edit2':'dcs-240dd88a-3','btnt':'dcs-240dd88a-4','warning':'dcs-240dd88a-5',
+                  'hbox':'dcs-240dd88a-6','hide':'dcs-240dd88a-7'};
+        class LoginPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            this.btn1=new ButtonElement("Login",this.handleLoginClicked.bind(this));
+            
+            this.btn2=new ButtonElement("Cancel",()=>{
+                history.pushState({},"","/");
+              });
+            this.edit_username=new TextInputElement("");
+            this.edit_password=new TextInputElement("");
+            this.btn_toggle_visible=new ButtonElement("\uD83D\uDC41",this.onTogglePasswordVisible.bind(
+                              this));
+            this.warning=new DomElement("div",{'className':style.warning},[new TextElement(
+                                  "Invalid Username or Password")]);
+            this.hbox_username=new DomElement("div",{'className':style.hbox},[this.edit_username]);
+            
+            this.hbox_password=new DomElement("div",{'className':style.hbox},[this.edit_password,
+                              this.btn_toggle_visible]);
+            this.btn1.addClassName(style.btn_center);
+            this.btn2.addClassName(style.btn_center);
+            this.edit_username.addClassName(style.edit);
+            this.edit_password.addClassName(style.edit2);
+            this.btn_toggle_visible.addClassName(style.btnt);
+            this.edit_username.updateProps({'placeholder':'Username'});
+            this.edit_password.updateProps({'placeholder':'Password','type':'password'});
+            
+            this.warning.addClassName(style.hide);
+            this.appendChild(this.hbox_username);
+            this.appendChild(this.hbox_password);
+            this.appendChild(this.warning);
+            this.appendChild(this.btn1);
+            this.appendChild(this.btn2);
+          }
+          handleLoginClicked(){
+            const username=this.edit_username.getText();
+            const password=this.edit_password.getText();
+            api.authenticate(username,password).then((data)=>{
+                if(data.token){
+                  api.setUsertoken(data.token);
+                  this.warning.addClassName(style.hide);
+                  history.pushState({},"",routes.userLibraryList());
+                }else{
                   this.warning.removeClassName(style.hide);
-                  console.error(err);
+                  console.error(data.error);
+                }
+              }).catch((err)=>{
+                this.warning.removeClassName(style.hide);
+                console.error(err);
+              });
+          }
+          onTogglePasswordVisible(){
+            let type=(this.edit_password.props.type=="password")?"text":"password";
+            
+            this.edit_password.updateProps({'type':type});
+          }
+        };
+        return[LoginPage];
+      })();
+    const[FileSystemPage,PublicFilePage,StoragePage,StoragePreviewPage]=(function(
+            ){
+        const thumbnailFormats={'jpg':true,'png':true,'webm':true,'mp4':true,'gif':true};
+        
+        const style={'item_file':'dcs-370f94ee-0','list':'dcs-370f94ee-1','listItem':'dcs-370f94ee-2',
+                  'listItemMain':'dcs-370f94ee-3','listItemDir':'dcs-370f94ee-4','listItemMid':'dcs-370f94ee-5',
+                  'listItemEnd':'dcs-370f94ee-6','listItemText':'dcs-370f94ee-7','icon1':'dcs-370f94ee-8',
+                  'icon2':'dcs-370f94ee-9','fileDetailsShow':'dcs-370f94ee-10','fileDetailsHide':'dcs-370f94ee-11',
+                  'encryption':{"system":'dcs-370f94ee-12',"server":'dcs-370f94ee-13',"client":'dcs-370f94ee-14',
+                      "none":'dcs-370f94ee-15'},'svgDiv':'dcs-370f94ee-16','text':'dcs-370f94ee-17',
+                  'textSpacer':'dcs-370f94ee-18','callbackLink':'dcs-370f94ee-19','center':'dcs-370f94ee-20',
+                  'paddedText':'dcs-370f94ee-21','navBar':'dcs-370f94ee-22','searchShow':'dcs-370f94ee-23',
+                  'searchHide':'dcs-370f94ee-24','grow':'dcs-370f94ee-25','objectContainer':'dcs-370f94ee-26',
+                  'zoomOut':'dcs-370f94ee-27','zoomIn':'dcs-370f94ee-28','maxWidth':'dcs-370f94ee-29',
+                  'main2':'dcs-370f94ee-30','show':'dcs-370f94ee-31','hide':'dcs-370f94ee-32'};
+        
+        ;
+        ;
+        let thumbnail_work_queue=[];
+        let thumbnail_work_count=0;
+        function thumbnail_DoProcessNext(){
+          if(thumbnail_work_queue.length>0){
+            const elem=thumbnail_work_queue.shift();
+            if(elem.props.src!=elem.state.url1){
+              elem.updateProps({'src':elem.state.url1});
+            }else{
+              thumbnail_ProcessNext();
+            }
+            ;
+          }
+        };
+        function thumbnail_ProcessNext(){
+          if(thumbnail_work_queue.length>0){
+            requestIdleCallback(thumbnail_DoProcessNext);
+          }else{
+            thumbnail_work_count-=1;
+          }
+        };
+        function thumbnail_ProcessStart(){
+          if(thumbnail_work_queue.length>=3){
+            requestIdleCallback(thumbnail_DoProcessNext);
+            requestIdleCallback(thumbnail_DoProcessNext);
+            requestIdleCallback(thumbnail_DoProcessNext);
+            thumbnail_work_count=3;
+          }else if(thumbnail_work_queue.length>0){
+            requestIdleCallback(thumbnail_DoProcessNext);
+            thumbnail_work_count=1;
+          }
+        };
+        function thumbnail_CancelQueue(){
+          thumbnail_work_queue=[];
+          thumbnail_work_count=0;
+        };
+        class SvgIconElementImpl extends DomElement {
+          constructor(url1,url2,props){
+            super("img",{'src':url2,'width':80,'height':60,...props},[]);
+            this.state={'url1':url1,'url2':url2};
+            if(url1!==url2&&url1&&url2){
+              thumbnail_work_queue.push(this);
+            }
+          }
+          onLoad(event){
+            if(this.props.src===this.state.url2){
+              return;
+            }
+            thumbnail_ProcessNext();
+          }
+          onError(error){
+            console.warn("error loading: ",this.props.src,JSON.stringify(error));
+            
+            if(this.props.src===this.state.url2){
+              return;
+            }
+            if(this.props.src!=this.state.url2&&this.state.url2){
+              this.updateProps({'src':this.state.url2});
+            }
+            thumbnail_ProcessNext();
+          }
+        };
+        class SvgIconElement extends DomElement {
+          constructor(url1,url2,props){
+            if(url2===null){
+              url2=url1;
+            }
+            super("div",{'className':style.svgDiv},[new SvgIconElementImpl(url1,url2,
+                                  props)]);
+          }
+        };
+        class SvgMoreElement extends components.SvgElement {
+          constructor(callback){
+            super(resources.svg.more,{'width':20,'height':60,'className':style.listItemEnd});
+            
+            this.state={'callback':callback};
+          }
+          onClick(event){
+            this.state.callback();
+          }
+        };
+        class StorageListElement extends DomElement {
+          constructor(elem){
+            super("div",{'className':style.list},[]);
+          }
+        };
+        class CallbackLink extends DomElement {
+          constructor(text,callback){
+            super('div',{'className':style.callbackLink},[new TextElement(text)]);
+            
+            this.state={'callback':callback};
+          }
+          setText(text){
+            this.children[0].setText(text);
+          }
+          onClick(){
+            this.state.callback();
+          }
+        };
+        class DirectoryElement extends DomElement {
+          constructor(name,url){
+            super("div",{'className':style.listItemDir},[]);
+            this.appendChild(new DomElement("div",{'className':style.encryption["none"]},
+                              []));
+            this.appendChild(new SvgIconElement(resources.svg.folder,null,{'className':style.icon1}));
+            
+            this.appendChild(new components.MiddleTextLink(name,url));
+            this.children[2].addClassName(style.listItemMid);
+          }
+        };
+        class DownloadLink extends DomElement {
+          constructor(url,filename){
+            super("a",{'href':url,'download':filename},[new TextElement("Download")]);
+            
+          }
+        };
+        class FileElement extends DomElement {
+          constructor(fileInfo,callback,delete_callback){
+            super("div",{'className':style.listItem},[]);
+            this.state={'fileInfo':fileInfo};
+            this.attrs={'main':this.appendChild(new DomElement("div",{'className':style.listItemMain},
+                                  [])),'details':null,'delete_callback':delete_callback};
+            const elem=new components.MiddleText(fileInfo.name);
+            elem.addClassName(style.listItemMid);
+            elem.updateProps({'onClick':this.handleShowDetails.bind(this)});
+            let url1=resources.svg.file;
+            let url2=null;
+            let className=style.icon1;
+            const ext=daedalus.util.splitext(fileInfo.name)[1].substring(1).toLocaleLowerCase(
+                        );
+            if(thumbnailFormats[ext]===true){
+              url2=url1;
+              url1=api.fsPathPreviewUrl(fileInfo.root,daedalus.util.joinpath(fileInfo.path,
+                                  fileInfo.name));
+              className=style.icon2;
+            }
+            const encryption=fileInfo.encryption||"none";
+            this.attrs.main.appendChild(new DomElement("div",{'className':style.encryption[
+                                    encryption]},[]));
+            this.attrs.main.appendChild(new SvgIconElement(url1,url2,{'className':className}));
+            
+            this.attrs.main.appendChild(elem);
+            if(callback!==null){
+              this.attrs.main.appendChild(new SvgMoreElement(callback));
+            }
+          }
+          handleShowDetails(event){
+            if(this.attrs.details===null){
+              const fpath=daedalus.util.joinpath(this.state.fileInfo.path,this.state.fileInfo.name);
+              
+              this.attrs.details=new DomElement("div",{'className':style.fileDetailsShow},
+                              []);
+              this.appendChild(this.attrs.details);
+              this.attrs.details.appendChild(new DomElement('div',{'className':style.paddedText},
+                                  [new LinkElement("Preview",api.fsGetPathContentUrl(this.state.fileInfo.root,
+                                              fpath))]));
+              const dl=new DownloadLink(api.fsPathUrl(this.state.fileInfo.root,fpath,
+                                  1),this.state.fileInfo.name);
+              this.attrs.details.appendChild(new DomElement('div',{'className':style.paddedText},
+                                  [dl]));
+              this.attrs.details.appendChild(new DomElement('div',{'className':style.paddedText},
+                                  [new CallbackLink("Delete",this.attrs.delete_callback)]));
+              if(this.state.fileInfo.encryption=="system"){
+                this.attrs.public_container=new DomElement('div',{'className':style.paddedText},
+                                  []);
+                this.attrs.public_link1=new CallbackLink("Generate Public Link",this.handlePublic1Clicked.bind(
+                                      this));
+                this.attrs.public_link2=new CallbackLink("Open Public Download Page",
+                                  this.handlePublic2Clicked.bind(this));
+                this.attrs.public_container.appendChild(this.attrs.public_link1);
+                
+                this.attrs.public_container.appendChild(this.attrs.public_link2);
+                
+                this.attrs.details.appendChild(this.attrs.public_container);
+                this._updatePublicLinkText();
+              }
+              this.attrs.details.appendChild(new DomElement('div',{},[new TextElement(
+                                          `Version: ${this.state.fileInfo.version}`)]));
+              this.attrs.details.appendChild(new DomElement('div',{},[new TextElement(
+                                          `Size: ${this.state.fileInfo.size}`)]));
+              this.attrs.details.appendChild(new DomElement('div',{},[new TextElement(
+                                          `Encryption: ${this.state.fileInfo.encryption}`)]));
+              const dt=new Date(this.state.fileInfo.mtime*1000);
+              this.attrs.details.appendChild(new DomElement('div',{},[new TextElement(
+                                          `Modified Time: ${dt}`)]));
+              ;
+              ;
+              ;
+            }else{
+              if(this.attrs.details.props.className===style.fileDetailsShow){
+                this.attrs.details.updateProps({'className':style.fileDetailsHide});
+                
+              }else{
+                this.attrs.details.updateProps({'className':style.fileDetailsShow});
+                
+              }
+            }
+          }
+          handlePublic1Clicked(){
+            console.log("click");
+            console.log(this.state.fileInfo);
+            const root=this.state.fileInfo.root;
+            const name=this.state.fileInfo.path+"/"+this.state.fileInfo.name;
+            if(this.state.fileInfo.public){
+              api.fsPublicUriRevoke(root,name).then(result=>{
+                  this.state.fileInfo.public=null;
+                  this._updatePublicLinkText();
+                }).catch(error=>{
+                  console.error(error);
+                });
+            }else{
+              api.fsPublicUriGenerate(root,name).then(result=>{
+                  console.log("***",result);
+                  this.state.fileInfo.public=result.result['id'];
+                  this._updatePublicLinkText();
+                }).catch(error=>{
+                  console.error(error);
                 });
             }
-            onTogglePasswordVisible(){
-              let type=(this.edit_password.props.type=="password")?"text":"password";
-              
-              this.edit_password.updateProps({'type':type});
+          }
+          handlePublic2Clicked(){
+            console.log("click");
+            console.log(this.state.fileInfo);
+            const uid=this.state.fileInfo.public;
+            const filename=this.state.fileInfo.name;
+            let url=location.origin+router.routes.publicFile({'uid':uid,'filename':filename});
+            
+            api.openTab(url);
+          }
+          _updatePublicLinkText(){
+            console.log(this.state.fileInfo.public);
+            let text=this.state.fileInfo.public?"Revoke Public Link":"Generate Public Link";
+            
+            this.attrs.public_link1.setText(text);
+            if(this.state.fileInfo.public){
+              this.attrs.public_link2.removeClassName(style.hide);
+              this.attrs.public_link2.addClassName(style.show);
+            }else{
+              this.attrs.public_link2.removeClassName(style.show);
+              this.attrs.public_link2.addClassName(style.hide);
             }
-          };
-          return[LoginPage];
-        })();
-      const[FileSystemPage,PublicFilePage,StoragePage,StoragePreviewPage]=(function(
-                ){
-          const thumbnailFormats={'jpg':true,'png':true,'webm':true,'mp4':true,'gif':true};
-          
-          const style={'item_file':'dcs-370f94ee-0','list':'dcs-370f94ee-1','listItem':'dcs-370f94ee-2',
-                      'listItemMain':'dcs-370f94ee-3','listItemDir':'dcs-370f94ee-4','listItemMid':'dcs-370f94ee-5',
-                      'listItemEnd':'dcs-370f94ee-6','listItemText':'dcs-370f94ee-7','icon1':'dcs-370f94ee-8',
-                      'icon2':'dcs-370f94ee-9','fileDetailsShow':'dcs-370f94ee-10','fileDetailsHide':'dcs-370f94ee-11',
-                      'encryption':{"system":'dcs-370f94ee-12',"server":'dcs-370f94ee-13',"client":'dcs-370f94ee-14',
-                          "none":'dcs-370f94ee-15'},'svgDiv':'dcs-370f94ee-16','text':'dcs-370f94ee-17',
-                      'textSpacer':'dcs-370f94ee-18','callbackLink':'dcs-370f94ee-19','center':'dcs-370f94ee-20',
-                      'paddedText':'dcs-370f94ee-21','navBar':'dcs-370f94ee-22','searchShow':'dcs-370f94ee-23',
-                      'searchHide':'dcs-370f94ee-24','grow':'dcs-370f94ee-25','objectContainer':'dcs-370f94ee-26',
-                      'zoomOut':'dcs-370f94ee-27','zoomIn':'dcs-370f94ee-28','maxWidth':'dcs-370f94ee-29',
-                      'main2':'dcs-370f94ee-30','show':'dcs-370f94ee-31','hide':'dcs-370f94ee-32'};
-          
-          ;
-          ;
-          let thumbnail_work_queue=[];
-          let thumbnail_work_count=0;
-          function thumbnail_DoProcessNext(){
-            if(thumbnail_work_queue.length>0){
-              const elem=thumbnail_work_queue.shift();
-              if(elem.props.src!=elem.state.url1){
-                elem.updateProps({'src':elem.state.url1});
+          }
+        };
+        class StorageNavBar extends DomElement {
+          constructor(){
+            super("div",{'className':style.navBar},[]);
+          }
+          addActionElement(element){
+            this.appendChild(element);
+          }
+        };
+        class Header extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.addAction(resources.svg['return'],parent.handleOpenParent.bind(parent));
+            
+            this.addAction(resources.svg['upload'],this.handleUploadFile.bind(this));
+            
+            this.addAction(resources.svg['search_generic'],parent.handleToggleSearch.bind(
+                              parent));
+            this.addAction(resources.svg['new_folder'],parent.handleNewDirectory.bind(
+                              parent));
+            this.attrs.location=new components.MiddleText(".....");
+            this.addRow(true);
+            this.addRowElement(0,this.attrs.location);
+            this.attrs.search_input=new TextInputElement("",null,parent.search.bind(
+                              parent));
+            this.addRow(false);
+            this.attrs.search_input.addClassName(style.grow);
+            this.addRowElement(1,this.attrs.search_input);
+            this.addRowAction(1,resources.svg['search_generic'],()=>{
+
+              });
+            this.attrs.uploadManager=new StorageUploadManager(parent.handleInsertUploadFile.bind(
+                              parent));
+            this.addRow(true);
+            this.addRowElement(2,this.attrs.uploadManager);
+          }
+          setLocation(path){
+            this.attrs.location.setText(path);
+          }
+          setSearchText(text){
+            this.attrs.search_input.setText(text);
+          }
+          handleUploadFile(){
+            if(this.attrs.parent.state.match.root!==""){
+              this.attrs.uploadManager.startUpload(this.attrs.parent.state.match.root,
+                              this.attrs.parent.state.match.dirpath);
+            }
+          }
+        };
+        class StorageUploadManager extends StorageListElement {
+          constructor(insert_callback){
+            super();
+            this.attrs={'files':{},'root':null,'dirpath':null,'insert_callback':insert_callback};
+            
+          }
+          startUpload(root,dirpath){
+            api.fsUploadFile(root,dirpath,{},{'crypt':'system'},this.handleUploadFileSuccess.bind(
+                              this),this.handleUploadFileFailure.bind(this),this.handleUploadFileProgress.bind(
+                              this));
+            this.attrs.root=root;
+            this.attrs.dirpath=dirpath;
+          }
+          handleUploadFileSuccess(msg){
+            const item=this.attrs.files[msg.fileName];
+            item.fileInfo.mtime=msg.lastModified;
+            this.attrs.insert_callback(item.fileInfo);
+            setTimeout(()=>this.handleRemove(msg),1000);
+          }
+          handleUploadFileFailure(msg){
+            console.error(msg);
+            setTimeout(()=>this.handleRemove(msg),3000);
+          }
+          handleUploadFileProgress(msg){
+            if(msg.first){
+              const fileInfo={'encryption':'system','mtime':0,'name':msg.fileName,
+                              'path':this.attrs.root,'permission':0,'public':"",'root':this.attrs.dirpath,
+                              'size':msg.fileSize,'version':1,'bytesTransfered':msg.bytesTransfered};
+              
+              const node=new TextElement(msg.fileName);
+              this.attrs.files[msg.fileName]={'fileInfo':fileInfo,'node':node};
+              this.appendChild(node);
+              ;
+              ;
+            }else if(msg.finished){
+              const item=this.attrs.files[msg.fileName];
+              if(msg.bytesTransfered==msg.fileSize){
+                item.node.setText(`${msg.fileName}: upload success`);
               }else{
-                thumbnail_ProcessNext();
+                item.node.setText(`${msg.fileName}: upload failed`);
               }
               ;
-            }
-          };
-          function thumbnail_ProcessNext(){
-            if(thumbnail_work_queue.length>0){
-              requestIdleCallback(thumbnail_DoProcessNext);
             }else{
-              thumbnail_work_count-=1;
-            }
-          };
-          function thumbnail_ProcessStart(){
-            if(thumbnail_work_queue.length>=3){
-              requestIdleCallback(thumbnail_DoProcessNext);
-              requestIdleCallback(thumbnail_DoProcessNext);
-              requestIdleCallback(thumbnail_DoProcessNext);
-              thumbnail_work_count=3;
-            }else if(thumbnail_work_queue.length>0){
-              requestIdleCallback(thumbnail_DoProcessNext);
-              thumbnail_work_count=1;
-            }
-          };
-          function thumbnail_CancelQueue(){
-            thumbnail_work_queue=[];
-            thumbnail_work_count=0;
-          };
-          class SvgIconElementImpl extends DomElement {
-            constructor(url1,url2,props){
-              super("img",{'src':url2,'width':80,'height':60,...props},[]);
-              this.state={'url1':url1,'url2':url2};
-              if(url1!==url2&&url1&&url2){
-                thumbnail_work_queue.push(this);
-              }
-            }
-            onLoad(event){
-              if(this.props.src===this.state.url2){
-                return;
-              }
-              thumbnail_ProcessNext();
-            }
-            onError(error){
-              console.warn("error loading: ",this.props.src,JSON.stringify(error));
-              
-              if(this.props.src===this.state.url2){
-                return;
-              }
-              if(this.props.src!=this.state.url2&&this.state.url2){
-                this.updateProps({'src':this.state.url2});
-              }
-              thumbnail_ProcessNext();
-            }
-          };
-          class SvgIconElement extends DomElement {
-            constructor(url1,url2,props){
-              if(url2===null){
-                url2=url1;
-              }
-              super("div",{'className':style.svgDiv},[new SvgIconElementImpl(url1,
-                                      url2,props)]);
-            }
-          };
-          class SvgMoreElement extends components.SvgElement {
-            constructor(callback){
-              super(resources.svg.more,{'width':20,'height':60,'className':style.listItemEnd});
-              
-              this.state={'callback':callback};
-            }
-            onClick(event){
-              this.state.callback();
-            }
-          };
-          class StorageListElement extends DomElement {
-            constructor(elem){
-              super("div",{'className':style.list},[]);
-            }
-          };
-          class CallbackLink extends DomElement {
-            constructor(text,callback){
-              super('div',{'className':style.callbackLink},[new TextElement(text)]);
-              
-              this.state={'callback':callback};
-            }
-            setText(text){
-              this.children[0].setText(text);
-            }
-            onClick(){
-              this.state.callback();
-            }
-          };
-          class DirectoryElement extends DomElement {
-            constructor(name,url){
-              super("div",{'className':style.listItemDir},[]);
-              this.appendChild(new DomElement("div",{'className':style.encryption[
-                                        "none"]},[]));
-              this.appendChild(new SvgIconElement(resources.svg.folder,null,{'className':style.icon1}));
-              
-              this.appendChild(new components.MiddleTextLink(name,url));
-              this.children[2].addClassName(style.listItemMid);
-            }
-          };
-          class DownloadLink extends DomElement {
-            constructor(url,filename){
-              super("a",{'href':url,'download':filename},[new TextElement("Download")]);
-              
-            }
-          };
-          class FileElement extends DomElement {
-            constructor(fileInfo,callback,delete_callback){
-              super("div",{'className':style.listItem},[]);
-              this.state={'fileInfo':fileInfo};
-              this.attrs={'main':this.appendChild(new DomElement("div",{'className':style.listItemMain},
-                                      [])),'details':null,'delete_callback':delete_callback};
-              const elem=new components.MiddleText(fileInfo.name);
-              elem.addClassName(style.listItemMid);
-              elem.updateProps({'onClick':this.handleShowDetails.bind(this)});
-              let url1=resources.svg.file;
-              let url2=null;
-              let className=style.icon1;
-              const ext=daedalus.util.splitext(fileInfo.name)[1].substring(1).toLocaleLowerCase(
-                            );
-              if(thumbnailFormats[ext]===true){
-                url2=url1;
-                url1=api.fsPathPreviewUrl(fileInfo.root,daedalus.util.joinpath(fileInfo.path,
-                                      fileInfo.name));
-                className=style.icon2;
-              }
-              const encryption=fileInfo.encryption||"none";
-              this.attrs.main.appendChild(new DomElement("div",{'className':style.encryption[
-                                        encryption]},[]));
-              this.attrs.main.appendChild(new SvgIconElement(url1,url2,{'className':className}));
-              
-              this.attrs.main.appendChild(elem);
-              if(callback!==null){
-                this.attrs.main.appendChild(new SvgMoreElement(callback));
-              }
-            }
-            handleShowDetails(event){
-              if(this.attrs.details===null){
-                const fpath=daedalus.util.joinpath(this.state.fileInfo.path,this.state.fileInfo.name);
-                
-                this.attrs.details=new DomElement("div",{'className':style.fileDetailsShow},
-                                  []);
-                this.appendChild(this.attrs.details);
-                this.attrs.details.appendChild(new DomElement('div',{'className':style.paddedText},
-                                      [new LinkElement("Preview",api.fsGetPathContentUrl(this.state.fileInfo.root,
-                                                  fpath))]));
-                const dl=new DownloadLink(api.fsPathUrl(this.state.fileInfo.root,
-                                      fpath,1),this.state.fileInfo.name);
-                this.attrs.details.appendChild(new DomElement('div',{'className':style.paddedText},
-                                      [dl]));
-                this.attrs.details.appendChild(new DomElement('div',{'className':style.paddedText},
-                                      [new CallbackLink("Delete",this.attrs.delete_callback)]));
-                if(this.state.fileInfo.encryption=="system"){
-                  this.attrs.public_container=new DomElement('div',{'className':style.paddedText},
-                                      []);
-                  this.attrs.public_link1=new CallbackLink("Generate Public Link",
-                                      this.handlePublic1Clicked.bind(this));
-                  this.attrs.public_link2=new CallbackLink("Open Public Download Page",
-                                      this.handlePublic2Clicked.bind(this));
-                  this.attrs.public_container.appendChild(this.attrs.public_link1);
-                  
-                  this.attrs.public_container.appendChild(this.attrs.public_link2);
-                  
-                  this.attrs.details.appendChild(this.attrs.public_container);
-                  this._updatePublicLinkText();
-                }
-                this.attrs.details.appendChild(new DomElement('div',{},[new TextElement(
-                                              `Version: ${this.state.fileInfo.version}`)]));
-                this.attrs.details.appendChild(new DomElement('div',{},[new TextElement(
-                                              `Size: ${this.state.fileInfo.size}`)]));
-                this.attrs.details.appendChild(new DomElement('div',{},[new TextElement(
-                                              `Encryption: ${this.state.fileInfo.encryption}`)]));
-                const dt=new Date(this.state.fileInfo.mtime*1000);
-                this.attrs.details.appendChild(new DomElement('div',{},[new TextElement(
-                                              `Modified Time: ${dt}`)]));
-                ;
-                ;
-                ;
-              }else{
-                if(this.attrs.details.props.className===style.fileDetailsShow){
-                  this.attrs.details.updateProps({'className':style.fileDetailsHide});
-                  
-                }else{
-                  this.attrs.details.updateProps({'className':style.fileDetailsShow});
-                  
-                }
-              }
-            }
-            handlePublic1Clicked(){
-              console.log("click");
-              console.log(this.state.fileInfo);
-              const root=this.state.fileInfo.root;
-              const name=this.state.fileInfo.path+"/"+this.state.fileInfo.name;
-              if(this.state.fileInfo.public){
-                api.fsPublicUriRevoke(root,name).then(result=>{
-                    this.state.fileInfo.public=null;
-                    this._updatePublicLinkText();
-                  }).catch(error=>{
-                    console.error(error);
-                  });
-              }else{
-                api.fsPublicUriGenerate(root,name).then(result=>{
-                    console.log("***",result);
-                    this.state.fileInfo.public=result.result['id'];
-                    this._updatePublicLinkText();
-                  }).catch(error=>{
-                    console.error(error);
-                  });
-              }
-            }
-            handlePublic2Clicked(){
-              console.log("click");
-              console.log(this.state.fileInfo);
-              const uid=this.state.fileInfo.public;
-              const filename=this.state.fileInfo.name;
-              let url=location.origin+router.routes.publicFile({'uid':uid,'filename':filename});
-              
-              api.openTab(url);
-            }
-            _updatePublicLinkText(){
-              console.log(this.state.fileInfo.public);
-              let text=this.state.fileInfo.public?"Revoke Public Link":"Generate Public Link";
-              
-              this.attrs.public_link1.setText(text);
-              if(this.state.fileInfo.public){
-                this.attrs.public_link2.removeClassName(style.hide);
-                this.attrs.public_link2.addClassName(style.show);
-              }else{
-                this.attrs.public_link2.removeClassName(style.show);
-                this.attrs.public_link2.addClassName(style.hide);
-              }
-            }
-          };
-          class StorageNavBar extends DomElement {
-            constructor(){
-              super("div",{'className':style.navBar},[]);
-            }
-            addActionElement(element){
-              this.appendChild(element);
-            }
-          };
-          class Header extends components.NavHeader {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.addAction(resources.svg['menu'],()=>{
-                  store.globals.showMenu();
-                });
-              this.addAction(resources.svg['return'],parent.handleOpenParent.bind(
-                                  parent));
-              this.addAction(resources.svg['upload'],this.handleUploadFile.bind(this));
-              
-              this.addAction(resources.svg['search_generic'],parent.handleToggleSearch.bind(
-                                  parent));
-              this.addAction(resources.svg['new_folder'],parent.handleNewDirectory.bind(
-                                  parent));
-              this.attrs.location=new components.MiddleText(".....");
-              this.addRow(true);
-              this.addRowElement(0,this.attrs.location);
-              this.attrs.search_input=new TextInputElement("",null,parent.search.bind(
-                                  parent));
-              this.addRow(false);
-              this.attrs.search_input.addClassName(style.grow);
-              this.addRowElement(1,this.attrs.search_input);
-              this.addRowAction(1,resources.svg['search_generic'],()=>{});
-              this.attrs.uploadManager=new StorageUploadManager(parent.handleInsertUploadFile.bind(
-                                  parent));
-              this.addRow(true);
-              this.addRowElement(2,this.attrs.uploadManager);
-            }
-            setLocation(path){
-              this.attrs.location.setText(path);
-            }
-            setSearchText(text){
-              this.attrs.search_input.setText(text);
-            }
-            handleUploadFile(){
-              if(this.attrs.parent.state.match.root!==""){
-                this.attrs.uploadManager.startUpload(this.attrs.parent.state.match.root,
-                                  this.attrs.parent.state.match.dirpath);
-              }
-            }
-          };
-          class StorageUploadManager extends StorageListElement {
-            constructor(insert_callback){
-              super();
-              this.attrs={'files':{},'root':null,'dirpath':null,'insert_callback':insert_callback};
-              
-            }
-            startUpload(root,dirpath){
-              api.fsUploadFile(root,dirpath,{},{'crypt':'system'},this.handleUploadFileSuccess.bind(
-                                  this),this.handleUploadFileFailure.bind(this),this.handleUploadFileProgress.bind(
-                                  this));
-              this.attrs.root=root;
-              this.attrs.dirpath=dirpath;
-            }
-            handleUploadFileSuccess(msg){
               const item=this.attrs.files[msg.fileName];
-              item.fileInfo.mtime=msg.lastModified;
-              this.attrs.insert_callback(item.fileInfo);
-              setTimeout(()=>this.handleRemove(msg),1000);
-            }
-            handleUploadFileFailure(msg){
-              console.error(msg);
-              setTimeout(()=>this.handleRemove(msg),3000);
-            }
-            handleUploadFileProgress(msg){
-              if(msg.first){
-                const fileInfo={'encryption':'system','mtime':0,'name':msg.fileName,
-                                  'path':this.attrs.root,'permission':0,'public':"",'root':this.attrs.dirpath,
-                                  'size':msg.fileSize,'version':1,'bytesTransfered':msg.bytesTransfered};
-                
-                const node=new TextElement(msg.fileName);
-                this.attrs.files[msg.fileName]={'fileInfo':fileInfo,'node':node};
-                
-                this.appendChild(node);
-                ;
-                ;
-              }else if(msg.finished){
-                const item=this.attrs.files[msg.fileName];
-                if(msg.bytesTransfered==msg.fileSize){
-                  item.node.setText(`${msg.fileName}: upload success`);
-                }else{
-                  item.node.setText(`${msg.fileName}: upload failed`);
-                }
-                ;
-              }else{
-                const item=this.attrs.files[msg.fileName];
-                item.fileInfo.bytesTransfered=msg.bytesTransfered;
-                item.node.setText(`${msg.fileName} ${(100.0*msg.bytesTransfered/msg.fileSize).toFixed(2)}%`);
-                
-                ;
-              }
-            }
-            handleRemove(msg){
-              const item=this.attrs.files[msg.fileName];
-              this.removeChild(item.node);
-              delete this.attrs.files[msg.fileName];
-            }
-          };
-          class StoragePage extends DomElement {
-            constructor(){
-              super("div",{},[]);
-              this.attrs={'header':new Header(this),'regex':daedalus.patternToRegexp(
-                                  ":root?/:dirpath*",false),'lst':new StorageListElement(),'more':new components.MoreMenu(
-                                  this.handleHideFileMore.bind(this)),'filemap':{}};
-              this.state={'parent_url':null};
-              this.appendChild(this.attrs.more);
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.lst);
-            }
-            elementMounted(){
-              const params=daedalus.util.parseParameters();
-              this.attrs.header.setSearchText((params.q&&params.q[0])||"");
-            }
-            elementUpdateState(oldState,newState){
-              if(newState.match){
-                if(!oldState.match||oldState.match.path!==newState.match.path){
-                  const match=daedalus.locationMatch(this.attrs.regex,newState.match.path);
-                  
-                  Object.assign(newState.match,match);
-                  this.handleRouteChange(newState.match.root,newState.match.dirpath);
-                  
-                  ;
-                }
-              }else{
-                newState.match={'root':"",'dirpath':""};
-              }
-            }
-            getRoots(){
-              thumbnail_CancelQueue();
-              this.attrs.lst.removeChildren();
-              api.fsGetRoots().then(data=>{
-                  this.handleGetRoots(data.result);
-                }).catch(error=>{
-                  this.handleGetRootsError(error);
-                });
-            }
-            handleGetRoots(result){
-              console.log(result);
-              this.updateState({'parent_url':null});
-              result.forEach(name=>{
-                  let url='/u/storage/list/'+this.state.match.path+'/'+name;
-                  url=url.replace(/\/\//,'/');
-                  this.attrs.lst.appendChild(new DirectoryElement(name,url));
-                });
-            }
-            handleGetRootsError(error){
-              console.error(error);
-              this.updateState({'parent_url':null});
-              this.attrs.lst.appendChild(new TextElement("error loading roots"));
+              item.fileInfo.bytesTransfered=msg.bytesTransfered;
+              item.node.setText(`${msg.fileName} ${(100.0*msg.bytesTransfered/msg.fileSize).toFixed(2)}%`);
               
+              ;
             }
-            refresh(){
-              this.getPath(this.state.match.root,this.state.match.dirpath);
-            }
-            getPath(root,dirpath){
-              thumbnail_CancelQueue();
-              this.attrs.lst.removeChildren();
-              api.fsGetPath(root,dirpath).then(data=>{
-                  this.handleGetPath(data.result);
-                }).catch(error=>{
-                  this.handleGetPathError(error);
-                });
-            }
-            handleGetPath(result){
-              if(result===undefined){
-                this.attrs.lst.appendChild(new TextElement("Empty Directory (error)"));
-                
-                return;
-              }
-              let url;
-              if(result.parent===result.path){
-                url=daedalus.util.joinpath('/u/storage/list/');
-              }else{
-                url=daedalus.util.joinpath('/u/storage/list/',result.name,result.parent);
-                
-              }
-              this.updateState({'parent_url':url});
-              const filemap={};
-              if((result.files.length+result.directories.length)===0){
-                this.attrs.lst.appendChild(new TextElement("Empty Directory"));
-              }else{
-                result.directories.forEach(name=>{
-                    let url=daedalus.util.joinpath('/u/storage/list/',this.state.match.path,
-                                          name);
-                    this.attrs.lst.appendChild(new DirectoryElement(name,url));
-                  });
-                result.files.forEach(item=>{
-                    const cbk=()=>{
-                      this.handleShowFileMore(item);
-                    };
-                    item.root=this.state.match.root;
-                    item.path=this.state.match.dirpath;
-                    const elem=new FileElement(item,cbk,this.deleteElement.bind(this));
-                    
-                    this.attrs.lst.appendChild(elem);
-                    filemap[item.name]=elem;
-                  });
-              }
-              thumbnail_ProcessStart();
-              this.attrs.filemap=filemap;
-            }
-            handleGetPathError(error){
-              let url='/u/storage/list/';
-              console.log(error);
-              if(this.state.match&&this.state.match.dirpath){
-                const parts=daedalus.util.splitpath(this.state.match.dirpath);
-                parts.pop();
-                url=daedalus.util.joinpath(url,this.state.match.root,...parts);
-                ;
-              }
-              this.updateState({'parent_url':url});
-              this.attrs.lst.appendChild(new TextElement("Empty Directory (error)"));
-              
-            }
-            handleToggleSearch(){
-              if(this.state.match.root===""){
-                return;
-              }
-              if(this.attrs.search_input.props.className[0]==style.searchHide){
-                this.attrs.search_input.updateProps({'className':[style.searchShow]});
-                
-                thumbnail_CancelQueue();
-                this.attrs.lst.removeChildren();
-              }else{
-                this.attrs.search_input.updateProps({'className':[style.searchHide]});
-                
-                this.refresh();
-              }
-            }
-            search(text){
-              console.log(text);
-              thumbnail_CancelQueue();
-              this.attrs.lst.removeChildren();
-              let root=this.state.match.root,path=this.state.match.dirpath,terms=text,
-                              page=0,limit=100;
-              api.fsSearch(root,path,terms,page,limit).then(this.handleSearchResult.bind(
-                                  this)).catch(this.handleSearchError.bind(this));
-            }
-            handleSearchResult(result){
-              const files=result.result.files;
-              console.log(files);
-              const filemap={};
-              if(files.length===0){
-                this.attrs.lst.appendChild(new TextElement("No Results"));
-              }else{
-                try{
-                  files.forEach(item=>{
-                      const cbk1=()=>{
-                        this.handleShowFileMore(item);
-                      };
-                      const cbk2=this.deleteElement.bind(this);
-                      item.root=this.state.match.root;
-                      const parts=daedalus.util.splitpath(item.file_path);
-                      parts.pop();
-                      item.path=parts.join("/");
-                      console.log(item);
-                      const elem=new FileElement(item,cbk1,cbk2);
-                      this.attrs.lst.appendChild(elem);
-                      filemap[item.name]=elem;
-                    });
-                }catch(e){
-                  console.log(e);
-                };
-              }
-              this.attrs.filemap=filemap;
-              thumbnail_ProcessStart();
-            }
-            handleSearchError(error){
-              this.attrs.lst.appendChild(new TextElement("No Results"));
-            }
-            handleOpenParent(){
-              if(this.state.parent_url){
-                history.pushState({},"",this.state.parent_url);
-              }
-            }
-            handleShowFileMore(item){
-              this.attrs.more.show();
-            }
-            handleHideFileMore(){
-              this.attrs.more.hide();
-            }
-            handleRouteChange(root,dirpath){
-              if(root===""&&dirpath===""){
-                this.getRoots();
-              }else if(root!==""){
-                this.getPath(root,dirpath);
-              }
-              this.attrs.header.setLocation(root+"/"+dirpath);
-            }
-            handleInsertUploadFile(fileInfo){
-              if(this.attrs.filemap[fileInfo.name]===undefined){
-                const elem=new FileElement(fileInfo,null,this.deleteElement.bind(
-                                      this));
-                this.attrs.lst.insertChild(0,elem);
-                ;
-              }else{
-                const elem=filemap[fileInfo.name];
-                this.attrs.lst.insertChild(0,elem);
-                ;
-              }
-            }
-            deleteElement(elem,fileInfo){
-              console.log(fileInfo);
-            }
-            handleNewDirectory(){
-              console.log("mkdir");
-            }
-          };
-          class FormattedText extends DomElement {
-            constructor(text){
-              super("pre",{'style':{'margin':0}},[new TextElement(text)]);
-            }
-            setText(text){
-              this.children[0].setText(text);
-            }
-          };
-          const preview_formats={'.mp4':'video','.webm':'video','.mkv':'video','.jpg':'image',
-                      '.jpeg':'image','.gif':'image','.png':'image','.bmp':'image','.wav':'audio',
-                      '.mp3':'audio','.ogg':'audio','.pdf':'pdf'};
-          class StoragePreviewPage extends DomElement {
-            constructor(){
-              super("div",{},[]);
-              this.attrs={'regex':daedalus.patternToRegexp(":root?/:dirpath*",false)};
-              
-              console.log(this.attrs.regex);
-            }
-            elementUpdateState(oldState,newState){
-              if(newState.match&&(!oldState.match||oldState.match.path!==newState.match.path)){
-              
+          }
+          handleRemove(msg){
+            const item=this.attrs.files[msg.fileName];
+            this.removeChild(item.node);
+            delete this.attrs.files[msg.fileName];
+          }
+        };
+        class StoragePage extends DomElement {
+          constructor(){
+            super("div",{},[]);
+            this.attrs={'header':new Header(this),'regex':daedalus.patternToRegexp(
+                              ":root?/:dirpath*",false),'lst':new StorageListElement(),'more':new components.MoreMenu(
+                              this.handleHideFileMore.bind(this)),'filemap':{}};
+            this.state={'parent_url':null};
+            this.appendChild(this.attrs.more);
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+          }
+          elementMounted(){
+            const params=daedalus.util.parseParameters();
+            this.attrs.header.setSearchText((params.q&&params.q[0])||"");
+          }
+          elementUpdateState(oldState,newState){
+            if(newState.match){
+              if(!oldState.match||oldState.match.path!==newState.match.path){
                 const match=daedalus.locationMatch(this.attrs.regex,newState.match.path);
                 
                 Object.assign(newState.match,match);
                 this.handleRouteChange(newState.match.root,newState.match.dirpath);
                 
                 ;
-              }else{
-                if(newState.match){
-                  Object.assign(newState.match,{'root':"",'path':""});
-                }else{
-                  newState.match={'root':"",'path':""};
-                }
               }
+            }else{
+              newState.match={'root':"",'dirpath':""};
             }
-            handleRouteChange(root,path){
-              const[_,ext]=daedalus.util.splitext(path.toLocaleLowerCase());
-              const format=preview_formats[ext];
-              console.log(`display content ext: ${ext} format: ${format}`);
-              if(format===undefined){
-                api.fsGetPathContent(root,path).then(res=>{
-                    this.appendChild(new FormattedText(res));
-                  }).catch(err=>console.error(err));
-              }else if(format==='image'){
-                const url=api.fsPathUrl(root,path,0);
-                console.log(url);
-                let img=new DomElement("img",{'src':url,'className':style.maxWidth},
-                                  []);
-                let div=new DomElement("div",{'className':style.zoomIn,'onClick':this.toggleImageZoom.bind(
-                                          this)},[img]);
-                this.attrs.img=img;
-                this.attrs.img_div=div;
-                this.appendChild(div);
-                ;
-                ;
-                ;
-              }else if(format==='video'){
-                const url=api.fsPathUrl(root,path,0);
-                this.appendChild(new DomElement("video",{'src':url,'controls':1},
-                                      []));
-                ;
-              }else if(format==='audio'){
-                const url=api.fsPathUrl(root,path,0);
-                this.appendChild(new DomElement("audio",{'src':url,'controls':1},
-                                      []));
-                ;
-              }else if(format==='pdf'){
-                const url=api.fsPathUrl(root,path,0);
-                console.warn(url);
-                this.addClassName(style.objectContainer);
-                this.appendChild(new DomElement("object",{'data':url,'type':'application/pdf',
-                                          'width':'100%','height':'100%'},[]));
-                ;
-              }
-            }
-            toggleImageZoom(event){
-              if(this.attrs.img_div.hasClassName(style.zoomIn)){
-                this.attrs.img_div.removeClassName(style.zoomIn);
-                this.attrs.img.removeClassName(style.maxWidth);
-                this.attrs.img_div.addClassName(style.zoomOut);
-              }else{
-                this.attrs.img_div.removeClassName(style.zoomOut);
-                this.attrs.img_div.addClassName(style.zoomIn);
-                this.attrs.img.addClassName(style.maxWidth);
-              }
-            }
-          };
-          class FileSystemDirectoryElement extends DomElement {
-            constructor(parent,name,url){
-              super("div",{'className':style.listItemDir},[]);
-              this.appendChild(new DomElement("div",{'className':style.encryption[
-                                        "none"]},[]));
-              this.appendChild(new SvgIconElement(resources.svg.folder,null,{'className':style.icon1}));
+          }
+          getRoots(){
+            thumbnail_CancelQueue();
+            this.attrs.lst.removeChildren();
+            api.fsGetRoots().then(data=>{
+                this.handleGetRoots(data.result);
+              }).catch(error=>{
+                this.handleGetRootsError(error);
+              });
+          }
+          handleGetRoots(result){
+            console.log(result);
+            this.updateState({'parent_url':null});
+            result.forEach(name=>{
+                let url='/u/storage/list/'+this.state.match.path+'/'+name;
+                url=url.replace(/\/\//,'/');
+                this.attrs.lst.appendChild(new DirectoryElement(name,url));
+              });
+          }
+          handleGetRootsError(error){
+            console.error(error);
+            this.updateState({'parent_url':null});
+            this.attrs.lst.appendChild(new TextElement("error loading roots"));
+          }
+          refresh(){
+            this.getPath(this.state.match.root,this.state.match.dirpath);
+          }
+          getPath(root,dirpath){
+            thumbnail_CancelQueue();
+            this.attrs.lst.removeChildren();
+            api.fsGetPath(root,dirpath).then(data=>{
+                this.handleGetPath(data.result);
+              }).catch(error=>{
+                this.handleGetPathError(error);
+              });
+          }
+          handleGetPath(result){
+            if(result===undefined){
+              this.attrs.lst.appendChild(new TextElement("Empty Directory (error)"));
               
-              this.attrs.text=this.appendChild(new components.MiddleText(name));
-              this.attrs.text.props.onClick=this.handleClick.bind(this);
-              this.children[2].addClassName(style.listItemMid);
-              this.attrs.parent=parent;
-              this.attrs.url=url;
-            }
-            handleClick(){
-              this.attrs.parent.setCurrentPath(this.attrs.url);
-            }
-          };
-          class FileSystemFileElement extends DomElement {
-            constructor(parent,item,url){
-              super("div",{'className':style.listItemDir},[]);
-              this.appendChild(new DomElement("div",{'className':style.encryption[
-                                        "none"]},[]));
-              this.appendChild(new SvgIconElement(resources.svg.file,null,{'className':style.icon1}));
-              
-              this.appendChild(new components.MiddleText(item.name));
-              this.children[2].addClassName(style.listItemMid);
-              this.attrs.parent=parent;
-              this.attrs.url=url;
-            }
-          };
-          class FileSystemHeader extends components.NavHeader {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.addAction(resources.svg['menu'],()=>{
-                  store.globals.showMenu();
-                });
-              this.addAction(resources.svg['return'],parent.handleOpenParent.bind(
-                                  parent));
-              this.attrs.location=new components.MiddleText(".....");
-              this.addRow(true);
-              this.addRowElement(0,this.attrs.location);
-            }
-            setLocation(location){
-              this.attrs.location.setText(location);
-            }
-          };
-          class FileSystemPage extends DomElement {
-            constructor(){
-              super("div",{},[]);
-              this.attrs={'header':new FileSystemHeader(this),'lst':new StorageListElement(
-                                ),'current_path':"/"};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.lst);
-            }
-            elementMounted(){
-              this.setCurrentPath("/");
-            }
-            handleOpenParent(){
-              this.setCurrentPath(daedalus.util.dirname(this.attrs.current_path));
-              
-            }
-            setCurrentPath(path){
-              if(path.length===0){
-                path="/";
-              }
-              console.log(`navigate to \`${path}\``);
-              this.attrs.current_path=path;
-              this.attrs.lst.removeChildren();
-              this.attrs.header.setLocation(path);
-              if(daedalus.platform.isAndroid){
-                let result=Client.listDirectory(path);
-                result=JSON.parse(result);
-                this.updateContents(result);
-                ;
-              }else{
-                const result={'files':[{'name':"file1"}],'directories':["dir0","dir1"]};
-                
-                this.updateContents(result);
-                ;
-              }
               return;
             }
-            updateContents(result){
-              if((result.files.length+result.directories.length)===0){
-                this.attrs.lst.appendChild(new TextElement("Empty Directory"));
-              }else{
-                result.directories.forEach(name=>{
-                    let url=daedalus.util.joinpath(this.attrs.current_path,name);
-                    
-                    const elem=new FileSystemDirectoryElement(this,name,url);
-                    this.attrs.lst.appendChild(elem);
-                  });
-                result.files.forEach(item=>{
-                    let url=daedalus.util.joinpath(this.attrs.current_path,name);
-                    
-                    const elem=new FileSystemFileElement(this,item,url);
-                    this.attrs.lst.appendChild(elem);
-                  });
-              }
-            }
-          };
-          class PublicFilePage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main2},[]);
-            }
-            elementMounted(){
-              const m=this.state.match;
-              const url=api.fsGetPublicPathUrl(m.uid,m.filename);
-              api.fsPublicUriInfo(m.uid,m.filename).then(result=>{
-                  this.appendChild(new DomElement("h2",{},[new TextElement("Download File")]));
-                  
-                  this.appendChild(new DomElement("a",{'href':url,'download':m.filename},
-                                          [new TextElement(m.filename)]));
-                  this.appendChild(new components.VSpacer("1em"));
-                  this.appendChild(new TextElement("File Size: "+Math.floor(result.result.file.size/1024)+"kb"));
-                  
-                }).catch(error=>{
-                  this.appendChild(new DomElement("h2",{},[new TextElement("File Not Found")]));
-                  
-                });
-            }
-          };
-          return[FileSystemPage,PublicFilePage,StoragePage,StoragePreviewPage];
-        })();
-      const[NoteContentPage,NoteContext,NoteEditPage,NotesPage]=(function(){
-          const styles={'page':'dcs-178d2ae3-0','list':'dcs-178d2ae3-1','item':'dcs-178d2ae3-2',
-                      'padding1':'dcs-178d2ae3-3','padding2':'dcs-178d2ae3-4','contentDiv':'dcs-178d2ae3-5',
-                      'contentPre':'dcs-178d2ae3-6','contentText':'dcs-178d2ae3-7'};
-          class NoteContext{
-            constructor(root,base){
-              this.root=root;
-              this.base=base;
-              this.cache={};
-            }
-            getList(){
-              return api.fsNoteList(this.root,this.base);
-            }
-            getContent(noteId){
-              if(this.cache[noteId]!==undefined){
-                return new Promise((resolve,reject)=>{
-                    resolve(this.cache[noteId]);
-                  });
-              }else{
-                return new Promise((resolve,reject)=>{
-                    api.fsNoteGetContent(this.root,this.base,noteId,null,null).then(
-                                          result=>{
-                        this.cache[noteId]=result;
-                        resolve(result);
-                      }).catch(error=>{
-                        reject(error);
-                      });
-                  });
-              }
-            }
-            setContent(noteId,content){
-              this.cache[noteId]=content;
-              return api.fsNoteSetContent(this.root,this.base,noteId,content,null,
-                              null);
-            }
-          };
-          function initContext(){
-            if(store.globals.note_ctxt===undefined){
-              store.globals.note_ctxt=new NoteContext("default","public/notes");
-            }
-            return store.globals.note_ctxt;
-          };
-          class ListHeader extends components.NavHeader {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.addAction(resources.svg['menu'],()=>{
-                  store.globals.showMenu();
-                });
-              this.addAction(resources.svg['plus'],()=>{
-                  this.attrs.parent.handleCreate();
-                });
-            }
-          };
-          class ListFooter extends components.NavFooter {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-            }
-          };
-          class NotesItem extends DomElement {
-            constructor(ctxt,note_id,info){
-              super("div",{'className':styles.item},[]);
-              this.attrs={'ctxt':ctxt,'note_id':note_id,'info':info};
-              this.appendChild(new DomElement("div",{},[new TextElement(info.title)]));
-              
-              const t=fmtEpochTime(info.mtime*1000);
-              this.appendChild(new DomElement("div",{},[new TextElement(`Modified Time: ${t}`)]));
+            let url;
+            if(result.parent===result.path){
+              url=daedalus.util.joinpath('/u/storage/list/');
+            }else{
+              url=daedalus.util.joinpath('/u/storage/list/',result.name,result.parent);
               
             }
-            onClick(event){
-              router.navigate(router.routes.userNotesContent({'noteId':this.attrs.note_id},
-                                  {}));
+            this.updateState({'parent_url':url});
+            const filemap={};
+            if((result.files.length+result.directories.length)===0){
+              this.attrs.lst.appendChild(new TextElement("Empty Directory"));
+            }else{
+              result.directories.forEach(name=>{
+                  let url=daedalus.util.joinpath('/u/storage/list/',this.state.match.path,
+                                      name);
+                  this.attrs.lst.appendChild(new DirectoryElement(name,url));
+                });
+              result.files.forEach(item=>{
+                  const cbk=()=>{
+                    this.handleShowFileMore(item);
+                  };
+                  item.root=this.state.match.root;
+                  item.path=this.state.match.dirpath;
+                  const elem=new FileElement(item,cbk,this.deleteElement.bind(this));
+                  
+                  this.attrs.lst.appendChild(elem);
+                  filemap[item.name]=elem;
+                });
             }
-          };
-          class NotesList extends DomElement {
-            constructor(parent,index,song){
-              super("div",{'className':styles.list},[]);
+            thumbnail_ProcessStart();
+            this.attrs.filemap=filemap;
+          }
+          handleGetPathError(error){
+            let url='/u/storage/list/';
+            console.log(error);
+            if(this.state.match&&this.state.match.dirpath){
+              const parts=daedalus.util.splitpath(this.state.match.dirpath);
+              parts.pop();
+              url=daedalus.util.joinpath(url,this.state.match.root,...parts);
+              ;
             }
-            setNotes(ctxt,notes){
-              this.removeChildren();
-              const sorted_keys=Object.keys(notes).sort();
-              console.log(sorted_keys);
-              for(let note_id of sorted_keys){
-                console.log(note_id,notes[note_id]);
-                let info=notes[note_id];
-                this.appendChild(new NotesItem(ctxt,note_id,info));
-                ;
-                ;
+            this.updateState({'parent_url':url});
+            this.attrs.lst.appendChild(new TextElement("Empty Directory (error)"));
+            
+          }
+          handleToggleSearch(){
+            if(this.state.match.root===""){
+              return;
+            }
+            if(this.attrs.search_input.props.className[0]==style.searchHide){
+              this.attrs.search_input.updateProps({'className':[style.searchShow]});
+              
+              thumbnail_CancelQueue();
+              this.attrs.lst.removeChildren();
+            }else{
+              this.attrs.search_input.updateProps({'className':[style.searchHide]});
+              
+              this.refresh();
+            }
+          }
+          search(text){
+            console.log(text);
+            thumbnail_CancelQueue();
+            this.attrs.lst.removeChildren();
+            let root=this.state.match.root,path=this.state.match.dirpath,terms=text,
+                          page=0,limit=100;
+            api.fsSearch(root,path,terms,page,limit).then(this.handleSearchResult.bind(
+                              this)).catch(this.handleSearchError.bind(this));
+          }
+          handleSearchResult(result){
+            const files=result.result.files;
+            console.log(files);
+            const filemap={};
+            if(files.length===0){
+              this.attrs.lst.appendChild(new TextElement("No Results"));
+            }else{
+              try{
+                files.forEach(item=>{
+                    const cbk1=()=>{
+                      this.handleShowFileMore(item);
+                    };
+                    const cbk2=this.deleteElement.bind(this);
+                    item.root=this.state.match.root;
+                    const parts=daedalus.util.splitpath(item.file_path);
+                    parts.pop();
+                    item.path=parts.join("/");
+                    console.log(item);
+                    const elem=new FileElement(item,cbk1,cbk2);
+                    this.attrs.lst.appendChild(elem);
+                    filemap[item.name]=elem;
+                  });
+              }catch(e){
+                console.log(e);
+              };
+            }
+            this.attrs.filemap=filemap;
+            thumbnail_ProcessStart();
+          }
+          handleSearchError(error){
+            this.attrs.lst.appendChild(new TextElement("No Results"));
+          }
+          handleOpenParent(){
+            if(this.state.parent_url){
+              history.pushState({},"",this.state.parent_url);
+            }
+          }
+          handleShowFileMore(item){
+            this.attrs.more.show();
+          }
+          handleHideFileMore(){
+            this.attrs.more.hide();
+          }
+          handleRouteChange(root,dirpath){
+            if(root===""&&dirpath===""){
+              this.getRoots();
+            }else if(root!==""){
+              this.getPath(root,dirpath);
+            }
+            this.attrs.header.setLocation(root+"/"+dirpath);
+          }
+          handleInsertUploadFile(fileInfo){
+            if(this.attrs.filemap[fileInfo.name]===undefined){
+              const elem=new FileElement(fileInfo,null,this.deleteElement.bind(this));
+              
+              this.attrs.lst.insertChild(0,elem);
+              ;
+            }else{
+              const elem=filemap[fileInfo.name];
+              this.attrs.lst.insertChild(0,elem);
+              ;
+            }
+          }
+          deleteElement(elem,fileInfo){
+            console.log(fileInfo);
+          }
+          handleNewDirectory(){
+            console.log("mkdir");
+          }
+        };
+        class FormattedText extends DomElement {
+          constructor(text){
+            super("pre",{'style':{'margin':0}},[new TextElement(text)]);
+          }
+          setText(text){
+            this.children[0].setText(text);
+          }
+        };
+        const preview_formats={'.mp4':'video','.webm':'video','.mkv':'video','.jpg':'image',
+                  '.jpeg':'image','.gif':'image','.png':'image','.bmp':'image','.wav':'audio',
+                  '.mp3':'audio','.ogg':'audio','.pdf':'pdf'};
+        class StoragePreviewPage extends DomElement {
+          constructor(){
+            super("div",{},[]);
+            this.attrs={'regex':daedalus.patternToRegexp(":root?/:dirpath*",false)};
+            
+            console.log(this.attrs.regex);
+          }
+          elementUpdateState(oldState,newState){
+            if(newState.match&&(!oldState.match||oldState.match.path!==newState.match.path)){
+            
+              const match=daedalus.locationMatch(this.attrs.regex,newState.match.path);
+              
+              Object.assign(newState.match,match);
+              this.handleRouteChange(newState.match.root,newState.match.dirpath);
+              
+              ;
+            }else{
+              if(newState.match){
+                Object.assign(newState.match,{'root':"",'path':""});
+              }else{
+                newState.match={'root':"",'path':""};
               }
             }
-          };
-          class NotesPage extends DomElement {
-            constructor(){
-              super("div",{'className':styles.page},[]);
-              this.attrs={'header':new ListHeader(this),'footer':new ListFooter(this),
-                              'container':new NotesList(),'padding1':new DomElement("div",{'className':styles.padding1},
-                                  []),'padding2':new DomElement("div",{'className':styles.padding2},
-                                  [])};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.padding1);
-              this.appendChild(this.attrs.container);
-              this.appendChild(this.attrs.padding2);
-              this.appendChild(this.attrs.footer);
-              this.attrs.ctxt=initContext();
+          }
+          handleRouteChange(root,path){
+            const[_,ext]=daedalus.util.splitext(path.toLocaleLowerCase());
+            const format=preview_formats[ext];
+            console.log(`display content ext: ${ext} format: ${format}`);
+            if(format===undefined){
+              api.fsGetPathContent(root,path).then(res=>{
+                  this.appendChild(new FormattedText(res));
+                }).catch(err=>console.error(err));
+            }else if(format==='image'){
+              const url=api.fsPathUrl(root,path,0);
+              console.log(url);
+              let img=new DomElement("img",{'src':url,'className':style.maxWidth},
+                              []);
+              let div=new DomElement("div",{'className':style.zoomIn,'onClick':this.toggleImageZoom.bind(
+                                      this)},[img]);
+              this.attrs.img=img;
+              this.attrs.img_div=div;
+              this.appendChild(div);
+              ;
+              ;
+              ;
+            }else if(format==='video'){
+              const url=api.fsPathUrl(root,path,0);
+              this.appendChild(new DomElement("video",{'src':url,'controls':1},[]));
+              
+              ;
+            }else if(format==='audio'){
+              const url=api.fsPathUrl(root,path,0);
+              this.appendChild(new DomElement("audio",{'src':url,'controls':1},[]));
+              
+              ;
+            }else if(format==='pdf'){
+              const url=api.fsPathUrl(root,path,0);
+              console.warn(url);
+              this.addClassName(style.objectContainer);
+              this.appendChild(new DomElement("object",{'data':url,'type':'application/pdf',
+                                      'width':'100%','height':'100%'},[]));
+              ;
             }
-            elementMounted(){
-              console.log("mount library view");
-              this.attrs.ctxt.getList().then(result=>{
-                  console.log(result.result);
-                  this.attrs.container.setNotes(this.attrs.ctxt,result.result);
-                }).catch(error=>{
-                  console.log(error);
+          }
+          toggleImageZoom(event){
+            if(this.attrs.img_div.hasClassName(style.zoomIn)){
+              this.attrs.img_div.removeClassName(style.zoomIn);
+              this.attrs.img.removeClassName(style.maxWidth);
+              this.attrs.img_div.addClassName(style.zoomOut);
+            }else{
+              this.attrs.img_div.removeClassName(style.zoomOut);
+              this.attrs.img_div.addClassName(style.zoomIn);
+              this.attrs.img.addClassName(style.maxWidth);
+            }
+          }
+        };
+        class FileSystemDirectoryElement extends DomElement {
+          constructor(parent,name,url){
+            super("div",{'className':style.listItemDir},[]);
+            this.appendChild(new DomElement("div",{'className':style.encryption["none"]},
+                              []));
+            this.appendChild(new SvgIconElement(resources.svg.folder,null,{'className':style.icon1}));
+            
+            this.attrs.text=this.appendChild(new components.MiddleText(name));
+            this.attrs.text.props.onClick=this.handleClick.bind(this);
+            this.children[2].addClassName(style.listItemMid);
+            this.attrs.parent=parent;
+            this.attrs.url=url;
+          }
+          handleClick(){
+            this.attrs.parent.setCurrentPath(this.attrs.url);
+          }
+        };
+        class FileSystemFileElement extends DomElement {
+          constructor(parent,item,url){
+            super("div",{'className':style.listItemDir},[]);
+            this.appendChild(new DomElement("div",{'className':style.encryption["none"]},
+                              []));
+            this.appendChild(new SvgIconElement(resources.svg.file,null,{'className':style.icon1}));
+            
+            this.appendChild(new components.MiddleText(item.name));
+            this.children[2].addClassName(style.listItemMid);
+            this.attrs.parent=parent;
+            this.attrs.url=url;
+          }
+        };
+        class FileSystemHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.addAction(resources.svg['return'],parent.handleOpenParent.bind(parent));
+            
+            this.attrs.location=new components.MiddleText(".....");
+            this.addRow(true);
+            this.addRowElement(0,this.attrs.location);
+          }
+          setLocation(location){
+            this.attrs.location.setText(location);
+          }
+        };
+        class FileSystemPage extends DomElement {
+          constructor(){
+            super("div",{},[]);
+            this.attrs={'header':new FileSystemHeader(this),'lst':new StorageListElement(
+                            ),'current_path':"/"};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+          }
+          elementMounted(){
+            this.setCurrentPath("/");
+          }
+          handleOpenParent(){
+            this.setCurrentPath(daedalus.util.dirname(this.attrs.current_path));
+          }
+          setCurrentPath(path){
+            if(path.length===0){
+              path="/";
+            }
+            console.log(`navigate to \`${path}\``);
+            this.attrs.current_path=path;
+            this.attrs.lst.removeChildren();
+            this.attrs.header.setLocation(path);
+            if(daedalus.platform.isAndroid){
+              let result=Client.listDirectory(path);
+              result=JSON.parse(result);
+              this.updateContents(result);
+              ;
+            }else{
+              const result={'files':[{'name':"file1"}],'directories':["dir0","dir1"]};
+              
+              this.updateContents(result);
+              ;
+            }
+            return;
+          }
+          updateContents(result){
+            if((result.files.length+result.directories.length)===0){
+              this.attrs.lst.appendChild(new TextElement("Empty Directory"));
+            }else{
+              result.directories.forEach(name=>{
+                  let url=daedalus.util.joinpath(this.attrs.current_path,name);
+                  const elem=new FileSystemDirectoryElement(this,name,url);
+                  this.attrs.lst.appendChild(elem);
+                });
+              result.files.forEach(item=>{
+                  let url=daedalus.util.joinpath(this.attrs.current_path,name);
+                  const elem=new FileSystemFileElement(this,item,url);
+                  this.attrs.lst.appendChild(elem);
                 });
             }
-            handleCreate(){
-              const dt=new Date();
-              const y=dt.getFullYear();
-              const m=("0"+(dt.getMonth()+1)).slice(-2);
-              const d=("0"+dt.getDate()).slice(-2);
-              const fname=`${y}-${m}-${d}.txt`;
-              router.navigate(router.routes.userNotesEdit({'noteId':fname},{}));
-            }
-          };
-          class ContentHeader extends components.NavHeader {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.addAction(resources.svg['menu'],()=>{
-                  store.globals.showMenu();
+          }
+        };
+        class PublicFilePage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main2},[]);
+          }
+          elementMounted(){
+            const m=this.state.match;
+            const url=api.fsGetPublicPathUrl(m.uid,m.filename);
+            api.fsPublicUriInfo(m.uid,m.filename).then(result=>{
+                this.appendChild(new DomElement("h2",{},[new TextElement("Download File")]));
+                
+                this.appendChild(new DomElement("a",{'href':url,'download':m.filename},
+                                      [new TextElement(m.filename)]));
+                this.appendChild(new components.VSpacer("1em"));
+                this.appendChild(new TextElement("File Size: "+Math.floor(result.result.file.size/1024)+"kb"));
+                
+              }).catch(error=>{
+                this.appendChild(new DomElement("h2",{},[new TextElement("File Not Found")]));
+                
+              });
+          }
+        };
+        return[FileSystemPage,PublicFilePage,StoragePage,StoragePreviewPage];
+      })();
+    const[NoteContentPage,NoteContext,NoteEditPage,NotesPage]=(function(){
+        const styles={'page':'dcs-178d2ae3-0','list':'dcs-178d2ae3-1','item':'dcs-178d2ae3-2',
+                  'padding1':'dcs-178d2ae3-3','padding2':'dcs-178d2ae3-4','contentDiv':'dcs-178d2ae3-5',
+                  'contentPre':'dcs-178d2ae3-6','contentText':'dcs-178d2ae3-7'};
+        class NoteContext{
+          constructor(root,base){
+            this.root=root;
+            this.base=base;
+            this.cache={};
+          }
+          getList(){
+            return api.fsNoteList(this.root,this.base);
+          }
+          getContent(noteId){
+            if(this.cache[noteId]!==undefined){
+              return new Promise((resolve,reject)=>{
+                  resolve(this.cache[noteId]);
                 });
-              this.addAction(resources.svg['return'],()=>{
-                  router.navigate(router.routes.userNotesList({},{}));
-                });
-              this.addAction(resources.svg['edit'],()=>{
-                  router.navigate(router.routes.userNotesEdit({'noteId':this.attrs.parent.state.match.noteId},
-                                          {}));
-                });
-            }
-          };
-          class ContentFooter extends components.NavFooter {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-            }
-          };
-          class NoteContentPage extends DomElement {
-            constructor(){
-              super("div",{'className':styles.page},[]);
-              this.attrs={'header':new ContentHeader(this),'footer':new ContentFooter(
-                                  this),'container':new DomElement("div",{'className':styles.contentDiv},
-                                  []),'padding1':new DomElement("div",{'className':styles.padding1},
-                                  []),'padding2':new DomElement("div",{'className':styles.padding2},
-                                  [])};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.padding1);
-              this.appendChild(this.attrs.container);
-              this.appendChild(this.attrs.padding2);
-              this.appendChild(this.attrs.footer);
-              this.attrs.ctxt=initContext();
-            }
-            elementMounted(){
-              this.showContent();
-            }
-            showContent(){
-              this.attrs.container.removeChildren();
-              this.attrs.ctxt.getContent(this.state.match.noteId).then(result=>{
-                  this.attrs.container.appendChild(new DomElement("pre",{'className':styles.contentPre},
-                                          [new TextElement(result+"\n\n\n")]));
-                }).catch(error=>{
-                  console.log(error);
+            }else{
+              return new Promise((resolve,reject)=>{
+                  api.fsNoteGetContent(this.root,this.base,noteId,null,null).then(
+                                      result=>{
+                      this.cache[noteId]=result;
+                      resolve(result);
+                    }).catch(error=>{
+                      reject(error);
+                    });
                 });
             }
-            beginEdit(){
-              this.attrs.container.removeChildren();
-              this.attrs.ctxt.getContent(this.state.match.noteId).then(result=>{
-                  this.attrs.container.appendChild(new DomElement("textarea",{'className':styles.contentText},
-                                          [new TextElement(result)]));
-                }).catch(error=>{
-                  console.log(error);
-                });
+          }
+          setContent(noteId,content){
+            this.cache[noteId]=content;
+            return api.fsNoteSetContent(this.root,this.base,noteId,content,null,null);
+            
+          }
+        };
+        function initContext(){
+          if(store.globals.note_ctxt===undefined){
+            store.globals.note_ctxt=new NoteContext("default","public/notes");
+          }
+          return store.globals.note_ctxt;
+        };
+        class ListHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.addAction(resources.svg['plus'],()=>{
+                this.attrs.parent.handleCreate();
+              });
+          }
+        };
+        class ListFooter extends components.NavFooter {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+          }
+        };
+        class NotesItem extends DomElement {
+          constructor(ctxt,note_id,info){
+            super("div",{'className':styles.item},[]);
+            this.attrs={'ctxt':ctxt,'note_id':note_id,'info':info};
+            this.appendChild(new DomElement("div",{},[new TextElement(info.title)]));
+            
+            const t=fmtEpochTime(info.mtime*1000);
+            this.appendChild(new DomElement("div",{},[new TextElement(`Modified Time: ${t}`)]));
+            
+          }
+          onClick(event){
+            router.navigate(router.routes.userNotesContent({'noteId':this.attrs.note_id},
+                              {}));
+          }
+        };
+        class NotesList extends DomElement {
+          constructor(parent,index,song){
+            super("div",{'className':styles.list},[]);
+          }
+          setNotes(ctxt,notes){
+            this.removeChildren();
+            const sorted_keys=Object.keys(notes).sort();
+            console.log(sorted_keys);
+            for(let note_id of sorted_keys){
+              console.log(note_id,notes[note_id]);
+              let info=notes[note_id];
+              this.appendChild(new NotesItem(ctxt,note_id,info));
+              ;
+              ;
             }
-          };
-          class EditHeader extends components.NavHeader {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.addAction(resources.svg['menu'],()=>{
-                  store.globals.showMenu();
-                });
-              this.addAction(resources.svg['discard'],()=>{
-                  router.navigate(router.routes.userNotesContent({'noteId':this.attrs.parent.state.match.noteId},
-                                          {}));
-                });
+          }
+        };
+        class NotesPage extends DomElement {
+          constructor(){
+            super("div",{'className':styles.page},[]);
+            this.attrs={'header':new ListHeader(this),'footer':new ListFooter(this),
+                          'container':new NotesList(),'padding1':new DomElement("div",{'className':styles.padding1},
+                              []),'padding2':new DomElement("div",{'className':styles.padding2},
+                              [])};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.padding1);
+            this.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.attrs.ctxt=initContext();
+          }
+          elementMounted(){
+            console.log("mount library view");
+            this.attrs.ctxt.getList().then(result=>{
+                console.log(result.result);
+                this.attrs.container.setNotes(this.attrs.ctxt,result.result);
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+          handleCreate(){
+            const dt=new Date();
+            const y=dt.getFullYear();
+            const m=("0"+(dt.getMonth()+1)).slice(-2);
+            const d=("0"+dt.getDate()).slice(-2);
+            const fname=`${y}-${m}-${d}.txt`;
+            router.navigate(router.routes.userNotesEdit({'noteId':fname},{}));
+          }
+        };
+        class ContentHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.addAction(resources.svg['return'],()=>{
+                router.navigate(router.routes.userNotesList({},{}));
+              });
+            this.addAction(resources.svg['edit'],()=>{
+                router.navigate(router.routes.userNotesEdit({'noteId':this.attrs.parent.state.match.noteId},
+                                      {}));
+              });
+          }
+        };
+        class ContentFooter extends components.NavFooter {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+          }
+        };
+        class NoteContentPage extends DomElement {
+          constructor(){
+            super("div",{'className':styles.page},[]);
+            this.attrs={'header':new ContentHeader(this),'footer':new ContentFooter(
+                              this),'container':new DomElement("div",{'className':styles.contentDiv},
+                              []),'padding1':new DomElement("div",{'className':styles.padding1},
+                              []),'padding2':new DomElement("div",{'className':styles.padding2},
+                              [])};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.padding1);
+            this.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.attrs.ctxt=initContext();
+          }
+          elementMounted(){
+            this.showContent();
+          }
+          showContent(){
+            this.attrs.container.removeChildren();
+            this.attrs.ctxt.getContent(this.state.match.noteId).then(result=>{
+                this.attrs.container.appendChild(new DomElement("pre",{'className':styles.contentPre},
+                                      [new TextElement(result+"\n\n\n")]));
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+          beginEdit(){
+            this.attrs.container.removeChildren();
+            this.attrs.ctxt.getContent(this.state.match.noteId).then(result=>{
+                this.attrs.container.appendChild(new DomElement("textarea",{'className':styles.contentText},
+                                      [new TextElement(result)]));
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+        };
+        class EditHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.addAction(resources.svg['discard'],()=>{
+                router.navigate(router.routes.userNotesContent({'noteId':this.attrs.parent.state.match.noteId},
+                                      {}));
+              });
+            this.addAction(resources.svg['save'],()=>{
+                const noteId=this.attrs.parent.state.match.noteId;
+                const nd=this.attrs.parent.attrs.textarea.getDomNode();
+                console.log(nd.value);
+                this.attrs.parent.attrs.ctxt.setContent(this.attrs.parent.state.match.noteId,
+                                  nd.value).then((result)=>{
+                    router.navigate(router.routes.userNotesContent({'noteId':noteId},
+                                              {}));
+                  }).catch((error)=>{
+
+                  });
+              });
+          }
+        };
+        class EditFooter extends components.NavFooter {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+          }
+        };
+        class NoteEditPage extends DomElement {
+          constructor(){
+            super("div",{'className':styles.page},[]);
+            this.attrs={'header':new EditHeader(this),'footer':new EditFooter(this),
+                          'container':new DomElement("div",{'className':styles.contentDiv},[]),
+                          'textarea':new DomElement("textarea",{'className':styles.contentText},
+                              []),'padding1':new DomElement("div",{'className':styles.padding1},
+                              [])};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.padding1);
+            this.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.footer);
+            this.attrs.container.appendChild(this.attrs.textarea);
+            this.attrs.ctxt=initContext();
+          }
+          elementMounted(){
+            this.showContent();
+          }
+          showContent(){
+            this.attrs.textarea.removeChildren();
+            this.attrs.ctxt.getContent(this.state.match.noteId).then(result=>{
+                this.attrs.textarea.appendChild(new TextElement(result));
+              }).catch(error=>{
+                console.log(error);
+              });
+          }
+        };
+        return[NoteContentPage,NoteContext,NoteEditPage,NotesPage];
+      })();
+    const[PlaylistPage]=(function(){
+        const style={'main':'dcs-00bdf631-0','header':'dcs-00bdf631-1','content':'dcs-00bdf631-2',
+                  'toolbar':'dcs-00bdf631-3','info':'dcs-00bdf631-4','songList':'dcs-00bdf631-5',
+                  'songItem':'dcs-00bdf631-6','songItemPlaceholder':'dcs-00bdf631-7','songItemMoving':'dcs-00bdf631-8',
+                  'songItemActive':'dcs-00bdf631-9','fontBig':'dcs-00bdf631-10','fontSmall':'dcs-00bdf631-11',
+                  'songItemRow':'dcs-00bdf631-12','songItemRhs':'dcs-00bdf631-13','songItemIndex':'dcs-00bdf631-14',
+                  'songItemRow2':'dcs-00bdf631-15','callbackLink2':'dcs-00bdf631-16','grip':'dcs-00bdf631-17',
+                  'space5':'dcs-00bdf631-18','center80':'dcs-00bdf631-19','centerRow':'dcs-00bdf631-20',
+                  'lockScreen':'dcs-00bdf631-21','padding1':'dcs-00bdf631-22','padding2':'dcs-00bdf631-23',
+                  'listItemEnd':'dcs-00bdf631-24'};
+        ;
+        function formatTime(secs){
+          secs=secs===Infinity?0:secs;
+          let minutes=Math.floor(secs/60)||0;
+          let seconds=Math.floor(secs-minutes*60)||0;
+          return minutes+':'+(seconds<10?'0':'')+seconds;
+        };
+        class CallbackLink2 extends DomElement {
+          constructor(text,callback){
+            super('div',{'className':style.callbackLink2},[new TextElement(text)]);
+            
+            this.state={'callback':callback};
+          }
+          onClick(){
+            this.state.callback();
+          }
+        };
+        class SvgMoreElement extends components.SvgElement {
+          constructor(callback){
+            super(resources.svg.more,{'width':20,'height':20,'className':style.listItemEnd});
+            
+            this.state={'callback':callback};
+          }
+          onClick(event){
+            this.state.callback();
+          }
+        };
+        class SongItem extends DomElement {
+          constructor(parent,index,song){
+            super("div",{'className':style.songItem},[]);
+            this.attrs={'parent':parent,'index':index,'song':song,'active':false};
+            
+            this.appendChild(new DomElement("div",{'className':style.space5},[]));
+            
+            const grip=this.appendChild(new DomElement("div",{'className':style.grip},
+                              []));
+            this.appendChild(new DomElement("div",{'className':style.space5},[]));
+            
+            const dividx=this.appendChild(new DomElement("div",{'className':style.songItemIndex},
+                              []));
+            this.attrs.txt0=dividx.appendChild(new TextElement(`${index+1}.`));
+            grip.props.onMouseDown=(event)=>{
+              let node=this.getDomNode();
+              node.style.width=node.clientWidth+'px';
+              this.addClassName(style.songItemMoving);
+              this.attrs.parent.handleChildDragBegin(this,event);
+              event.preventDefault();
+              event.stopPropagation();
+            };
+            grip.props.onTouchStart=(event)=>{
+              let node=this.getDomNode();
+              node.style.width=node.clientWidth+'px';
+              this.addClassName(style.songItemMoving);
+              this.attrs.parent.handleChildDragBegin(this,event);
+              event.preventDefault();
+              event.stopPropagation();
+            };
+            const divrhs=this.appendChild(new DomElement("div",{'className':style.songItemRhs},
+                              []));
+            this.attrs.txt1=divrhs.appendChild(new components.MiddleText(song.title));
+            
+            this.attrs.txt1.addClassName(style.fontBig);
+            const div=divrhs.appendChild(new DomElement("div",{},[]));
+            this.attrs.txt2=div.appendChild(new components.MiddleText(song.artist));
+            
+            this.attrs.txt3=div.appendChild(new TextElement(formatTime(song.length)));
+            
+            div.addClassName(style.fontSmall);
+            div.addClassName(style.songItemRow2);
+            this.appendChild(new SvgMoreElement(()=>{
+                  this.attrs.parent.attrs.parent.handleShowSongMore(this.attrs.index,
+                                      this.attrs.song);
+                }));
+          }
+          setIndex(index){
+            if(index!==this.attrs.index){
+              this.attrs.index=index;
+              this.attrs.txt0.setText(`${index+1}.`);
+            }
+          }
+          updateActive(active){
+            if(this.attrs.active!=active){
+              this.attrs.active=active;
+              if(active===true){
+                this.addClassName(style.songItemActive);
+                return">T";
+              }else{
+                this.removeClassName(style.songItemActive);
+                return">F";
+              }
+            }
+            return">S";
+          }
+          onTouchStart(event){
+            let node=this.getDomNode();
+            node.style.width=node.clientWidth+'px';
+            this.addClassName(style.songItemMoving);
+            console.log(`touch start ${this.attrs.index}`);
+            this.attrs.parent.handleChildSwipeBegin(this,event);
+          }
+          onTouchMove(event){
+            if(this.attrs.parent.attrs.eventSource!==this){
+              console.log(`touch move ${this.attrs.index} wrong source`);
+              return;
+            }
+            if(this.attrs.parent.attrs.isSwipe){
+              if(this.attrs.parent.attrs.swipeArgs.started){
+                this.attrs.parent.handleChildSwipeMove(this,event);
+              }else{
+                this.attrs.parent.handleChildSwipeMoveBegin(this,event);
+              }
+            }else{
+              this.attrs.parent.handleChildDragMove(this,event);
+            }
+            event.stopPropagation();
+          }
+          onTouchEnd(event){
+            if(this.attrs.parent.attrs.eventSource!==this){
+              console.error(`touch end ${this.attrs.index} wrong source`);
+              return;
+            }
+            this.attrs.parent.attrs.eventSource=null;
+            console.log(`touch end ${this.attrs.index}`);
+            if(this.attrs.parent.attrs.isSwipe){
+              this.attrs.parent.handleChildSwipeEnd(this,{'target':this.getDomNode(
+                                    )});
+            }else if(this.attrs.parent.attrs.isDraggingStarted){
+              this.attrs.parent.handleChildDragEnd(this,{'target':this.getDomNode(
+                                    )});
+              let node=this.getDomNode();
+              node.style.removeProperty('width');
+              this.removeClassName(style.songItemMoving);
+              ;
+            }
+            event.stopPropagation();
+          }
+          onTouchCancel(event){
+            if(this.attrs.parent.attrs.eventSource!==this){
+              console.error(`touch cancel ${this.attrs.index} on wrong element`);
+              
+              return;
+            }else{
+              console.log(`touch cancel ${this.attrs.index}`);
+            }
+            this.attrs.parent.attrs.eventSource=null;
+            if(this.attrs.parent.attrs.isSwipe){
+              this.attrs.parent.handleChildSwipeEnd(this,{'target':this.getDomNode(
+                                    )});
+            }else{
+              this.attrs.parent.handleChildDragEnd(this,{'target':this.getDomNode(
+                                    )});
+              let node=this.getDomNode();
+              node.style.removeProperty('width');
+              this.removeClassName(style.songItemMoving);
+              ;
+            }
+            event.stopPropagation();
+          }
+          onMouseDown(event){
+            let node=this.getDomNode();
+            node.style.width=node.clientWidth+'px';
+            this.addClassName(style.songItemMoving);
+            this.attrs.parent.handleChildSwipeBegin(this,event);
+          }
+          onMouseMove(event){
+            if(event.buttons!==1){
+              return;
+            }
+            if(this.attrs.parent.attrs.eventSource!==this){
+              return;
+            }
+            if(this.attrs.parent.attrs.isSwipe){
+              if(this.attrs.parent.attrs.swipeArgs.started){
+                this.attrs.parent.handleChildSwipeMove(this,event);
+              }else{
+                this.attrs.parent.handleChildSwipeMoveBegin(this,event);
+              }
+            }else{
+              this.attrs.parent.handleChildDragMove(this,event);
+            }
+            event.stopPropagation();
+          }
+          onMouseLeave(event){
+            if(this.attrs.parent.attrs.eventSource!==this){
+              return;
+            }
+            this.attrs.parent.attrs.eventSource=null;
+            if(this.attrs.parent.attrs.isSwipe){
+              this.attrs.parent.handleChildSwipeCancel(this,event);
+            }else{
+              this.attrs.parent.handleChildDragEnd(this,event);
+              let node=this.getDomNode();
+              node.style.removeProperty('width');
+              this.removeClassName(style.songItemMoving);
+              ;
+            }
+            event.stopPropagation();
+          }
+          onMouseUp(event){
+            if(this.attrs.parent.attrs.eventSource!==this){
+              return;
+            }
+            this.attrs.parent.attrs.eventSource=null;
+            if(this.attrs.parent.attrs.isSwipe){
+              this.attrs.parent.handleChildSwipeEnd(this,event);
+            }else{
+              this.attrs.parent.handleChildDragEnd(this,event);
+              let node=this.getDomNode();
+              node.style.removeProperty('width');
+              this.removeClassName(style.songItemMoving);
+              ;
+            }
+            event.stopPropagation();
+          }
+        };
+        class Header extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.addAction(resources.svg['media_prev'],()=>{
+                audio.AudioDevice.instance().prev();
+              });
+            this.attrs.act_play_pause=this.addAction(resources.svg['media_play'],
+                          ()=>{
+                audio.AudioDevice.instance().togglePlayPause();
+              });
+            this.addAction(resources.svg['media_next'],()=>{
+                audio.AudioDevice.instance().next();
+              });
+            if(!daedalus.platform.isAndroid){
               this.addAction(resources.svg['save'],()=>{
-                  const noteId=this.attrs.parent.state.match.noteId;
-                  const nd=this.attrs.parent.attrs.textarea.getDomNode();
-                  console.log(nd.value);
-                  this.attrs.parent.attrs.ctxt.setContent(this.attrs.parent.state.match.noteId,
-                                      nd.value).then((result)=>{
-                      router.navigate(router.routes.userNotesContent({'noteId':noteId},
-                                                  {}));
-                    }).catch((error)=>{});
+                  audio.AudioDevice.instance().queueSave();
                 });
             }
-          };
-          class EditFooter extends components.NavFooter {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
+            this.attrs.txt_SongTitle=new components.MiddleText("Select A Song");
+            this.attrs.txt_SongArtist=new components.MiddleText("");
+            this.attrs.txt_SongAlbum=new components.MiddleText("");
+            this.attrs.txt_SongTime=new TextElement("00:00:00");
+            this.attrs.txt_SongTime2=new TextElement("00:00:00");
+            this.attrs.pbar_time=new components.ProgressBar((pos)=>{
+                let inst=audio.AudioDevice.instance();
+                let dur=inst.duration();
+                if(!!dur){
+                  inst.setCurrentTime(pos*dur);
+                }
+              });
+            this.addRow(true);
+            this.addRow(true);
+            this.addRow(true);
+            this.addRow(true);
+            this.addRow(true);
+            this.addRow(true);
+            this.addRowElement(0,this.attrs.txt_SongTitle);
+            this.addRowElement(1,this.attrs.txt_SongArtist);
+            this.addRowElement(2,this.attrs.txt_SongAlbum);
+            this.addRowElement(3,this.attrs.txt_SongTime);
+            this.addRowElement(3,new components.HStretch());
+            this.addRowElement(3,this.attrs.txt_SongTime2);
+            this.addRowElement(5,this.attrs.pbar_time);
+          }
+          setSong(song){
+            if(song===null){
+              this.attrs.txt_SongTitle.setText("Select A Song");
+              this.attrs.txt_SongArtist.setText("\xa0");
+              this.attrs.txt_SongAlbum.setText("\xa0");
+            }else{
+              this.attrs.txt_SongTitle.setText(song.title);
+              this.attrs.txt_SongArtist.setText(song.artist);
+              this.attrs.txt_SongAlbum.setText(song.album);
             }
-          };
-          class NoteEditPage extends DomElement {
-            constructor(){
-              super("div",{'className':styles.page},[]);
-              this.attrs={'header':new EditHeader(this),'footer':new EditFooter(this),
-                              'container':new DomElement("div",{'className':styles.contentDiv},
-                                  []),'textarea':new DomElement("textarea",{'className':styles.contentText},
-                                  []),'padding1':new DomElement("div",{'className':styles.padding1},
-                                  [])};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.padding1);
-              this.appendChild(this.attrs.container);
-              this.appendChild(this.attrs.footer);
-              this.attrs.container.appendChild(this.attrs.textarea);
-              this.attrs.ctxt=initContext();
+          }
+          setTime(currentTime,duration){
+            try{
+              const t1=formatTime(currentTime);
+              const t2=formatTime(duration);
+              this.attrs.txt_SongTime.setText(t1);
+              this.attrs.txt_SongTime2.setText(t2);
+              this.attrs.pbar_time.setPosition(currentTime,duration);
+              ;
+              ;
+            }catch(e){
+              console.error(e);
+            };
+          }
+          setStatus(status){
+            if(status==="playing"){
+              this.attrs.act_play_pause.setUrl(resources.svg['media_pause']);
+            }else{
+              this.attrs.act_play_pause.setUrl(resources.svg['media_play']);
             }
-            elementMounted(){
-              this.showContent();
+          }
+        };
+        const SWIPE_RIGHT=0x01;
+        const SWIPE_LEFT=0x02;
+        const SWIPE_OFFSET=24;
+        class SongList extends daedalus.DraggableList {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.attrs.isSwipe=false;
+            this.attrs.isAnimated=false;
+            this.attrs.swipeActionRight=null;
+            this.attrs.swipeActionLeft=null;
+            this.attrs.swipeActionCancel=null;
+            this.attrs.swipeConfig=SWIPE_RIGHT;
+            this.attrs.swipeArgs={'started':false,'valid':false};
+            this.attrs.swipeScrollTimer=null;
+            this.attrs.swipe_offset=0;
+          }
+          updateModel(indexStart,indexEnd){
+            super.updateModel(indexStart,indexEnd);
+            audio.AudioDevice.instance().queueSwapSong(indexStart,indexEnd);
+            console.error(`updateModel: ${indexStart} -> ${indexEnd}`);
+          }
+          handleChildDragBegin(child,event){
+            if(this.attrs.isAnimated){
+              return;
             }
-            showContent(){
-              this.attrs.textarea.removeChildren();
-              this.attrs.ctxt.getContent(this.state.match.noteId).then(result=>{
-                  this.attrs.textarea.appendChild(new TextElement(result));
-                }).catch(error=>{
-                  console.log(error);
+            this.attrs.isSwipe=false;
+            super.handleChildDragBegin(child,event);
+          }
+          handleChildDragMove(child,event){
+            if(this.attrs.isAnimated){
+              return;
+            }
+            super.handleChildDragMove(child,event);
+          }
+          handleChildSwipeBegin(child,event){
+            if(this.attrs.isAnimated){
+              return;
+            }
+            if(!!this.attrs.draggingEle){
+              this.handleChildSwipeCancel(child,event);
+            }
+            const org_event=event;
+            let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
+            
+            if(evt){
+              event=evt[0];
+            }
+            const draggingEle=child.getDomNode();
+            const rect=draggingEle.getBoundingClientRect();
+            const x=event.pageX;
+            const y=event.pageY;
+            this.attrs.swipe_offset=0;
+            this.attrs.swipeArgs={'draggingEle':draggingEle,'xstart':rect.left,'ystart':rect.top,
+                          'x':x,'y':y,'valid':true,'started':false};
+            this.attrs.isSwipe=true;
+            this.attrs.eventSource=child;
+          }
+          handleChildSwipeMoveBegin(child,event){
+            let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
+            
+            if(evt){
+              event=evt[0];
+            }
+            let deltax=event.pageX-this.attrs.swipeArgs.xstart-this.attrs.swipeArgs.x;
+            
+            if(Math.abs(deltax)>SWIPE_OFFSET/4){
+              this.attrs.draggingEle=this.attrs.swipeArgs.draggingEle;
+              this.attrs.xstart=this.attrs.swipeArgs.xstart;
+              this.attrs.ystart=this.attrs.swipeArgs.ystart;
+              this.attrs.x=this.attrs.swipeArgs.x;
+              this.attrs.y=this.attrs.swipeArgs.y;
+              this.attrs.isSwipe=true;
+              this.attrs.swipeArgs.started=true;
+              this.attrs.swipeArgs.valid=false;
+            }
+          }
+          handleChildSwipeMoveDeltaX(child,deltax){
+            let color;
+            if(deltax<-SWIPE_OFFSET){
+              color="#88bb7F";
+            }else if(deltax>SWIPE_OFFSET){
+              color="#bb887F";
+            }else{
+              color="#FFFFFF";
+            }
+            let nd=child.getDomNode();
+            nd.style['background-color']=color;
+          }
+          handleChildSwipeMove(child,event){
+            if(this.attrs.isAnimated){
+              return;
+            }
+            if(!this.attrs.draggingEle){
+              return;
+            }
+            if(event.cancelable){
+              event.preventDefault();
+            }
+            let org_event=event;
+            let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
+            
+            if(evt){
+              event=evt[0];
+            }
+            const rect=this.attrs.draggingEle.parentNode.getBoundingClientRect();
+            
+            let deltax=event.pageX-this.attrs.xstart-this.attrs.x;
+            if(!this.attrs.isDraggingStarted){
+              const draggingRect=this.attrs.draggingEle.getBoundingClientRect();
+              if(Math.abs(deltax)<SWIPE_OFFSET){
+                return false;
+              }
+              this.attrs.isDraggingStarted=true;
+              this.attrs.draggingEle.style.removeProperty('transition');
+              this.attrs.placeholder=document.createElement('div');
+              this.attrs.placeholder.classList.add(this.attrs.placeholderClassName);
+              
+              this.attrs.draggingEle.parentNode.insertBefore(this.attrs.placeholder,
+                              this.attrs.draggingEle.nextSibling);
+              this.attrs.placeholder.style.height=`${this.attrs.draggingEle.clientHeight}px`;
+              
+              this.attrs.swipe_offset=(deltax>0?-SWIPE_OFFSET:SWIPE_OFFSET);
+              ;
+            }else if(!!this.attrs.draggingEle){
+              let deltax2=this.attrs.draggingEle.offsetLeft-this.attrs.placeholder.offsetLeft;
+              
+              this.handleChildSwipeMoveDeltaX(child,deltax2);
+              ;
+            }
+            this.attrs.draggingEle.style.position='absolute';
+            this.attrs.draggingEle.style.left=`${event.pageX-this.attrs.x+this.attrs.swipe_offset}px`;
+            
+            return;
+          }
+          handleChildSwipeEnd(child,event){
+            this.handleChildSwipeCancel(child,event,true);
+          }
+          handleChildSwipeCancel(child,event,success=false){
+            if(!this.attrs.draggingEle||this.attrs.draggingEle!==child.getDomNode(
+                            )){
+              return;
+            }
+            if(!this.attrs.placeholder){
+              return;
+            }
+            if(this.attrs.isAnimated){
+              return;
+            }
+            let deltax=this.attrs.draggingEle.offsetLeft-this.attrs.placeholder.offsetLeft;
+            
+            const cfg=this.attrs.swipeConfig;
+            if(success){
+              if(deltax>0&&deltax>SWIPE_OFFSET&&cfg&SWIPE_RIGHT){
+                this.attrs.draggingEle.style.left=`${document.body.clientWidth}px`;
+                
+                this.swipeActionLeft=null;
+                this.swipeActionRight=child;
+                this.swipeActionCancel=null;
+              }else if(deltax<0&&deltax<-SWIPE_OFFSET){
+                this.attrs.draggingEle.style.left=this.attrs.placeholder.offsetLeft+'px';
+                
+                this.swipeActionLeft=child;
+                this.swipeActionRight=null;
+                this.swipeActionCancel=null;
+              }else{
+                this.attrs.draggingEle.style.left=this.attrs.placeholder.offsetLeft+'px';
+                
+                this.swipeActionLeft=null;
+                this.swipeActionRight=null;
+                this.swipeActionCancel=child;
+              }
+              this.attrs.draggingEle.style.transition='left .35s';
+              setTimeout(this.handleChildSwipeTimeout.bind(this),350);
+              this.attrs.isAnimated=true;
+            }else{
+              this.swipeActionLeft=null;
+              this.swipeActionRight=null;
+              this.swipeActionCancel=null;
+              this.handleChildSwipeTimeout();
+            }
+          }
+          handleChildSwipeTimeout(){
+            this.attrs.isAnimated=false;
+            this.attrs.x=null;
+            this.attrs.y=null;
+            this.attrs.isDraggingStarted=false;
+            if(this.attrs.placeholder&&this.attrs.placeholder.parentNode){
+              this.attrs.placeholder.parentNode.removeChild(this.attrs.placeholder);
+              
+            }
+            if(!this.attrs.draggingEle){
+              return;
+            }
+            let s=this.attrs.draggingEle.style;
+            s.removeProperty('left');
+            s.removeProperty('position');
+            s.removeProperty('transition');
+            s.removeProperty('width');
+            this.attrs.draggingEle=null;
+            if(!!this.swipeActionRight){
+              this.handleSwipeRight(this.swipeActionRight);
+              this.swipeActionRight=null;
+            }
+            if(!!this.swipeActionLeft){
+              this.handleSwipeLeft(this.swipeActionLeft);
+              this.swipeActionLeft=null;
+            }
+            if(!!this.swipeActionCancel){
+              this.handleSwipeCancel(this.swipeActionCancel);
+              this.swipeActionCancel=null;
+            }
+            this.attrs.isSwipe=false;
+            this.attrs.placeholder=null;
+            this.attrs.draggingEle=null;
+          }
+          handleSwipeRight(child){
+            const index=this.children.indexOf(child);
+            console.log(`handle swipe right index: ${index}`);
+            audio.AudioDevice.instance().queueRemoveIndex(index);
+          }
+          handleSwipeLeft(child){
+            const index=this.children.indexOf(child);
+            console.log(`handle swipe left index: ${index}`);
+            audio.AudioDevice.instance().playIndex(index);
+          }
+          handleSwipeCancel(child){
+            console.log("handle swipe cancel");
+          }
+          debugString(){
+            let str=super.debugString();
+            if(this.attrs.isSwipe){
+              str+=` swipe sx:${this.attrs.swipe_offset}`;
+            }
+            return str;
+          }
+        };
+        class PlaylistPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            this.attrs={'device':audio.AudioDevice.instance(),'header':new Header(
+                              this),'content':new DomElement("div",{'className':style.content},
+                              []),'container':new SongList(this),'padding1':new DomElement("div",
+                              {'className':style.padding1},[]),'padding2':new DomElement("div",
+                              {'className':style.padding2},[]),'currentIndex':-1,'more':new components.MoreMenu(
+                              this.handleHideSongMore.bind(this)),'more_info':new components.MoreMenu(
+                              this.handleHideMoreInfo.bind(this)),'more_index':-1,'more_song':null};
+            
+            this.attrs.container.setPlaceholderClassName(style.songItemPlaceholder);
+            
+            this.attrs.container.addClassName(style.songList);
+            this.attrs.header.addClassName(style.header);
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.padding1);
+            this.appendChild(this.attrs.content);
+            this.attrs.content.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.more);
+            this.appendChild(this.attrs.more_info);
+            this.attrs.more.addAction("Play Next",this.handleMorePlaySongNext.bind(
+                              this));
+            this.attrs.more.addAction("Song Info",this.handleMoreSongInfo.bind(this));
+            
+            this.attrs.more.addAction("Search for Artist",this.handleMoreSearchArtist.bind(
+                              this));
+            this.attrs.more.addAction("Search for Album",this.handleMoreSearchAlbum.bind(
+                              this));
+            this.attrs.more.addAction("Share",this.handleShareSong.bind(this));
+            this.sec_attrs={"artist":this.attrs.more_info.addSection("Artist",""),
+                          "album":this.attrs.more_info.addSection("Album",""),"title":this.attrs.more_info.addSection(
+                              "Title",""),"play_count":this.attrs.more_info.addSection("Play Count",
+                              ""),"year":this.attrs.more_info.addSection("Year","")};
+          }
+          elementMounted(){
+            this.attrs.device.connectView(this);
+            if(daedalus.platform.isAndroid){
+              this.attrs.device.queueLoad();
+            }else{
+              if(this.attrs.device.queueLength()==0){
+                this.attrs.device.queueLoad();
+              }else{
+                const song=this.attrs.device.currentSong();
+                this.attrs.header.setSong(song);
+                this.handleAudioQueueChanged(this.attrs.device.queue);
+                ;
+              }
+            }
+            if(daedalus.platform.isAndroid){
+              registerAndroidEvent('onresume',this.handleResume.bind(this));
+            }
+            let status=(this.attrs.device.isPlaying())?"playing":"paused";
+            this.attrs.header.setStatus(status);
+            let playid=daedalus.util.parseParameters()['play'];
+            if(!!playid){
+              const songList=[playid[0]];
+              api.queueSetQueue(songList).then(result=>{
+                  console.log(audio.AudioDevice.instance());
+                  audio.AudioDevice.instance().queueLoad().then(result=>{
+                      audio.AudioDevice.instance().playIndex(0);
+                    });
+                });
+              ;
+            }
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+            if(daedalus.platform.isAndroid){
+              registerAndroidEvent('onresume',()=>{
+
                 });
             }
-          };
-          return[NoteContentPage,NoteContext,NoteEditPage,NotesPage];
-        })();
-      const[PlaylistPage]=(function(){
-          const style={'main':'dcs-00bdf631-0','header':'dcs-00bdf631-1','content':'dcs-00bdf631-2',
-                      'toolbar':'dcs-00bdf631-3','info':'dcs-00bdf631-4','songList':'dcs-00bdf631-5',
-                      'songItem':'dcs-00bdf631-6','songItemPlaceholder':'dcs-00bdf631-7','songItemMoving':'dcs-00bdf631-8',
-                      'songItemActive':'dcs-00bdf631-9','fontBig':'dcs-00bdf631-10','fontSmall':'dcs-00bdf631-11',
-                      'songItemRow':'dcs-00bdf631-12','songItemRhs':'dcs-00bdf631-13','songItemIndex':'dcs-00bdf631-14',
-                      'songItemRow2':'dcs-00bdf631-15','callbackLink2':'dcs-00bdf631-16','grip':'dcs-00bdf631-17',
-                      'space5':'dcs-00bdf631-18','center80':'dcs-00bdf631-19','centerRow':'dcs-00bdf631-20',
-                      'lockScreen':'dcs-00bdf631-21','padding1':'dcs-00bdf631-22','padding2':'dcs-00bdf631-23',
-                      'listItemEnd':'dcs-00bdf631-24'};
-          ;
-          function formatTime(secs){
-            secs=secs===Infinity?0:secs;
-            let minutes=Math.floor(secs/60)||0;
-            let seconds=Math.floor(secs-minutes*60)||0;
-            return minutes+':'+(seconds<10?'0':'')+seconds;
-          };
-          class CallbackLink2 extends DomElement {
-            constructor(text,callback){
-              super('div',{'className':style.callbackLink2},[new TextElement(text)]);
-              
-              this.state={'callback':callback};
+          }
+          handleShowSongMore(index,song){
+            this.attrs.more_index=index;
+            this.attrs.more_song=song;
+            this.attrs.more.show();
+          }
+          handleHideSongMore(){
+            this.attrs.more.hide();
+          }
+          handleMoreSongInfo(){
+            for(const key in this.sec_attrs){
+              this.sec_attrs[key].setText(""+this.attrs.more_song[key]);
+              ;
             }
-            onClick(){
-              this.state.callback();
+            this.attrs.more_info.show();
+          }
+          handleHideMoreInfo(){
+            this.attrs.more_info.hide();
+          }
+          handleMoreSearchArtist(){
+            let art=this.attrs.more_song.artist.replace(/[\\]/g,'\\\\').replace(/[\"]/g,
+                          '\\"');
+            let query=`artist="${art}"`;
+            history.pushState({},"","/u/library/list?query="+escape(query));
+          }
+          handleMoreSearchAlbum(){
+            let art=this.attrs.more_song.artist.replace(/[\\]/g,'\\\\').replace(/[\"]/g,
+                          '\\"');
+            let alb=this.attrs.more_song.album.replace(/[\\]/g,'\\\\').replace(/[\"]/g,
+                          '\\"');
+            let query=`artist="${art}" album="${alb}"`;
+            history.pushState({},"","/u/library/list?query="+escape(query));
+          }
+          handleShareSong(){
+            const path=window.location.origin+"/u/playlist?play="+this.attrs.more_song.id;
+            
+            console.log(path);
+            navigator.clipboard.writeText(path);
+          }
+          handleMorePlaySongNext(){
+            const current_index=audio.AudioDevice.instance().currentSongIndex();
+            console.log(`move ${this.attrs.more_index} to ${current_index}`);
+            if(current_index!=this.attrs.more_index){
+              audio.AudioDevice.instance().queueReinsertIndex(this.attrs.more_index,
+                              current_index+1);
             }
-          };
-          class SvgMoreElement extends components.SvgElement {
-            constructor(callback){
-              super(resources.svg.more,{'width':20,'height':20,'className':style.listItemEnd});
-              
-              this.state={'callback':callback};
+          }
+          handleAudioPlay(event){
+            this.attrs.header.setStatus("playing");
+          }
+          handleAudioPause(event){
+            this.attrs.header.setStatus("paused");
+          }
+          handleAudioWaiting(event){
+            this.attrs.header.setStatus("waiting");
+          }
+          handleAudioStalled(event){
+            this.attrs.header.setStatus("stalled");
+          }
+          handleAudioEnded(event){
+            this.attrs.header.setStatus("ended");
+          }
+          handleAudioError(event){
+            this.attrs.header.setStatus("error");
+          }
+          handleAudioTimeUpdate(event){
+            this.attrs.header.setTime(event.currentTime,event.duration);
+            if(this.attrs.device.isPlaying()){
+              this.attrs.header.setStatus("playing");
             }
-            onClick(event){
-              this.state.callback();
+            if(event.currentIndex!==undefined){
+              if(event.currentIndex!=this.attrs.currentIndex){
+                this.attrs.currentIndex=event.currentIndex;
+                this.attrs.container.children.forEach((child,index)=>{
+                    child.updateActive(index===event.currentIndex);
+                  });
+                console.log("update index ",event.currentIndex,this.attrs.currentIndex);
+                
+              }
             }
-          };
-          class SongItem extends DomElement {
-            constructor(parent,index,song){
-              super("div",{'className':style.songItem},[]);
-              this.attrs={'parent':parent,'index':index,'song':song,'active':false};
-              
-              this.appendChild(new DomElement("div",{'className':style.space5},[]));
-              
-              const grip=this.appendChild(new DomElement("div",{'className':style.grip},
-                                  []));
-              this.appendChild(new DomElement("div",{'className':style.space5},[]));
-              
-              const dividx=this.appendChild(new DomElement("div",{'className':style.songItemIndex},
-                                  []));
-              this.attrs.txt0=dividx.appendChild(new TextElement(`${index+1}.`));
-              
-              grip.props.onMouseDown=(event)=>{
-                let node=this.getDomNode();
-                node.style.width=node.clientWidth+'px';
-                this.addClassName(style.songItemMoving);
-                this.attrs.parent.handleChildDragBegin(this,event);
-                event.preventDefault();
-                event.stopPropagation();
-              };
-              grip.props.onTouchStart=(event)=>{
-                let node=this.getDomNode();
-                node.style.width=node.clientWidth+'px';
-                this.addClassName(style.songItemMoving);
-                this.attrs.parent.handleChildDragBegin(this,event);
-                event.preventDefault();
-                event.stopPropagation();
-              };
-              const divrhs=this.appendChild(new DomElement("div",{'className':style.songItemRhs},
-                                  []));
-              this.attrs.txt1=divrhs.appendChild(new components.MiddleText(song.title));
-              
-              this.attrs.txt1.addClassName(style.fontBig);
-              const div=divrhs.appendChild(new DomElement("div",{},[]));
-              this.attrs.txt2=div.appendChild(new components.MiddleText(song.artist));
-              
-              this.attrs.txt3=div.appendChild(new TextElement(formatTime(song.length)));
-              
-              div.addClassName(style.fontSmall);
-              div.addClassName(style.songItemRow2);
-              this.appendChild(new SvgMoreElement(()=>{
-                    this.attrs.parent.attrs.parent.handleShowSongMore(this.attrs.index,
-                                          this.attrs.song);
+          }
+          handleResume(){
+            console.log("on app resume");
+            this.attrs.container.update();
+          }
+          handleAudioDurationChange(event){
+            this.attrs.header.setTime(event.currentTime,event.duration);
+          }
+          handleAudioSongChanged(song){
+            this.attrs.header.setSong(song);
+            if(song!==null){
+              if(!song.id){
+                this.attrs.header.setStatus("load error: invalid id");
+              }else{
+                this.attrs.currentIndex=audio.AudioDevice.instance().currentSongIndex(
+                                );
+                this.attrs.header.setStatus("pending");
+                this.attrs.container.children.forEach((child,index)=>{
+                    child.updateActive(index===this.attrs.currentIndex);
+                  });
+                this.attrs.header.setTime(0,0);
+              }
+            }else{
+              this.attrs.header.setStatus("load error: null");
+            }
+          }
+          handleAudioQueueChanged(songList){
+            console.log(`update queue with new list`);
+            const current_id=audio.AudioDevice.instance().currentSongId();
+            const current_index=audio.AudioDevice.instance().currentSongIndex();
+            let miss=0;
+            let hit=0;
+            let del=0;
+            let index=0;
+            let item=null;
+            const containerList=this.attrs.container.children;
+            const N=containerList.length<songList.length?containerList.length:songList.length;
+            
+            for(;index<containerList.length&&index<songList.length;index++)
+            {
+              if(containerList[index].attrs.song.id==songList[index].id){
+                item=containerList[index];
+                item.setIndex(index);
+              }else if(index<(containerList.length-1)&&containerList[index+1].attrs.song.id==songList[
+                                index].id){
+                containerList.splice(index,1);
+                item=containerList[index];
+                item.setIndex(index);
+                del+=1;
+              }else{
+                miss+=1;
+                item=new SongItem(this.attrs.container,index,songList[index]);
+                containerList[index]=item;
+              }
+              item.updateActive(index===current_index);
+            }
+            const removeCount=containerList.length-index;
+            if(removeCount>0){
+              containerList.splice(index,removeCount);
+              del+=removeCount;
+            }
+            for(;index<songList.length;index++)
+            {
+              item=new SongItem(this.attrs.container,index,songList[index]);
+              containerList.push(item);
+              item.updateActive(index===current_index);
+              miss+=1;
+            }
+            if(miss>0||del>0){
+              this.attrs.container.update();
+            }
+            const song=this.attrs.device.currentSong();
+            this.attrs.header.setSong(song);
+            console.log(`update queue miss rate hit: ${hit} miss: ${miss} del: ${del}`);
+            
+          }
+        };
+        return[PlaylistPage];
+      })();
+    const[SettingsPage]=(function(){
+        const style={'main':'dcs-7a525177-0','settingsItem':'dcs-7a525177-1','settingsRowItem':'dcs-7a525177-2'};
+        
+        class SettingsItem extends DomElement {
+          constructor(title){
+            super("div",{'className':style.settingsItem},[]);
+            this.appendChild(new TextElement(title));
+          }
+        };
+        class SettingsButtonItem extends DomElement {
+          constructor(title,action){
+            super("div",{'className':style.settingsRowItem},[]);
+            this.attrs.count=0;
+            this.appendChild(new ButtonElement(title,()=>{
+                  action(this);
+                }));
+          }
+          setText(text){
+
+          }
+        };
+        class SettingsToggleRangeItem extends DomElement {
+          constructor(title,action,action2){
+            super("div",{'className':style.settingsRowItem},[]);
+            this.attrs.count=0;
+            this.appendChild(new ButtonElement(title,()=>{
+                  action(this);
+                }));
+            this.appendChild(new DomElement("input",{'min':0,'max':100,'value':50,
+                                  'type':"range",'onchange':action2}));
+          }
+          setText(text){
+
+          }
+        };
+        class SettingsGroupItem extends DomElement {
+          constructor(title,names){
+            super("div",{'className':style.settingsItem},[]);
+            this.appendChild(new TextElement(title));
+            this.appendChild(new DomElement("br",{},[]));
+            const form=this.appendChild(new DomElement("form",{},[]));
+            names.forEach(name=>{
+                const child=form.appendChild(new DomElement("div",{},[]));
+                const btn=child.appendChild(new DomElement("input",{'type':"radio",
+                                          'value':name,'name':this.props.id}));
+                child.appendChild(new DomElement("label",{'forx':btn.props.id},[new TextElement(
+                                              name)]));
+              });
+          }
+        };
+        class Header extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+          }
+        };
+        class SettingsPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            this.attrs={'header':new Header(this),'container':new DomElement("div",
+                              {},[])};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.container);
+            this.attrs.container.appendChild(new SettingsItem("Volume:"));
+            this.attrs.container.appendChild(new SettingsGroupItem("Audio Backend:",
+                              ["Cloud","Cloud Native","Native"]));
+            this.attrs.container.appendChild(new SettingsButtonItem("file api test",
+                              (item)=>{
+                  if(Client){
+                    console.log("test");
+                    item.attrs.count+=1;
+                    if(Client.fileExists("sample.dat")){
+                      item.setText(item.attrs.count+" : "+"T");
+                    }else{
+                      item.setText(item.attrs.count+" : "+"F");
+                      const url="http://192.168.1.149:4100/static/index.js";
+                      const folder='Music/test';
+                      const name='index.js';
+                      Client.downloadUrl(url,folder,name);
+                      ;
+                      ;
+                      ;
+                    }
+                  }
+                }));
+            this.attrs.container.appendChild(new SettingsButtonItem("load",(item)=>{
+                
+                  if(daedalus.platform.isAndroid){
+                    const url1="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+                    
+                    const url2="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3";
+                    
+                    const url3="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3";
+                    
+                    const queue=[{'url':url1},{'url':url2},{'url':url3}];
+                    const data=JSON.stringify(queue);
+                    console.log(data);
+                    AndroidNativeAudio.setQueue(data);
+                    AndroidNativeAudio.loadIndex(0);
+                    ;
+                    ;
+                    ;
+                    ;
+                    ;
+                  }
+                }));
+            this.attrs.container.appendChild(new SettingsButtonItem("play",(item)=>{
+                
+                  if(daedalus.platform.isAndroid){
+                    AndroidNativeAudio.play();
+                  }
+                }));
+            this.attrs.container.appendChild(new SettingsButtonItem("pause",(item)=>{
+                
+                  if(daedalus.platform.isAndroid){
+                    AndroidNativeAudio.pause();
+                  }
+                }));
+            this.attrs.container.appendChild(new SettingsButtonItem("next",(item)=>{
+                
+                  if(daedalus.platform.isAndroid){
+                    AndroidNativeAudio.skipToNext();
+                  }
+                }));
+            this.attrs.container.appendChild(new SettingsButtonItem("prev",(item)=>{
+                
+                  if(daedalus.platform.isAndroid){
+                    AndroidNativeAudio.skipToPrev();
+                  }
+                }));
+            this.attrs.container.appendChild(new SettingsButtonItem("fetch",(item)=>{
+                
+                  if(daedalus.platform.isAndroid){
+                    AndroidNativeAudio.beginFetch(""+api.getAuthToken());
+                  }
+                }));
+            this.attrs.noise=[new audio.WhiteNoiseContext(),new audio.PinkNoiseContext(
+                            ),new audio.BrownNoiseContext(),new audio.OceanNoiseContext()];
+            for(let i=0;i<this.attrs.noise.length;i++)
+            {
+              let noise=this.attrs.noise[i];
+              this.attrs.container.appendChild(new SettingsToggleRangeItem(noise.color+" noise",
+                                  (item)=>{
+                    if(noise.isPlaying()){
+                      console.log("pause "+noise.color);
+                      noise.pause();
+                    }else{
+                      console.log("play "+noise.color);
+                      noise.play();
+                    }
+                  },(event)=>{
+                    noise.setVolume(event.target.value/100);
                   }));
             }
-            setIndex(index){
-              if(index!==this.attrs.index){
-                this.attrs.index=index;
-                this.attrs.txt0.setText(`${index+1}.`);
-              }
+            ;
+            ;
+          }
+        };
+        return[SettingsPage];
+      })();
+    const[LibraryPage,SavedSearchPage,SyncPage]=(function(){
+        class SearchBannishedCheckBox extends components.CheckBoxElement {
+          onClick(event){
+            this.attrs.callback();
+          }
+          getStateIcons(){
+            return[resources.svg.checkbox_unchecked,resources.svg.checkbox_checked];
+            
+          }
+        };
+        class SearchModeCheckBox extends components.CheckBoxElement {
+          onClick(event){
+            this.attrs.callback();
+          }
+          getStateIcons(){
+            return[resources.svg.checkbox_unchecked,resources.svg.checkbox_synced,
+                          resources.svg.checkbox_not_synced,resources.svg.checkbox_partial];
+          }
+        };
+        class SyncCheckBox extends components.CheckBoxElement {
+          onClick(event){
+            this.attrs.callback();
+          }
+          getStateIcons(){
+            return[resources.svg.checkbox_unchecked,resources.svg.checkbox_download,
+                          resources.svg.checkbox_partial];
+          }
+        };
+        const style={'main':'dcs-33c2f1c6-0','grow':'dcs-33c2f1c6-1','viewPad':'dcs-33c2f1c6-2',
+                  'listItemCheck':'dcs-33c2f1c6-3','savedSearchPage':'dcs-33c2f1c6-4','savedSearchList':'dcs-33c2f1c6-5',
+                  'savedSearchItem':'dcs-33c2f1c6-6','padding1':'dcs-33c2f1c6-7','padding2':'dcs-33c2f1c6-8',
+                  'listItem':'dcs-33c2f1c6-9','listItemMid':'dcs-33c2f1c6-10','listItemQuery':'dcs-33c2f1c6-11',
+                  'listItemInner':'dcs-33c2f1c6-12','show':'dcs-33c2f1c6-13','hide':'dcs-33c2f1c6-14'};
+        
+        class LibraryHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.attrs.txtInput=new TextInputElement("",null,(text)=>{
+                this.attrs.parent.search(text);
+              });
+            this.attrs.txtInput.updateProps({"autocapitalize":"off"});
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.addAction(resources.svg['media_prev'],()=>{
+                audio.AudioDevice.instance().prev();
+              });
+            this.attrs.act_play_pause=this.addAction(resources.svg['media_play'],
+                          ()=>{
+                audio.AudioDevice.instance().togglePlayPause();
+              });
+            this.addAction(resources.svg['media_next'],()=>{
+                audio.AudioDevice.instance().next();
+              });
+            this.addRow(false);
+            this.addRowAction(0,resources.svg.media_error,()=>{
+                this.attrs.txtInput.setText("");
+                this.attrs.txtInput.getDomNode().focus();
+                this.attrs.parent.search("");
+              });
+            this.addRowElement(0,this.attrs.txtInput);
+            this.attrs.txtInput.addClassName(style.grow);
+            if(daedalus.platform.isAndroid||daedalus.platform.isQt){
+              this.attrs.chk=new SearchModeCheckBox(this.handleCheck.bind(this),1);
+              
+              this.addRowElement(0,new components.HSpacer("1em"));
+              this.addRowElement(0,this.attrs.chk);
+              this.addRowElement(0,new components.HSpacer("1em"));
             }
-            updateActive(active){
-              if(this.attrs.active!=active){
-                this.attrs.active=active;
-                if(active===true){
-                  this.addClassName(style.songItemActive);
-                  return">T";
-                }else{
-                  this.removeClassName(style.songItemActive);
-                  return">F";
-                }
-              }
-              return">S";
+            this.addRowElement(0,new components.HSpacer("1em"));
+            this.addRowAction(0,resources.svg.search,()=>{
+                const text=this.attrs.txtInput.getText();
+                console.log("search: "+text);
+                this.attrs.parent.search(text);
+              });
+          }
+          setQuery(query){
+            this.attrs.txtInput.setText(query);
+          }
+          handleCheck(){
+            this.attrs.chk.setCheckState((this.attrs.chk.attrs.checkState+1)%3);
+          }
+          syncState(){
+            return this.attrs.chk.attrs.checkState;
+          }
+          showBanished(){
+            return false;
+          }
+          setStatus(status){
+            if(status==="playing"){
+              this.attrs.act_play_pause.setUrl(resources.svg['media_pause']);
+            }else{
+              this.attrs.act_play_pause.setUrl(resources.svg['media_play']);
             }
-            onTouchStart(event){
-              if(!event.cancelable){
-                return;
-              }
-              let node=this.getDomNode();
-              node.style.width=node.clientWidth+'px';
-              this.addClassName(style.songItemMoving);
-              console.log(`touch start ${this.attrs.index}`);
-              this.attrs.parent.handleChildSwipeBegin(this,event);
+          }
+        };
+        class LibraryFooter extends components.NavFooter {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['select'],()=>{
+                const count=this.attrs.parent.attrs.view.countSelected();
+                this.attrs.parent.attrs.view.selectAll(count==0);
+              });
+            this.addSpacer(".5em");
+            this.addAction(resources.svg['sort'],()=>{
+                let songList=this.attrs.parent.attrs.view.getSelectedSongs();
+                console.log("creating playlist",songList.length);
+                songList=api.sortTracks(songList).splice(0,200);
+                audio.AudioDevice.instance().queueSet(songList);
+                audio.AudioDevice.instance().next();
+                this.attrs.parent.attrs.view.selectAll(false);
+              });
+            this.addSpacer(".5em");
+            this.addAction(resources.svg['media_shuffle'],()=>{
+                let songList=this.attrs.parent.attrs.view.getSelectedSongs();
+                console.log("creating playlist",songList.length);
+                songList=api.track_shuffle(songList).splice(0,200);
+                console.log("creating playlist",songList.length);
+                console.log(songList);
+                audio.AudioDevice.instance().queueSet(songList);
+                audio.AudioDevice.instance().next();
+                this.attrs.parent.attrs.view.selectAll(false);
+              });
+          }
+        };
+        class ArtistTreeItem extends components.TreeItem {
+          constructor(parent,obj,selectMode=1){
+            let selected=0;
+            if(selectMode==components.TreeItem.SELECTION_MODE_CHECK){
+              selected=obj.selected||0;
             }
-            onTouchMove(event){
-              if(!event.cancelable){
-                console.log(`touch move ${this.attrs.index} ignore`);
-                return;
-              }
-              if(this.attrs.parent.attrs.eventSource!==this){
-                console.log(`touch move ${this.attrs.index} wrong source`);
-                return;
-              }
-              if(this.attrs.parent.attrs.isSwipe){
-                if(this.attrs.parent.attrs.swipeArgs.started){
-                  this.attrs.parent.handleChildSwipeMove(this,event);
-                }else{
-                  this.attrs.parent.handleChildSwipeMoveBegin(this,event);
-                }
-              }else{
-                this.attrs.parent.handleChildDragMove(this,event);
-              }
-              event.stopPropagation();
+            super(parent,0,obj.name,obj,selectMode,selected);
+          }
+          buildChildren(obj){
+            return obj.albums.map(album=>new AlbumTreeItem(this,album,this.attrs.selectMode));
+            
+          }
+          constructCheckbox(callback,initialState){
+            return new SyncCheckBox(callback,initialState);
+          }
+        };
+        class AlbumTreeItem extends components.TreeItem {
+          constructor(parent,obj,selectMode=1){
+            let selected=0;
+            if(selectMode==components.TreeItem.SELECTION_MODE_CHECK){
+              selected=obj.selected||0;
             }
-            onTouchEnd(event){
-              if(!event.cancelable){
-                console.log(`touch end ${this.attrs.index} ignore`);
-                return;
-              }
-              if(this.attrs.parent.attrs.eventSource!==this){
-                console.error(`touch end ${this.attrs.index} wrong source`);
-                return;
-              }
-              this.attrs.parent.attrs.eventSource=null;
-              console.log(`touch end ${this.attrs.index}`);
-              if(this.attrs.parent.attrs.isSwipe){
-                this.attrs.parent.handleChildSwipeEnd(this,{'target':this.getDomNode(
-                                        )});
-              }else if(this.attrs.parent.attrs.isDraggingStarted){
-                this.attrs.parent.handleChildDragEnd(this,{'target':this.getDomNode(
-                                        )});
-                let node=this.getDomNode();
-                node.style.removeProperty('width');
-                this.removeClassName(style.songItemMoving);
-                ;
-              }
-              event.stopPropagation();
+            super(parent,1,obj.name,obj,selectMode,selected);
+          }
+          buildChildren(obj){
+            return obj.tracks.map(track=>new TrackTreeItem(this,track,this.attrs.selectMode));
+            
+          }
+          constructCheckbox(callback,initialState){
+            return new SyncCheckBox(callback,initialState);
+          }
+        };
+        class TrackTreeItem extends components.TreeItem {
+          constructor(parent,obj,selectMode=1){
+            let selected=0;
+            if(selectMode==components.TreeItem.SELECTION_MODE_CHECK){
+              selected=obj.sync||0;
             }
-            onTouchCancel(event){
-              if(this.attrs.parent.attrs.eventSource!==this){
-                console.error(`touch cancel ${this.attrs.index} on wrong element`);
+            super(parent,2,obj.title,obj,selectMode,selected);
+            this.setMoreCallback(this.handleMoreClicked.bind(this));
+          }
+          hasChildren(){
+            return false;
+          }
+          handleMoreClicked(){
+            const abm=this.attrs.parent;
+            const art=abm.attrs.parent;
+            const view=art.attrs.parent;
+            const page=view.attrs.parent;
+            const song={...this.attrs.obj,'artist':art.attrs.obj.name,'album':abm.attrs.obj.name};
+            
+            console.log(art.attrs.parent);
+            page.showMore(song);
+          }
+          constructCheckbox(callback,initialState){
+            return new SyncCheckBox(callback,initialState);
+          }
+        };
+        class LibraryTreeView extends components.TreeView {
+          constructor(parent,selectMode){
+            super();
+            this.attrs.parent=parent;
+            this.attrs.selectMode=selectMode;
+          }
+          setForest(forest){
+            forest.forEach(tree=>{
+                this.addItem(new ArtistTreeItem(this,tree,this.attrs.selectMode));
                 
-                event.preventDefault();
-                return;
-              }else{
-                console.log(`touch cancel ${this.attrs.index}`);
-              }
-              this.attrs.parent.attrs.eventSource=null;
-              if(this.attrs.parent.attrs.isSwipe){
-                this.attrs.parent.handleChildSwipeEnd(this,{'target':this.getDomNode(
-                                        )});
-              }else{
-                this.attrs.parent.handleChildDragEnd(this,{'target':this.getDomNode(
-                                        )});
-                let node=this.getDomNode();
-                node.style.removeProperty('width');
-                this.removeClassName(style.songItemMoving);
+              });
+          }
+          getSelectedSongs(){
+            const result=[];
+            this.attrs.container.children.forEach(child=>{
+                this._chkArtistSelection(result,child);
+              });
+            return result;
+          }
+          _chkArtistSelection(result,node){
+            if(!node.attrs.children){
+              this._collectArtist(result,node.attrs.obj,node.isSelected());
+              return;
+            }
+            node.attrs.children.forEach(child=>{
+                this._chkAlbumSelection(result,child,node.attrs.obj.name);
+              });
+          }
+          _collectArtist(result,obj,selected){
+            obj.albums.forEach(child=>{
+                this._collectAlbum(result,child,obj.name,selected);
+              });
+          }
+          _chkAlbumSelection(result,node,artist){
+            if(!node.attrs.children){
+              this._collectAlbum(result,node.attrs.obj,artist,node.isSelected());
+              
+              return;
+            }
+            node.attrs.children.forEach(child=>{
+                this._chkTrackSelection(result,child,artist,node.attrs.obj.name);
+                
+              });
+          }
+          _collectAlbum(result,obj,artist,selected){
+            obj.tracks.forEach(child=>{
+                this._collectTrack(result,child,artist,obj.name,selected);
+              });
+          }
+          _chkTrackSelection(result,node,artist,album){
+            if(this.attrs.selectMode==components.TreeItem.SELECTION_MODE_CHECK){
+              const item=node.attrs.obj;
+              if(item.sync==1&&node.attrs.selected==0){
+                const track={"spk":item.spk,'sync':0};
+                result.push(track);
+                ;
+              }else if(item.sync==0&&node.attrs.selected==1){
+                const track={"spk":item.spk,'sync':1};
+                result.push(track);
                 ;
               }
-              event.stopPropagation();
-            }
-            onMouseDown(event){
-              let node=this.getDomNode();
-              node.style.width=node.clientWidth+'px';
-              this.addClassName(style.songItemMoving);
-              this.attrs.parent.handleChildSwipeBegin(this,event);
-            }
-            onMouseMove(event){
-              if(event.buttons!==1){
-                return;
+              ;
+            }else{
+              if(node.isSelected()){
+                const song={...node.attrs.obj,'artist':artist,'album':album};
+                result.push(song);
+                ;
               }
-              if(this.attrs.parent.attrs.eventSource!==this){
-                return;
+            }
+          }
+          _collectTrack(result,obj,artist,album,selected){
+            if(this.attrs.selectMode==components.TreeItem.SELECTION_MODE_CHECK){
+              if(obj.sync==0&&selected==1){
+                const track={"uid":obj.id,"spk":obj.spk,'sync':1};
+                result.push(track);
+                ;
               }
-              if(this.attrs.parent.attrs.isSwipe){
-                if(this.attrs.parent.attrs.swipeArgs.started){
-                  this.attrs.parent.handleChildSwipeMove(this,event);
+              if(obj.sync==1&&selected==0){
+                const track={"uid":obj.id,"spk":obj.spk,'sync':0};
+                result.push(track);
+                ;
+              }
+            }else{
+              if(selected){
+                const song={...obj,'artist':artist,'album':album};
+                result.push(song);
+                ;
+              }
+            }
+          }
+        };
+        class LibraryPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            this.attrs={'device':audio.AudioDevice.instance(),'header':new LibraryHeader(
+                              this),'footer':new LibraryFooter(this),'view':new LibraryTreeView(
+                              this,components.TreeItem.SELECTION_MODE_HIGHLIGHT),'more':new components.MoreMenu(
+                              this.handleHideFileMore.bind(this)),'more_context_item':null,'firstMount':true,
+                          'currentSearch':null};
+            this.attrs.view.addClassName(style.viewPad);
+            this.attrs.more.addAction("Add To Queue",this.handleAddToQueue.bind(this));
+            
+            this.appendChild(this.attrs.more);
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.view);
+            this.appendChild(this.attrs.footer);
+          }
+          elementMounted(){
+            console.log("mount library view");
+            this.attrs.device.connectView(this);
+            let query=daedalus.util.parseParameters()['query'];
+            if(query===null||query===undefined){
+              query="";
+            }else{
+              query=""+query;
+            }
+            if(this.attrs.firstMount||(this.attrs.currentSearch!==query)){
+              this.attrs.firstMount=false;
+              this.attrs.header.setQuery(query);
+              this.search(query);
+            }
+            if(daedalus.platform.isAndroid){
+              registerAndroidEvent('onresume',this.handleResume.bind(this));
+            }
+            let status=(this.attrs.device.isPlaying())?"playing":"paused";
+            this.attrs.header.setStatus(status);
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+            if(daedalus.platform.isAndroid){
+              registerAndroidEvent('onresume',()=>{
+
+                });
+            }
+          }
+          search(text){
+            this.attrs.view.reset();
+            this.attrs.currentSearch=text;
+            router.navigate(router.routes.userLibraryList({},{'query':text}));
+            this.attrs.search_promise=new Promise((accept,reject)=>{
+                let showBanished=this.attrs.header.showBanished()===1;
+                console.log(showBanished);
+                if(daedalus.platform.isAndroid){
+                  let syncState=this.attrs.header.syncState();
+                  let payload=AndroidNativeAudio.buildForest(text,syncState,showBanished);
+                  
+                  let forest=JSON.parse(payload);
+                  this.attrs.view.setForest(forest);
+                  ;
+                  ;
+                  ;
+                }else if(daedalus.platform.isQt){
+                  let syncState=1;
+                  let showBanished=false;
+                  window.channel.objects.backend.buildForest(text,syncState,showBanished).then(
+                                      result=>{
+                      result=JSON.parse(result);
+                      if(result.status=="ok"){
+                        this.attrs.view.setForest(result.result);
+                      }else{
+                        components.ErrorDrawer.post("Query Error",result.status);
+                        
+                      }
+                    }).catch(error=>{
+                      console.log(error);
+                    });
+                  ;
+                  ;
                 }else{
-                  this.attrs.parent.handleChildSwipeMoveBegin(this,event);
+                  api.librarySearchForest(text,showBanished).then(result=>{
+                      this.attrs.view.setForest(result.result);
+                    }).catch(error=>{
+                      console.log(error);
+                    });
                 }
-              }else{
-                this.attrs.parent.handleChildDragMove(this,event);
-              }
-              event.stopPropagation();
+                accept();
+              });
+          }
+          showMore(item){
+            this.attrs.more_context_item=item;
+            this.attrs.more.show();
+          }
+          handleHideFileMore(){
+            this.attrs.more.hide();
+          }
+          handleAddToQueue(){
+            this.attrs.device.queuePlayNext(this.attrs.more_context_item);
+          }
+          handleResume(){
+            console.log("on app resume");
+          }
+          handleAudioPlay(event){
+            this.attrs.header.setStatus("playing");
+          }
+          handleAudioPause(event){
+            this.attrs.header.setStatus("paused");
+          }
+          handleAudioWaiting(event){
+            this.attrs.header.setStatus("waiting");
+          }
+          handleAudioStalled(event){
+            this.attrs.header.setStatus("stalled");
+          }
+          handleAudioEnded(event){
+            this.attrs.header.setStatus("ended");
+          }
+          handleAudioError(event){
+            this.attrs.header.setStatus("error");
+          }
+        };
+        class SyncHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.attrs.txtInput=new TextInputElement("",null,(text)=>{
+                this.attrs.parent.search(text);
+              });
+            this.attrs.txtInput.updateProps({"autocapitalize":"off"});
+            this.attrs.status=new components.MiddleText("...");
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.addAction(resources.svg['media_error'],()=>{
+                if(daedalus.platform.isAndroid){
+                  AndroidNativeAudio.cancelTask();
+                }
+              });
+            this.addAction(resources.svg['sort'],()=>{
+                if(daedalus.platform.isAndroid){
+                  if(!Client.isWifiConnected()){
+                    components.ErrorDrawer.post("Connection Status","Wifi Not Connected");
+                    
+                  }
+                  AndroidNativeAudio.beginFetch(""+api.getAuthToken());
+                }else if(daedalus.platform.isQt){
+                  window.channel.objects.backend.taskQuery().then(result=>{
+                      let state=JSON.parse(result);
+                      if(!state.busy){
+                        console.log("begin sync");
+                        window.channel.objects.backend.beginFetch(""+api.getAuthToken(
+                                                    ));
+                      }else{
+                        components.ErrorDrawer.post("Task Error","Task in progress");
+                        
+                      }
+                    });
+                }
+              });
+            this.addAction(resources.svg['save'],()=>{
+                this.attrs.parent.handleSyncSave();
+              });
+            this.addAction(resources.svg['download'],()=>{
+                if(daedalus.platform.isAndroid){
+                  console.log("begin sync");
+                  AndroidNativeAudio.beginSync(""+api.getAuthToken());
+                }else if(daedalus.platform.isQt){
+                  window.channel.objects.backend.taskQuery().then(result=>{
+                      let state=JSON.parse(result);
+                      if(!state.busy){
+                        console.log("begin sync");
+                        window.channel.objects.backend.beginSync(""+api.getAuthToken(
+                                                    ));
+                      }else{
+                        components.ErrorDrawer.post("Task Error","Task in progress");
+                        
+                      }
+                    });
+                }
+              });
+            if(daedalus.platform.isQt){
+              this.addAction(resources.svg['upload'],()=>{
+                  if(daedalus.platform.isAndroid){
+                    console.log("begin upload history");
+                    AndroidNativeAudio.beginUploadHistory(""+api.getAuthToken());
+                    
+                  }else if(daedalus.platform.isQt){
+                    window.channel.objects.backend.taskQuery().then(result=>{
+                        let state=JSON.parse(result);
+                        if(!state.busy){
+                          console.log("begin upload history");
+                          window.channel.objects.backend.beginUploadHistory(""+api.getAuthToken(
+                                                        ));
+                        }else{
+                          components.ErrorDrawer.post("Task Error","Task in progress");
+                          
+                        }
+                      });
+                  }
+                });
             }
-            onMouseLeave(event){
-              if(this.attrs.parent.attrs.eventSource!==this){
-                return;
+            this.addRow(false);
+            this.addRowElement(0,this.attrs.txtInput);
+            this.attrs.txtInput.addClassName(style.grow);
+            if(daedalus.platform.isAndroid||daedalus.platform.isQt){
+              this.attrs.chk=new SearchModeCheckBox(this.handleCheck.bind(this),0);
+              
+              this.addRowElement(0,new components.HSpacer("1em"));
+              this.addRowElement(0,this.attrs.chk);
+              this.addRowElement(0,new components.HSpacer("1em"));
+            }
+            this.addRowAction(0,resources.svg['search'],()=>{
+                this.attrs.parent.search(this.attrs.txtInput.getText());
+              });
+            this.addRow(false);
+            this.addRowElement(1,this.attrs.status);
+          }
+          updateStatus(text){
+            this.attrs.status.setText(text);
+          }
+          searchText(){
+            return this.attrs.txtInput.getText();
+          }
+          handleCheck(){
+            this.attrs.chk.setCheckState((this.attrs.chk.attrs.checkState+1)%3);
+            console.log("check state",this.attrs.chk.attrs.checkState);
+          }
+          syncState(){
+            return this.attrs.chk.attrs.checkState;
+          }
+        };
+        class SyncFooter extends components.NavFooter {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+          }
+        };
+        class SyncPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            this.attrs={'header':new SyncHeader(this),'footer':new SyncFooter(this),
+                          'view':new LibraryTreeView(this,components.TreeItem.SELECTION_MODE_CHECK),
+                          'more':new components.MoreMenu(this.handleHideFileMore.bind(this)),
+                          'more_context_item':null,'firstMount':true};
+            this.attrs.view.addClassName(style.viewPad);
+            this.attrs.more.addAction("Add To Queue",()=>{
+
+              });
+            this.appendChild(this.attrs.more);
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.view);
+            this.appendChild(this.attrs.footer);
+            this.attrs.footer_lbl1=this.attrs.footer.addText("");
+          }
+          elementMounted(){
+            console.log("mount sync view");
+            if(this.attrs.firstMount){
+              this.attrs.firstMount=false;
+              this.search("");
+            }
+            if(daedalus.platform.isAndroid){
+              registerAndroidEvent('onfetchprogress',this.handleFetchProgress.bind(
+                                  this));
+              registerAndroidEvent('onfetchcomplete',this.handleFetchComplete.bind(
+                                  this));
+              registerAndroidEvent('onsyncstatusupdated',this.handleSyncStatusUpdated.bind(
+                                  this));
+              registerAndroidEvent('onsyncprogress',this.handleSyncProgress.bind(
+                                  this));
+              registerAndroidEvent('onsynccomplete',this.handleSyncComplete.bind(
+                                  this));
+              registerAndroidEvent('onresume',this.handleResume.bind(this));
+              this.updateInfo();
+            }else if(daedalus.platform.isQt){
+              window.channel.objects.backend.fetchProgress.connect((count,total)=>{
+                
+                  this.handleFetchProgress({'count':count,'total':total});
+                });
+              window.channel.objects.backend.fetchComplete.connect(()=>{
+                  this.handleFetchComplete({});
+                });
+              window.channel.objects.backend.syncProgress.connect((index,total,message)=>{
+                
+                  this.handleSyncProgress({'index':index,'total':total,'message':message});
+                  
+                });
+              window.channel.objects.backend.syncComplete.connect(()=>{
+                  this.handleSyncComplete({});
+                });
+              window.channel.objects.backend.uploadProgress.connect((count,total)=>{
+                
+                  this.handleUploadProgress({'count':count,'total':total,'message':message});
+                  
+                });
+              window.channel.objects.backend.uploadComplete.connect(()=>{
+                  this.handleUploadComplete({});
+                });
+              this.updateInfo();
+            }
+            if(daedalus.platform.isAndroid){
+              if(!Client.isWifiConnected()){
+                components.ErrorDrawer.post("Connection Status","Wifi Not Connected");
+                
               }
-              this.attrs.parent.attrs.eventSource=null;
-              if(this.attrs.parent.attrs.isSwipe){
-                this.attrs.parent.handleChildSwipeCancel(this,event);
-              }else{
-                this.attrs.parent.handleChildDragEnd(this,event);
-                let node=this.getDomNode();
-                node.style.removeProperty('width');
-                this.removeClassName(style.songItemMoving);
+            }
+          }
+          elementUnmounted(){
+            console.log("unmount sync view");
+            if(daedalus.platform.isAndroid){
+              registerAndroidEvent('onfetchprogress',()=>{
+
+                });
+              registerAndroidEvent('onfetchcomplete',()=>{
+
+                });
+              registerAndroidEvent('onsyncstatusupdated',()=>{
+
+                });
+              registerAndroidEvent('onsyncprogress',()=>{
+
+                });
+              registerAndroidEvent('onsynccomplete',()=>{
+
+                });
+              registerAndroidEvent('onresume',()=>{
+
+                });
+            }
+          }
+          handleHideFileMore(){
+            this.attrs.more.hide();
+          }
+          search(text){
+            this.attrs.view.reset();
+            this.attrs.search_promise=new Promise((accept,reject)=>{
+                if(daedalus.platform.isAndroid){
+                  let syncState=this.attrs.header.syncState();
+                  let showBanished=false;
+                  let payload=AndroidNativeAudio.buildForest(text,syncState,showBanished);
+                  
+                  let forest=JSON.parse(payload);
+                  this.attrs.view.setForest(forest);
+                  ;
+                  ;
+                  ;
+                  ;
+                }else if(daedalus.platform.isQt){
+                  let syncState=this.attrs.header.syncState();
+                  let showBanished=false;
+                  window.channel.objects.backend.buildForest(text,syncState,showBanished).then(
+                                      result=>{
+                      result=JSON.parse(result);
+                      if(result.status=="ok"){
+                        this.attrs.view.setForest(result.result);
+                      }else{
+                        components.ErrorDrawer.post("Query Error",result.status);
+                        
+                      }
+                    }).catch(error=>{
+                      console.log(error);
+                    });
+                  ;
+                  ;
+                }else{
+                  let showBanished=false;
+                  api.librarySearchForest(text,showBanished).then(result=>{
+                      this.attrs.view.setForest(result.result);
+                    }).catch(error=>{
+                      console.log(error);
+                    });
+                  ;
+                }
+                accept();
+              });
+          }
+          handleSyncSave(){
+            let items=this.attrs.view.getSelectedSongs();
+            console.log(`sync save selected ${items.length} items`);
+            let data={};
+            for(let i=0;i<items.length;i++)
+            {
+              let item=items[i];
+              data[item.spk]=item.sync;
+            }
+            ;
+            ;
+            if(items.length>0){
+              if(daedalus.platform.isAndroid){
+                let payload=JSON.stringify(data);
+                AndroidNativeAudio.updateSyncStatus(payload);
                 ;
-              }
-              event.stopPropagation();
-            }
-            onMouseUp(event){
-              if(this.attrs.parent.attrs.eventSource!==this){
-                return;
-              }
-              this.attrs.parent.attrs.eventSource=null;
-              if(this.attrs.parent.attrs.isSwipe){
-                this.attrs.parent.handleChildSwipeEnd(this,event);
-              }else{
-                this.attrs.parent.handleChildDragEnd(this,event);
-                let node=this.getDomNode();
-                node.style.removeProperty('width');
-                this.removeClassName(style.songItemMoving);
+              }else if(daedalus.platform.isQt){
+                let payload=JSON.stringify(data);
+                window.channel.objects.backend.updateSyncStatus(payload);
                 ;
+              }else{
+                console.log(data);
               }
-              event.stopPropagation();
+            }else{
+              console.log("sync save: nothing to save");
             }
-          };
-          class Header extends components.NavHeader {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
+          }
+          handleFetchProgress(payload){
+            this.attrs.header.updateStatus(`${payload.count}/${payload.total}`);
+          }
+          handleFetchComplete(payload){
+            console.log("fetch complete: "+JSON.stringify(payload));
+            this.attrs.header.updateStatus(`fetch complete`);
+            this.updateInfo();
+          }
+          handleSyncProgress(payload){
+            this.attrs.header.updateStatus(`${payload.index}/${payload.total} ${payload.message}`);
+            
+          }
+          handleSyncComplete(payload){
+            console.log("sync complete: "+JSON.stringify(payload));
+            this.attrs.header.updateStatus("sync complete");
+            this.updateInfo();
+          }
+          handleUploadProgress(payload){
+            this.attrs.header.updateStatus(`upload ${payload.index}/${payload.total}`);
+            
+          }
+          handleUploadComplete(payload){
+            this.attrs.header.updateStatus("upload complete");
+            this.updateInfo();
+          }
+          handleSyncStatusUpdated(payload){
+            this.search(this.attrs.header.searchText());
+          }
+          handleResume(payload){
+            console.log("app resumed from js");
+            if(daedalus.platform.isAndroid){
+              AndroidNativeAudio.syncQueryStatus();
+            }
+          }
+          showMore(item){
+            console.log("on show more clicked");
+          }
+          updateInfo(){
+            if(daedalus.platform.isAndroid){
+              const info=JSON.parse(AndroidNativeAudio.getSyncInfo());
+              this.attrs.footer_lbl1.setText(`records: ${info.record_count} synced: ${info.synced_tracks}`);
+              
+              ;
+            }else if(daedalus.platform.isQt){
+              const data=window.channel.objects.backend.getSyncInfo().then(result=>{
+                
+                  console.log(result);
+                  const info=JSON.parse(result);
+                  this.attrs.footer_lbl1.setText(`records: ${info.record_count} synced: ${info.synced_tracks} history: ${info.history_count}`);
+                  
+                });
+              ;
+            }
+          }
+        };
+        class SavedSearchHeader extends components.NavHeader {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+          }
+        };
+        class SavedSearchItem extends DomElement {
+          constructor(parent,name,query){
+            super("div",{'className':style.savedSearchItem},[]);
+            this.attrs={'parent':parent,'name':name,'query':query};
+            this.attrs.row0=this.appendChild(new DomElement("div",{'className':style.listItem},
+                              []));
+            this.attrs.text=this.attrs.row0.appendChild(new DomElement("div",{'className':style.listItemMid},
+                              [new TextElement(name)]));
+            this.attrs.div_query=this.appendChild(new DomElement("pre",{'className':style.listItemQuery},
+                              []));
+            this.attrs.div_query_inner=this.attrs.div_query.appendChild(new DomElement(
+                              "div",{'className':style.listItemInner},[]));
+            this.attrs.div_query_inner.appendChild(new DomElement("div",{},[new TextElement(
+                                      query)]));
+            this.attrs.div_query_inner.appendChild(new components.HSpacer("1em"));
+            
+            this.attrs.row0.appendChild(new components.SvgButtonElement(resources.svg.more,
+                              ()=>{
+                  this.attrs.parent.handleShowMore(this);
+                }));
+            this.attrs.row0.appendChild(new components.SvgButtonElement(resources.svg.arrow_right,
+                              ()=>{
+                  router.navigate(router.routes.userLibraryList({},{'query':this.attrs.query}));
+                  
+                }));
+            this.attrs.div_query.addClassName(style.hide);
+            this.attrs.text.props.onClick=(event)=>{
+              if(this.attrs.div_query.hasClassName(style.hide)){
+                this.attrs.div_query.removeClassName(style.hide);
+                this.attrs.div_query.addClassName(style.show);
+              }else{
+                this.attrs.div_query.removeClassName(style.show);
+                this.attrs.div_query.addClassName(style.hide);
+              }
+            };
+          }
+        };
+        const qt=!!(daedalus.platform.isQt);
+        const savedSearches=[{'name':"stoner best",'query':"stoner rating >= 5"},
+                  {'name':"grunge best",'query':"grunge rating >= 5"},{'name':"english best",
+                      'query':"language = english rating >= 5"},{'name':"visual best",'query':"\"visual kei\" rating >= 5"},
+                  {'name':"jrock best",'query':"language = japanese rating >= 2"},{'name':"Gothic Emily",
+                      'query':"\"gothic emily\""},{'name':"Soundwitch Radio",'query':"soundwitch"}];
+        
+        if(daedalus.platform.isAndroid){
+          savedSearches.push({'name':"STP Radio",'query':"\"stone temple pilots\" not STPLIGHT"});
+          
+          savedSearches.push({'name':"Lanegan Radio",'query':"(lanegan || \"screaming trees\") && rating > 3 && p lt -14d"});
+          
+          savedSearches.push({'name':"Driving Hits Volume 1",'query':":DRV && p lt -14d"});
+          
+          savedSearches.push({'name':"Driving Hits Volume 2",'query':":VL2 && p lt -14d"});
+          
+          savedSearches.push({'name':"Driving Hits Volume 3",'query':"(comment=:DRV or comment=:VL2) && p lt -14d"});
+          
+          savedSearches.push({'name':"Best Albums",'query':"comment=:BEST && p lt -14d"});
+          
+        }else{
+          savedSearches.push({'name':"STP Radio",'query':qt?"\"stone temple pilots\" !STPLIGHT":"\"stone temple pilots\" not STPLIGHT"});
+          
+          savedSearches.push({'name':"Lanegan Radio",'query':"(lanegan || \"screaming trees\") && rating > 3"});
+          
+          savedSearches.push({'name':"Driving Hits Volume 1",'query':qt?"comment=:DRV && pcnt < -14d":"comment=:DRV"});
+          
+          savedSearches.push({'name':"Driving Hits Volume 2",'query':qt?"comment=:VL2 && pcnt < -14d":"comment=:VL2"});
+          
+          savedSearches.push({'name':"Driving Hits Volume 3",'query':qt?"(comment=:DRV or comment=:VL2) && pcnt < -14d":"(comment=:DRV or comment=:VL2)"});
+          
+          savedSearches.push({'name':"Best Albums",'query':qt?"comment=:BEST && pcnt < -14d":"comment=:BEST"});
+          
+        }
+        class SavedSearchList extends DomElement {
+          constructor(parent){
+            super("div",{'className':style.savedSearchList},[]);
+            this.attrs={'parent':parent};
+            for(let i=0;i<savedSearches.length;i++)
+            {
+              let s=savedSearches[i];
+              this.appendChild(new SavedSearchItem(this,s.name,s.query));
+            }
+            ;
+            ;
+          }
+          handleShowMore(listItem){
+            this.attrs.parent.handleShowMore(listItem);
+          }
+        };
+        class SavedSearchPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.savedSearchPage},[]);
+            this.attrs={'device':audio.AudioDevice.instance(),'header':new SavedSearchHeader(
+                              this),'container':new SavedSearchList(this),'padding1':new DomElement(
+                              "div",{'className':style.padding1},[]),'padding2':new DomElement(
+                              "div",{'className':style.padding2},[]),'more':new components.MoreMenu(
+                              this.handleHideMore.bind(this))};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.more);
+            this.appendChild(this.attrs.padding1);
+            this.appendChild(this.attrs.container);
+            this.appendChild(this.attrs.padding2);
+            this.attrs.more.addAction("delete",()=>{
+
+              });
+          }
+          handleShowMore(listItem){
+            this.attrs.more.show();
+          }
+          handleHideMore(){
+            this.attrs.more.hide();
+          }
+        };
+        return[LibraryPage,SavedSearchPage,SyncPage];
+      })();
+    const[InfoOilPage,RecipeIndexPage,RecipePage]=(function(){
+        const style={'ingredientTable':'dcs-962d71a7-0','ingredientQuantityHeader':'dcs-962d71a7-1',
+                  'ingredientBorder':'dcs-962d71a7-2','ingredientQuantity':'dcs-962d71a7-3',
+                  'ingredientUnit':'dcs-962d71a7-4','ingredientName':'dcs-962d71a7-5','header':'dcs-962d71a7-6',
+                  'summary':'dcs-962d71a7-7','noteList':'dcs-962d71a7-8','noteItem':'dcs-962d71a7-9',
+                  'steps':'dcs-962d71a7-10','select':'dcs-962d71a7-11','text_input':'dcs-962d71a7-12',
+                  'attributeList':'dcs-962d71a7-13','attributeItem':'dcs-962d71a7-14','attributeItemBreakfast':'dcs-962d71a7-15',
+                  'attributeItemLunch':'dcs-962d71a7-16','attributeItemDinner':'dcs-962d71a7-17',
+                  'attributeItemDessert':'dcs-962d71a7-18','attributeItemSnack':'dcs-962d71a7-19',
+                  'attributeItemSide':'dcs-962d71a7-20','attributeItemAppetizer':'dcs-962d71a7-21',
+                  'attributeItemMeal':'dcs-962d71a7-22','recipeHeader':'dcs-962d71a7-23',
+                  'recipeTitle':'dcs-962d71a7-24','divRecipeBody':'dcs-962d71a7-25','infoHeader':'dcs-962d71a7-26',
+                  'infoBox':'dcs-962d71a7-27','infoTitle':'dcs-962d71a7-28','infoRowCalorie':'dcs-962d71a7-29',
+                  'infoRowMacro':'dcs-962d71a7-30','infoRowMacroSub':'dcs-962d71a7-31','infoRowMicro':'dcs-962d71a7-32',
+                  'infoAttribute':'dcs-962d71a7-33','fraction':'dcs-962d71a7-34','nutritionTable':'dcs-962d71a7-35',
+                  'nutritionTableValue':'dcs-962d71a7-36','recipeIndex':'dcs-962d71a7-37',
+                  'oilTable':'dcs-962d71a7-38','oilTableRowName':'dcs-962d71a7-39','oilTableRowData':'dcs-962d71a7-40',
+                  'oilTableRowSmokePoint1':'dcs-962d71a7-41','oilTableRowSmokePoint2':'dcs-962d71a7-42',
+                  'oilTableRowSmokePoint3':'dcs-962d71a7-43','oilTableRowSmokePoint4':'dcs-962d71a7-44',
+                  'oilTableRowSmokePoint5':'dcs-962d71a7-45','oilTableRowPrice1':'dcs-962d71a7-46',
+                  'oilTableRowPrice2':'dcs-962d71a7-47','oilTableRowPrice3':'dcs-962d71a7-48',
+                  'oilTableRowPrice4':'dcs-962d71a7-49','oilTableRowPrice5':'dcs-962d71a7-50',
+                  'oilTableRowScoreF':'dcs-962d71a7-51','oilTableRowScoreD':'dcs-962d71a7-52',
+                  'oilTableRowScoreC':'dcs-962d71a7-53','oilTableRowScoreB':'dcs-962d71a7-54',
+                  'oilTableRowScoreA':'dcs-962d71a7-55','oilTableRowScoreS':'dcs-962d71a7-56',
+                  'hide':'dcs-962d71a7-57','logo':'dcs-962d71a7-58'};
+        const attr_style={"breakfast":style.attributeItemBreakfast,"lunch":style.attributeItemLunch,
+                  "dinner":style.attributeItemDinner,"dessert":style.attributeItemDessert,
+                  "snack":style.attributeItemSnack,"appetizer":style.attributeItemAppetizer,
+                  "side":style.attributeItemSide,"meal":style.attributeItemMeal};
+        ;
+        ;
+        ;
+        ;
+        ;
+        ;
+        ;
+        ;
+        ;
+        ;
+        ;
+        class PageBreak extends DomElement {
+          constructor(){
+            super("div",{'className':"pagebreak"});
+          }
+        };
+        let wakeLock=null;
+        async function setRecipeMode(enabled){
+          if(enabled){
+            try{
+              if('wakeLock'in navigator){
+                wakeLock=await navigator.wakeLock.request('screen');
+                console.log('Recipe mode ON: Wake lock acquired');
+              }else{
+                console.warn('Wake Lock API not supported on this browser');
+              }
+            }catch(err){
+              console.error(`Failed to acquire wake lock: ${err.message}`);
+            };
+          }else{
+            if(wakeLock!==null){
+              try{
+                await wakeLock.release();
+                wakeLock=null;
+                console.log('Recipe mode OFF: Wake lock released');
+              }catch(err){
+                console.error(`Failed to release wake lock: ${err.message}`);
+              };
+            }
+          }
+        };
+        function fraction(initial){
+          const candidates=[2,3,4,8,16];
+          let whole=Math.floor(initial);
+          let value=initial-whole;
+          if(value<.00001){
+            return{'whole':whole,'num':0,'den':0};
+          }
+          let bound=0;
+          let den=0;
+          let min_error=1.0,error=0.0;
+          for(let i=0;i<candidates.length;i++)
+          {
+            const n=candidates[i];
+            const lower=1.0/n*Math.floor(n*value);
+            error=Math.abs(value-lower)/value;
+            if(error<min_error){
+              min_error=error;
+              bound=lower;
+              den=n;
+            }
+            const upper=1.0/n*Math.floor(n*value+1.0);
+            error=Math.abs(value-upper)/value;
+            if(error<min_error){
+              min_error=error;
+              bound=upper;
+              den=n;
+            }
+          }
+          ;
+          ;
+          ;
+          ;
+          let num=Math.round(den*bound);
+          if(num===den){
+            whole+=1;
+            num=0;
+            den=0;
+          }
+          return{'whole':whole,'num':num,'den':den};
+        };
+        class Fraction extends DomElement {
+          constructor(value,prefix="",suffix="",allow_empty=false){
+            super("div",{'className':style.fraction},[]);
+            this.setValue(value,prefix,suffix,allow_empty);
+          }
+          setValue(value,prefix="",suffix="",allow_empty=false){
+            this.removeChildren();
+            let frac=fraction(value);
+            if(isNaN(frac.whole)||isNaN(frac.num)||isNaN(frac.den)){
+              console.error("invalid fraction",value);
+            }
+            if(prefix.length){
+              this.appendChild(new TextElement(prefix));
+            }
+            if(!allow_empty&&frac.whole===0&&frac.num===0&&frac.den===0){
+              this.appendChild(new TextElement("0"));
+            }else{
+              if(frac.whole!==0){
+                this.appendChild(new TextElement(frac.whole.toString()));
+              }
+              if(frac.num!==0&&frac.den!==0){
+                this.appendChild(new DomElement("sup",{},[new TextElement(frac.num.toString(
+                                                ))]));
+                this.appendChild(new TextElement("\u2044"));
+                this.appendChild(new DomElement("sub",{},[new TextElement(frac.den.toString(
+                                                ))]));
+              }
+            }
+            if(suffix.length){
+              this.appendChild(new TextElement(suffix));
+            }
+          }
+        };
+        class RecipeHeader extends DomElement {
+          constructor(text){
+            super("h2",{'className':style.header},[new TextElement(text)]);
+          }
+        };
+        class RecipeIngredientHeader extends DomElement {
+          constructor(span,item){
+            super("tr",{},[]);
+            if(item.header.length>1){
+              span=1;
+            }
+            this.data=item;
+            this.cell=this.appendChild(new DomElement("td",{'className':style.ingredientQuantityHeader},
+                              [new TextElement(item.header[0])]));
+            this.appendChild(new DomElement("th",{'colSpan':2,'className':style.ingredientQuantityHeader},
+                              []));
+          }
+          setSelectionIndex(index){
+            if(index<this.data.header.length){
+              this.cell.children[0].setText(this.data.header[index]);
+            }
+          }
+          setScaleFactor(scale){
+
+          }
+        };
+        class RecipeIngredientRow extends DomElement {
+          constructor(span,item){
+            super("tr",{},[]);
+            this.data=item;
+            this.selection_index=0;
+            this.scale_factor=1;
+            this.cell=this.appendChild(new DomElement("td",{'className':style.ingredientQuantity},
+                              [new Fraction(item.quantities[0],"","",true)]));
+            this.appendChild(new DomElement("td",{'className':style.ingredientUnit},
+                              [new TextElement(item.unit)]));
+            this.appendChild(new DomElement("td",{'className':style.ingredientName},
+                              [new TextElement(item.name)]));
+          }
+          setSelectionIndex(index){
+            if(index<this.data.quantities.length){
+              this.selection_index=index;
+              this.cell.children[0].setValue(this.scale_factor*this.data.quantities[
+                                this.selection_index],"","",true);
+            }
+          }
+          setScaleFactor(scale){
+            this.scale_factor=scale;
+            this.cell.children[0].setValue(this.scale_factor*this.data.quantities[
+                            this.selection_index],"","",true);
+          }
+        };
+        class RecipeIngredientSelect extends DomElement {
+          constructor(options,cbk){
+            super("select",{'className':style.select},[]);
+            this.options=options;
+            this.cbk=cbk;
+            options.forEach(opt=>{
+                this.appendChild(new DomElement("option",{'value':opt},[new TextElement(
+                                              opt)]));
+              });
+          }
+          onChange(event){
+            const value=this.getDomNode().value;
+            const index=this.options.indexOf(value);
+            console.log("change",value,index);
+            this.cbk(index);
+          }
+        };
+        class RecipeIngredientScale extends DomElement {
+          constructor(options,cbk){
+            super("input",{'type':"number",'step':".1",'className':style.text_input,
+                              "required":"1","pattern":"(\d*\.\d+|\d+)"},[]);
+            this.appendChild(new TextElement("1"));
+            this.options=options;
+            this.cbk=cbk;
+          }
+          elementMounted(){
+            this.getDomNode().defaultValue=1;
+          }
+          onInput(event){
+            const value=parseFloat(this.getDomNode().value);
+            if(value!==NaN){
+              console.log("input",value);
+              this.cbk(value);
+            }
+          }
+        };
+        class RecipeIngredientsTable extends DomElement {
+          constructor(items){
+            super("table",{'className':style.ingredientTable},[]);
+            let span=1;
+            items.forEach(item=>{
+                if(item.quantities!==undefined){
+                  if(item.quantities.length>span){
+                    span=item.quantities.length;
+                  }
+                }
+              });
+            this.appendChild(new DomElement("tr",{},[new DomElement("th",{'colSpan':2+span},
+                                      [new TextElement("Ingredients")])]));
+            this.options=["small","medium","large"];
+            this.appendChild(new DomElement("tr",{},[new DomElement("td",{'colSpan':2},
+                                      [new TextElement("Scale")]),new DomElement("td",{'colSpan':span},
+                                      [new RecipeIngredientScale(this.options,scale=>this.handleScaleChanged(
+                                                  scale))])]));
+            this.appendChild(new DomElement("tr",{},[new DomElement("th",{'colSpan':2},
+                                      [new TextElement("Quantity")]),new DomElement("th",{},[new TextElement(
+                                              "Name")])]));
+            this.rows=[];
+            items.forEach(item=>{
+                if(item.options!==undefined){
+                  this.appendChild(new DomElement("tr",{},[new DomElement("td",{'colSpan':2,
+                                                      'className':style.ingredientName},[new TextElement(item.title)]),
+                                              new DomElement("td",{'colSpan':span,'className':style.ingredientName},
+                                                  [new RecipeIngredientSelect(item.options,index=>this.handleOptionChanged(
+                                                              index))])]));
+                }else if(item.header!==undefined){
+                  let row=this.appendChild(new RecipeIngredientHeader(span,item));
+                  
+                  this.rows.push(row);
+                  ;
+                }else{
+                  let row=this.appendChild(new RecipeIngredientRow(span,item));
+                  this.rows.push(row);
+                  ;
+                }
+              });
+          }
+          handleScaleChanged(index){
+            this.rows.forEach(row=>{
+                row.setScaleFactor(index);
+              });
+          }
+          handleOptionChanged(index){
+            this.rows.forEach(row=>{
+                row.setSelectionIndex(index);
+              });
+          }
+        };
+        class RecipeAttributes extends DomElement {
+          constructor(attrs){
+            super("ul",{'className':style.attributeList},[]);
+            attrs.forEach(attr=>{
+                let child=this.appendChild(new DomElement("li",{'className':style.attributeItem},
+                                      [new TextElement(attr)]));
+                let s=attr_style[attr];
+                if(s!==undefined){
+                  child.addClassName(s);
+                }
+              });
+          }
+        };
+        class RecipeSummary extends DomElement {
+          constructor(summary){
+            super("div",{'className':style.summary},[]);
+            summary.forEach(paragraph=>{
+                this.appendChild(new DomElement("p",{},[new TextElement(paragraph)]));
+                
+              });
+          }
+        };
+        class RecipeNotes extends DomElement {
+          constructor(notes){
+            super("ul",{'className':style.noteList},[]);
+            notes.forEach(note=>{
+                this.appendChild(new DomElement("li",{'className':style.noteItem},
+                                      [new TextElement(note)]));
+              });
+          }
+        };
+        class RecipeSteps extends DomElement {
+          constructor(steps){
+            super("ol",{'className':style.steps},[]);
+            steps.forEach(step=>{
+                this.appendChild(new DomElement("li",{},[new TextElement(step)]));
+                
+              });
+          }
+        };
+        class ToggleRecipeModeButton extends DomElement {
+          constructor(){
+            super("input",{'type':"checkbox"},[]);
+          }
+          onChange(event){
+            const enabled=event.target.checked;
+            setRecipeMode(enabled);
+          }
+        };
+        class ToggleRecipeMode extends DomElement {
+          constructor(){
+            super("label",{},[new ToggleRecipeModeButton(),new TextElement("Enable cooking mode")]);
+            
+          }
+        };
+        class Recipe extends DomElement {
+          constructor(recipe){
+            super("div",{},[]);
+            console.log(recipe);
+            this.top=this.appendChild(new DomElement("div",{'className':style.recipeHeader},
+                              []));
+            this.top1=this.top.appendChild(new DomElement("div",{'className':style.recipeTitle},
+                              []));
+            this.top1.appendChild(new RecipeHeader(recipe.title));
+            this.top1.appendChild(new RecipeAttributes(recipe.attributes));
+            if(recipe.summary.length>0){
+              this.top1.appendChild(new RecipeSummary(recipe.summary));
+            }
+            this.info_box=this.top.appendChild(new DomElement("div",{'className':style.infoHeader}));
+            
+            this.buildNutritionFacts(this.info_box,recipe.attributes,recipe.ingredients);
+            
+            this.appendChild(new DomElement("hr"));
+            this.appendChild(new RecipeIngredientsTable(recipe.ingredients));
+            this.steps=this.appendChild(new DomElement("div",{'className':style.divRecipeBody}));
+            
+            this.steps.appendChild(new ToggleRecipeMode());
+            recipe.steps.forEach(steps=>{
+                this.steps.appendChild(new DomElement("h4",{},[new TextElement(steps.header)]));
+                
+                if(steps.notes.length>0){
+                  this.steps.appendChild(new RecipeNotes(steps.notes));
+                }
+                if(steps.steps.length>0){
+                  this.steps.appendChild(new RecipeSteps(steps.steps));
+                }
+              });
+            this.appendChild(new PageBreak());
+          }
+          buildNutritionFacts(parent,attrs,items){
+            parent.removeChildren();
+            let servings=1;
+            attrs.forEach(attr=>{
+                if(attr.startsWith("servings=")){
+                  servings=+attr.substr(9);
+                }
+              });
+            const selection_index=0;
+            const scale_factor=1;
+            const facts={};
+            items.forEach(item=>{
+                if(item.info){
+                  let _servings=((((item.info)||{}).servings)||{}).value??1;
+                  for(let[key,value]of Object.entries(item.info[selection_index])){
+                  
+                    if(key=="servings"){
+                      continue;
+                    }
+                    if(facts[key]===undefined){
+                      facts[key]={'value':0,'unit':value['unit']};
+                    }
+                    facts[key].value+=value.value*scale_factor/_servings;
+                    ;
+                    ;
+                  }
+                  ;
+                }
+              });
+            if(Object.keys(facts).length>0){
+              this.buildNutritionFactsTable(parent,1,facts);
+              if(servings>1){
+                this.buildNutritionFactsTable(parent,servings,facts);
+              }
+            }
+          }
+          buildNutritionFactsTable(parent,servings,facts){
+            const lst=parent.appendChild(new DomElement("div",{'className':style.infoBox},
+                              []));
+            lst.appendChild(new DomElement("div",{'className':style.infoTitle},[new TextElement(
+                                      "Nutrition Facts")]));
+            const amount=((((facts)||{}).amount)||{}).value??0;
+            const unit=((((facts)||{}).amount)||{}).unit??"g";
+            if(servings==1){
+              lst.appendChild(new DomElement("div",{},[new TextElement("per "+(amount)+unit+" serving")]));
+              
+              lst.appendChild(new DomElement("div",{},[new TextElement("\xa0")]));
+              
+            }else{
+              lst.appendChild(new DomElement("div",{},[new TextElement("per "+(amount/servings)+unit+" serving")]));
+              
+              lst.appendChild(new DomElement("div",{},[new TextElement(servings+" servings")]));
+              
+            }
+            const keys=['calories','protein','total_fat','total_carbs','sugar','sodium',
+                          'calcium','potassium'];
+            const title=['Calories','Protein','Fat','Carbohydrates','Sugar','Sodium',
+                          'Calcium','Potassium'];
+            const styles=[style.infoRowCalorie,style.infoRowMacro,style.infoRowMacro,
+                          style.infoRowMacro,style.infoRowMacroSub,style.infoRowMicro,style.infoRowMicro,
+                          style.infoRowMicro];
+            keys.forEach((key,index)=>{
+                const value=facts[key];
+                lst.appendChild(new DomElement("div",{'className':styles[index]},
+                                      [new DomElement("div",{'className':style.infoAttribute},[new TextElement(
+                                                      title[index])]),new DomElement("div",{},[new Fraction(
+                                                      (((value)||{}).value??0)/servings,"",(((value)||{}).unit??""))])]));
+                
+              });
+          }
+        };
+        class RecipePage extends DomElement {
+          elementMounted(){
+            this.removeChildren();
+            const lnk=new LinkElement("Home","/recipe");
+            this.appendChild(new DomElement("div",{},[lnk]));
+            api.recipeGetContent(Router.instance.match.path).then(result=>{
+                result.result.forEach(recipe=>{
+                    this.appendChild(new Recipe(recipe));
+                  });
+              }).catch(error=>{
+                console.error(error);
+              });
+          }
+        };
+        class RecipeIndexPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.recipeIndex},[]);
+          }
+          elementMounted(){
+            api.recipeGetRecipes().then(result=>{
+                this.updateLinks(result.result);
+              }).catch(error=>{
+                console.error(error);
+              });
+          }
+          updateLinks(items){
+            this.removeChildren();
+            let groups={};
+            items.forEach(item=>{
+                let cat=item.category;
+                if(!groups[cat]){
+                  groups[cat]=[];
+                }
+                groups[cat].push(item);
+              });
+            for(let[key,value]of Object.entries(groups)){
+              value.sort((a,b)=>a.name.localeCompare(b.name));
+              ;
+              ;
+            }
+            let keys=Object.keys(groups);
+            keys.sort();
+            keys.forEach(key=>{
+                this.appendChild(new DomElement("h3",{},[new TextElement(key)]));
+                
+                const lst=this.appendChild(new DomElement("ul",{},[]));
+                groups[key].forEach(item=>{
+                    const lnk=new LinkElement(item.name,"/recipe/"+item.path);
+                    lst.appendChild(new DomElement("li",{},[lnk]));
+                  });
+              });
+          }
+        };
+        class SvgImage extends DomElement {
+          constructor(path){
+            super("img",{'src':path,'className':style.logo},[]);
+          }
+        };
+        class SortableTable extends DomElement {
+          constructor(headers,className=null){
+            super("table",{'className':className},[]);
+            this.appendChild(new DomElement("tr",{},headers.map((name,index)=>{
+                    return new SortableTableHeader(name,()=>{
+                        this.sortColumn(index);
+                      });
+                  })));
+            this.current_sort_index=0;
+          }
+          addRow(row,rowStyle){
+            let child=this.appendChild(new SortableTableRow(row.map((item,index)=>{
+                  
+                    let col=new SortableTableCell(item.value,item.display);
+                    col.props.className=item.style;
+                    return col;
+                  })));
+            child.props.className=rowStyle;
+          }
+          initSortColumn(column){
+            this.current_sort_index=column+1;
+            this.sortColumn(column);
+          }
+          sortColumn(column){
+            let tmp=this.children.slice(1);
+            console.log(`sort by ${column} rev=${(this.current_sort_index-1)===column}`);
+            
+            tmp.sort((a,b)=>{
+                let v1=a.children[column].value;
+                let v2=b.children[column].value;
+                if(typeof v1==='string'||v1 instanceof String){
+                  return v1.localeCompare(v2);
+                }else{
+                  return v1-v2;
+                }
+              });
+            if(this.current_sort_index!==(column+1)){
+              this.current_sort_index=column+1;
+            }else{
+              tmp.reverse();
+              this.current_sort_index=-this.current_sort_index;
+            }
+            this.children[0].children.forEach((child,index)=>{
+                child.setSortDirection(Math.sign(this.current_sort_index)*(index==(
+                                          column)));
+              });
+            tmp.unshift(this.children[0]);
+            this.children=tmp;
+            this.update();
+          }
+        };
+        class SortableTableHeader extends DomElement {
+          constructor(name,cbk){
+            super("th",{},[new DomElement("div",{},[new TextElement(name)]),new DomElement(
+                                  "div",{'className':style.hide},[new TextElement("\u25B2")]),new DomElement(
+                                  "div",{'className':style.hide},[new TextElement("\u25BC")])]);
+            this.cbk=cbk;
+          }
+          setSortDirection(asc){
+            if(asc>0){
+              this.children[1].removeClassName(style.hide);
+              this.children[2].addClassName(style.hide);
+            }else if(asc<0){
+              this.children[1].addClassName(style.hide);
+              this.children[2].removeClassName(style.hide);
+            }else{
+              this.children[1].addClassName(style.hide);
+              this.children[2].addClassName(style.hide);
+            }
+          }
+          onClick(event){
+            this.cbk();
+          }
+        };
+        class SortableTableRow extends DomElement {
+          constructor(children){
+            super("tr",{},children);
+          }
+        };
+        class SortableTableCell extends DomElement {
+          constructor(value,display){
+            super("td",{},[new TextElement(display)]);
+            this.value=value;
+          }
+        };
+        function emoji_u(codeUnit){
+          return'\\u'+codeUnit.toString(16).toUpperCase();
+        };
+        function emoji(codePoint){
+          return String.fromCodePoint(codePoint);
+        };
+        class InfoOilPage extends DomElement {
+          elementMounted(){
+            this.removeChildren();
+            this.appendChild(new DomElement("div",{},[new LinkElement("Home","/recipe")]));
+            
+            this.appendChild(new DomElement("div",{},[new DomElement("h2",{},[new TextElement(
+                                              "Oil")])]));
+            let s=emoji(0x1F951);
+            s+=emoji(0x1F96F);
+            s+=emoji(0x1FAD2);
+            s+=emoji(0x1F33D);
+            s+=emoji(0x1F95C);
+            s+=emoji(0x1F9C8);
+            this.appendChild(new DomElement("div",{},[new DomElement("h2",{},[new TextElement(
+                                              s)])]));
+            this.appendChild(new DomElement("div",{},[new SvgImage("/static/usda-symbol.svg")]));
+            
+            let scheme1=[style.oilTableRowSmokePoint1,style.oilTableRowSmokePoint2,
+                          style.oilTableRowSmokePoint3,style.oilTableRowSmokePoint4,style.oilTableRowSmokePoint5];
+            
+            let scheme2=[style.oilTableRowPrice5,style.oilTableRowPrice4,style.oilTableRowPrice3,
+                          style.oilTableRowPrice2,style.oilTableRowPrice1];
+            api.getInfoOil().then(result=>{
+                const header=result.result[0];
+                const data=result.result.slice(1);
+                this.table=this.appendChild(new SortableTable(header,style.oilTable));
+                
+                data.forEach((row,index)=>{
+                    const rowdata=row.map((item,index)=>{
+                        let display=item;
+                        let _style=(index===0)?style.oilTableRowName:style.oilTableRowData;
+                        
+                        if(index>0&&index<row.length-3&&item!==null){
+                          display=item.toFixed(1)+"%";
+                        }else if(index==row.length-1){
+                          if(item>=4.366){
+                            display="S";
+                            _style=[_style,style.oilTableRowScoreS];
+                          }else if(item>=4.082){
+                            display="A";
+                            _style=[_style,style.oilTableRowScoreA];
+                          }else if(item>=3.623){
+                            display="B";
+                            _style=[_style,style.oilTableRowScoreB];
+                          }else if(item>=3.175){
+                            display="C";
+                            _style=[_style,style.oilTableRowScoreC];
+                          }else if(item>=2.722){
+                            display="D";
+                            _style=[_style,style.oilTableRowScoreD];
+                          }else{
+                            display="F";
+                            _style=[_style,style.oilTableRowScoreF];
+                          }
+                        }else if(index==row.length-2){
+                          if(item==0){
+                            display="";
+                          }else{
+                            display=`$${item.toFixed(2)}`;
+                            let j=Math.floor(Math.max(0,Math.min(4,(item-1.0)/25*5)));
+                            
+                            _style=[_style,scheme2[j]];
+                            ;
+                          }
+                        }else if(index==row.length-3){
+                          let j=Math.floor(Math.max(0,Math.min(4,(item-100)/200*5)));
+                          
+                          _style=[_style,scheme1[j]];
+                          ;
+                        }
+                        return{'style':_style,'value':item,'display':display};
+                      });
+                    this.table.addRow(rowdata,style.oilTableRow);
+                  });
+                this.table.initSortColumn(9);
+                this.appendChild(new DomElement("div",{},[new TextElement("blah")]));
+                
+              }).catch(error=>{
+                console.error(error);
+              });
+          }
+        };
+        return[InfoOilPage,RecipeIndexPage,RecipePage];
+      })();
+    const[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
+          UserRadioListPage,UserRadioStationEditPage,UserRadioStationHistoryPage,UserRadioStationPage,
+          UserRadioStationSearchPage]=(function(){
+        const style={'main':'dcs-d0546ce4-0','grow':'dcs-d0546ce4-1','svgDiv':'dcs-d0546ce4-2',
+                  'header':'dcs-d0546ce4-3','content':'dcs-d0546ce4-4','list':'dcs-d0546ce4-5',
+                  'placeholder':'dcs-d0546ce4-6','editIndex':'dcs-d0546ce4-7','grip':'dcs-d0546ce4-8',
+                  'headerInfo':'dcs-d0546ce4-9','listItem':'dcs-d0546ce4-10','listItemTitle':'dcs-d0546ce4-11',
+                  'listItemInfo':'dcs-d0546ce4-12','textGrey':'dcs-d0546ce4-13','listNoItemRow':'dcs-d0546ce4-14',
+                  'listItemRow':'dcs-d0546ce4-15','listItemRowText':'dcs-d0546ce4-16','listItemColText':'dcs-d0546ce4-17',
+                  'votePanel':'dcs-d0546ce4-18','moreButton':'dcs-d0546ce4-19','voteButton':'dcs-d0546ce4-20',
+                  'icon1':'dcs-d0546ce4-21','icon2':'dcs-d0546ce4-22','padding2':'dcs-d0546ce4-23',
+                  'voteText':'dcs-d0546ce4-24','voteUp':'dcs-d0546ce4-25','voteNuetral':'dcs-d0546ce4-26',
+                  'voteDown':'dcs-d0546ce4-27','show':'dcs-d0546ce4-28','hide':'dcs-d0546ce4-29',
+                  'floater':'dcs-d0546ce4-30','titleText':'dcs-d0546ce4-31','footerHighlight':'dcs-d0546ce4-32'};
+        
+        ;
+        class HiddenEvent{
+          constructor(){
+            let hidden,visibilityChange;
+            if(typeof document.hidden!=="undefined"){
+              hidden="hidden";
+              visibilityChange="visibilitychange";
+            }else if(typeof document.msHidden!=="undefined"){
+              hidden="msHidden";
+              visibilityChange="msvisibilitychange";
+            }else if(typeof document.webkitHidden!=="undefined"){
+              hidden="webkitHidden";
+              visibilityChange="webkitvisibilitychange";
+            }
+            this.h=hidden;
+            this.v=visibilityChange;
+            this.f=this.handleVisibilityChange.bind(this);
+          }
+          connect(){
+            document.addEventListener(this.v,this.f,false);
+          }
+          disconnect(){
+            document.removeEventListener(this.v,this.f,false);
+          }
+          handleVisibilityChange(){
+            if(document[this.h]){
+              console.log('document.hidden');
+            }else{
+              console.log('document.visible');
+            }
+          }
+        };
+        class AudioDevice{
+          constructor(){
+            this.connected_elements=[];
+            this.current_track=null;
+            this.impl=null;
+            this.auto_play=true;
+          }
+          setImpl(impl){
+            this.impl=impl;
+          }
+          duration(){
+            return this.impl.duration();
+          }
+          currentTime(){
+            return this.impl.currentTime();
+          }
+          setCurrentTime(seconds){
+            return this.impl.setCurrentTime(seconds);
+          }
+          togglePlayPause(){
+            if(this.current_track===null){
+              const match=Router.instance.match();
+              api.radioStationCurrentTrack(match.station).then((result)=>{
+                  const track=result.result;
+                  if(track.source==='library'){
+                    const url=api.librarySongAudioUrl(track.sid);
+                    track.stream={'url':url};
+                    ;
+                  }
+                  console.log(track,track.sid,track.stream);
+                  this.playTrack(track);
+                }).catch(error=>{
+                  if(error.status===404){
+                    this.next();
+                  }else{
+                    console.log(error);
+                    components.ErrorDrawer.post("Update Error",formatError(error));
+                    
+                  }
+                });
+              return;
+              ;
+            }
+            if(this.impl.isPlaying()){
+              this.impl.pause();
+            }else{
+              this.impl.play();
+            }
+          }
+          loadTrack(track){
+            console.log("loadTrack",track);
+            this.current_track=track;
+            this.impl.loadUrl(track.stream.url);
+            this._sendEvent('handleTrackChanged',track);
+          }
+          playTrack(track){
+            console.log("playTrack",track);
+            this.current_track=track;
+            this.impl.playUrl(track.stream.url);
+            this._sendEvent('handleTrackChanged',track);
+          }
+          next(){
+            if(daedalus.platform.isAndroid){
+              const match=Router.instance.match();
+              console.log("initialize android radio");
+              AndroidNativeAudio.initRadio(api.getAuthToken(),match.station);
+              console.log("play next track");
+              AndroidNativeAudio.playNextRadioUrl();
+              ;
+            }else{
+              const match=Router.instance.match();
+              let station=match.station;
+              api.radioStationNextTrack(station).then(result=>{
+                  const track=result.result;
+                  if(track.source==='library'){
+                    const url=api.librarySongAudioUrl(track.sid);
+                    track.stream={'url':url};
+                    ;
+                  }
+                  this.playTrack(track);
+                  const user_track=store.globals.radio_tracks[track.uid];
+                  if(user_track){
+                    user_track.date_played=Math.round(new Date().getTime()/1000);
+                    
+                    store.globals.radio_previous_tracks.unshift(user_track);
+                    delete store.globals.radio_tracks[user_track.uid];
+                  }else{
+                    console.error('error updating history');
+                  }
+                }).catch(error=>{
+                  console.log(error);
+                  components.ErrorDrawer.post("Update Error",formatError(error));
+                  
+                });
+              ;
+              ;
+            }
+          }
+          connectView(elem){
+            if(this.connected_elements.filter(e=>e===elem).length>0){
+              console.error("already connected view");
+              return;
+            }
+            this.connected_elements.push(elem);
+          }
+          disconnectView(elem){
+            this.connected_elements=this.connected_elements.filter(e=>e!==elem);
+          }
+          _sendEvent(eventname,event){
+            this.connected_elements=this.connected_elements.filter(e=>e.isMounted(
+                            ));
+            this.connected_elements.forEach(e=>{
+                if(e&&e[eventname]){
+                  e[eventname](event);
+                }
+              });
+          }
+        };
+        let device_instance=null;
+        AudioDevice.instance=function(){
+          if(device_instance===null){
+            device_instance=new AudioDevice();
+            let impl;
+            if(daedalus.platform.isAndroid){
+              impl=new audio.NativeDeviceImpl(device_instance);
+            }else{
+              impl=new audio.RemoteDeviceImpl(device_instance);
+            }
+            device_instance.setImpl(impl);
+            ;
+          }
+          return device_instance;
+        };
+        function formatTime(secs){
+          secs=secs===Infinity?0:secs;
+          let minutes=Math.floor(secs/60)||0;
+          let seconds=Math.floor(secs-minutes*60)||0;
+          return minutes+':'+(seconds<10?'0':'')+seconds;
+        };
+        function formatError(error){
+          console.log(typeof error);
+          if(typeof error==='string'||error instanceof String){
+            return error;
+          }else{
+            console.log(Object.keys(error));
+            if(error.status!==undefined&&error.statusText!==undefined){
+              return error.status+": "+error.statusText;
+            }else{
+              return""+error;
+            }
+          }
+        };
+        let thumbnail_work_queue=[];
+        let thumbnail_work_count=0;
+        function thumbnail_DoProcessNext(tag){
+          if(thumbnail_work_queue.length>0){
+            const elem=thumbnail_work_queue.shift();
+            elem.attrs.tag=tag;
+            if(elem.props.src!=elem.state.url1){
+              elem.updateProps({'src':elem.state.url1});
+            }else{
+              thumbnail_ProcessNext(tag);
+            }
+            ;
+          }else{
+            thumbnail_work_count-=1;
+          }
+        };
+        function thumbnail_ProcessNext(tag){
+          if(thumbnail_work_queue.length>0){
+            requestIdleCallback(()=>thumbnail_DoProcessNext(tag));
+          }else{
+            thumbnail_work_count-=1;
+          }
+        };
+        function thumbnail_ProcessStart(){
+          console.log("thumbnail_ProcessStart: "+thumbnail_work_queue.length);
+          if(thumbnail_work_queue.length>=3){
+            requestIdleCallback(()=>thumbnail_DoProcessNext('A'));
+            requestIdleCallback(()=>thumbnail_DoProcessNext('B'));
+            requestIdleCallback(()=>thumbnail_DoProcessNext('C'));
+            thumbnail_work_count=3;
+          }else if(thumbnail_work_queue.length>0){
+            requestIdleCallback(()=>thumbnail_DoProcessNext('A'));
+            thumbnail_work_count=1;
+          }
+        };
+        function thumbnail_CancelQueue(){
+          thumbnail_work_queue=[];
+          thumbnail_work_count=0;
+        };
+        function radio_reset(){
+          store.globals.radio_tracks=null;
+          store.globals.radio_all_tracks=null;
+          store.globals.radio_previous_tracks=null;
+          store.globals.radio_broadcast_id=null;
+          store.globals.radio_sorted_tracks=null;
+          store.globals.radio_search_source=null;
+          store.globals.radio_search_query=null;
+          store.globals.radio_update_index=undefined;
+        };
+        class TitleTextElement extends DomElement {
+          constructor(text){
+            super("div",{'className':style.titleText},[new TextElement(text)]);
+          }
+        };
+        class SvgIconElementImpl extends DomElement {
+          constructor(url1,url2,props){
+            super("img",{'width':80,'height':60,...props},[]);
+            this.attrs.tag="?";
+            this.setUrls(url1,url2);
+          }
+          onLoad(event){
+            thumbnail_ProcessNext(this.attrs.tag);
+          }
+          onError(error){
+            console.warn("error loading: ",this.props.src,JSON.stringify(error));
+            
+            if(this.props.src!=this.state.url2&&this.state.url2){
+              this.updateProps({'src':this.state.url2});
+            }else{
+              thumbnail_ProcessNext(this.attrs.tag);
+            }
+          }
+          setUrls(url1,url2){
+            this.updateProps({'src':null});
+            this.state={'url1':url1,'url2':url2};
+            if(url1){
+              thumbnail_work_queue.push(this);
+            }
+          }
+        };
+        class SvgIconElement extends DomElement {
+          constructor(url1,url2,props){
+            super("div",{'className':style.svgDiv},[new SvgIconElementImpl(url1,url2,
+                                  props)]);
+          }
+          setUrls(url1,url2){
+            this.children[0].setUrls(url1,url2);
+          }
+        };
+        class StationHeader extends components.NavHeader {
+          constructor(parent,isPublic){
+            super("div",{'className':style.header},[]);
+            this.attrs.parent=parent;
+            this.attrs.isPublic=isPublic;
+            if(!isPublic){
               this.addAction(resources.svg['menu'],()=>{
                   store.globals.showMenu();
                 });
-              this.addAction(resources.svg['media_prev'],()=>{
-                  audio.AudioDevice.instance().prev();
-                });
-              this.attrs.act_play_pause=this.addAction(resources.svg['media_play'],
-                              ()=>{
-                  audio.AudioDevice.instance().togglePlayPause();
+              this.attrs.act_play=this.addAction(resources.svg['media_play'],()=>{
+                
+                  AudioDevice.instance().togglePlayPause();
                 });
               this.addAction(resources.svg['media_next'],()=>{
-                  audio.AudioDevice.instance().next();
+                  AudioDevice.instance().next();
                 });
-              if(!daedalus.platform.isAndroid){
-                this.addAction(resources.svg['save'],()=>{
-                    audio.AudioDevice.instance().queueSave();
-                  });
-              }
-              this.attrs.txt_SongTitle=new components.MiddleText("Select A Song");
-              
-              this.attrs.txt_SongArtist=new components.MiddleText("");
-              this.attrs.txt_SongAlbum=new components.MiddleText("");
-              this.attrs.txt_SongTime=new TextElement("00:00:00");
-              this.attrs.txt_SongTime2=new TextElement("00:00:00");
+            }else{
+              this.addToolBarElement(new TitleTextElement("Radio"));
+              this.attrs.toolbarInner.addClassName(style.main);
+            }
+            this.attrs.track_info=new CurrentTrackInfoElement();
+            this.attrs.track_div=new DomElement("div",{'className':style.headerInfo},
+                          [this.attrs.track_info]);
+            this.addRow(true);
+            this.addRowElement(0,this.attrs.track_div);
+            this.attrs.txt_SongTime1=new TextElement("00:00:00");
+            this.attrs.txt_SongTime2=new TextElement("00:00:00");
+            if(!isPublic){
+              this.addRow(true);
+              this.addRowElement(1,this.attrs.txt_SongTime1);
+              this.addRowElement(1,new components.HStretch());
+              this.addRowElement(1,this.attrs.txt_SongTime2);
               this.attrs.pbar_time=new components.ProgressBar((pos)=>{
-                  let inst=audio.AudioDevice.instance();
+                  let inst=AudioDevice.instance();
                   let dur=inst.duration();
                   if(!!dur){
                     inst.setCurrentTime(pos*dur);
                   }
                 });
               this.addRow(true);
-              this.addRow(true);
-              this.addRow(true);
-              this.addRow(true);
-              this.addRow(true);
-              this.addRow(true);
-              this.addRowElement(0,this.attrs.txt_SongTitle);
-              this.addRowElement(1,this.attrs.txt_SongArtist);
-              this.addRowElement(2,this.attrs.txt_SongAlbum);
-              this.addRowElement(3,this.attrs.txt_SongTime);
-              this.addRowElement(3,new components.HStretch());
-              this.addRowElement(3,this.attrs.txt_SongTime2);
-              this.addRowElement(5,this.attrs.pbar_time);
+              this.addRowElement(2,this.attrs.pbar_time);
             }
-            setSong(song){
-              if(song===null){
-                this.attrs.txt_SongTitle.setText("Select A Song");
-                this.attrs.txt_SongArtist.setText("\xa0");
-                this.attrs.txt_SongAlbum.setText("\xa0");
-              }else{
-                this.attrs.txt_SongTitle.setText(song.title);
-                this.attrs.txt_SongArtist.setText(song.artist);
-                this.attrs.txt_SongAlbum.setText(song.album);
-              }
-            }
-            setTime(currentTime,duration){
-              try{
-                const t1=formatTime(currentTime);
-                const t2=formatTime(duration);
-                this.attrs.txt_SongTime.setText(t1);
-                this.attrs.txt_SongTime2.setText(t2);
-                this.attrs.pbar_time.setPosition(currentTime,duration);
-                ;
-                ;
-              }catch(e){
-                console.error(e);
-              };
-            }
-            setStatus(status){
-              if(status==="playing"){
-                this.attrs.act_play_pause.setUrl(resources.svg['media_pause']);
-              }else{
-                this.attrs.act_play_pause.setUrl(resources.svg['media_play']);
-              }
-            }
-          };
-          const SWIPE_RIGHT=0x01;
-          const SWIPE_LEFT=0x02;
-          const SWIPE_OFFSET=24;
-          class SongList extends daedalus.DraggableList {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.attrs.isSwipe=false;
-              this.attrs.isAnimated=false;
-              this.attrs.swipeActionRight=null;
-              this.attrs.swipeActionLeft=null;
-              this.attrs.swipeActionCancel=null;
-              this.attrs.swipeConfig=SWIPE_RIGHT;
-              this.attrs.swipeArgs={'started':false,'valid':false};
-              this.attrs.swipeScrollTimer=null;
-              this.attrs.swipe_offset=0;
-            }
-            updateModel(indexStart,indexEnd){
-              super.updateModel(indexStart,indexEnd);
-              audio.AudioDevice.instance().queueSwapSong(indexStart,indexEnd);
-              console.error(`updateModel: ${indexStart} -> ${indexEnd}`);
-            }
-            handleChildDragBegin(child,event){
-              if(this.attrs.isAnimated){
-                return;
-              }
-              this.attrs.isSwipe=false;
-              super.handleChildDragBegin(child,event);
-            }
-            handleChildDragMove(child,event){
-              if(this.attrs.isAnimated){
-                return;
-              }
-              super.handleChildDragMove(child,event);
-            }
-            handleChildSwipeBegin(child,event){
-              if(this.attrs.isAnimated){
-                return;
-              }
-              if(!!this.attrs.draggingEle){
-                this.handleChildSwipeCancel(child,event);
-              }
-              const org_event=event;
-              let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
-              
-              if(evt){
-                event=evt[0];
-              }
-              const draggingEle=child.getDomNode();
-              const rect=draggingEle.getBoundingClientRect();
-              const x=event.pageX;
-              const y=event.pageY;
-              this.attrs.swipe_offset=0;
-              this.attrs.swipeArgs={'draggingEle':draggingEle,'xstart':rect.left,
-                              'ystart':rect.top,'x':x,'y':y,'valid':true,'started':false};
-              this.attrs.isSwipe=true;
-              this.attrs.eventSource=child;
-            }
-            handleChildSwipeMoveBegin(child,event){
-              let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
-              
-              if(evt){
-                event=evt[0];
-              }
-              let deltax=event.pageX-this.attrs.swipeArgs.xstart-this.attrs.swipeArgs.x;
-              
-              if(Math.abs(deltax)>SWIPE_OFFSET/4){
-                this.attrs.draggingEle=this.attrs.swipeArgs.draggingEle;
-                this.attrs.xstart=this.attrs.swipeArgs.xstart;
-                this.attrs.ystart=this.attrs.swipeArgs.ystart;
-                this.attrs.x=this.attrs.swipeArgs.x;
-                this.attrs.y=this.attrs.swipeArgs.y;
-                this.attrs.isSwipe=true;
-                this.attrs.swipeArgs.started=true;
-                this.attrs.swipeArgs.valid=false;
-              }
-            }
-            handleChildSwipeMoveDeltaX(child,deltax){
-              let color;
-              if(deltax<-SWIPE_OFFSET){
-                color="#88bb7F";
-              }else if(deltax>SWIPE_OFFSET){
-                color="#bb887F";
-              }else{
-                color="#FFFFFF";
-              }
-              let nd=child.getDomNode();
-              nd.style['background-color']=color;
-            }
-            handleChildSwipeMove(child,event){
-              if(this.attrs.isAnimated){
-                return;
-              }
-              if(!this.attrs.draggingEle){
-                return;
-              }
-              event.preventDefault();
-              let org_event=event;
-              let evt=(((event)||{}).touches||((((event)||{}).originalEvent)||{}).touches);
-              
-              if(evt){
-                event=evt[0];
-              }
-              const rect=this.attrs.draggingEle.parentNode.getBoundingClientRect(
-                            );
-              let deltax=event.pageX-this.attrs.xstart-this.attrs.x;
-              if(!this.attrs.isDraggingStarted){
-                const draggingRect=this.attrs.draggingEle.getBoundingClientRect();
-                
-                if(Math.abs(deltax)<SWIPE_OFFSET){
-                  return false;
-                }
-                this.attrs.isDraggingStarted=true;
-                this.attrs.draggingEle.style.removeProperty('transition');
-                this.attrs.placeholder=document.createElement('div');
-                this.attrs.placeholder.classList.add(this.attrs.placeholderClassName);
-                
-                this.attrs.draggingEle.parentNode.insertBefore(this.attrs.placeholder,
-                                  this.attrs.draggingEle.nextSibling);
-                this.attrs.placeholder.style.height=`${this.attrs.draggingEle.clientHeight}px`;
-                
-                this.attrs.swipe_offset=(deltax>0?-SWIPE_OFFSET:SWIPE_OFFSET);
-                ;
-              }else if(!!this.attrs.draggingEle){
-                let deltax2=this.attrs.draggingEle.offsetLeft-this.attrs.placeholder.offsetLeft;
-                
-                this.handleChildSwipeMoveDeltaX(child,deltax2);
-                ;
-              }
-              this.attrs.draggingEle.style.position='absolute';
-              this.attrs.draggingEle.style.left=`${event.pageX-this.attrs.x+this.attrs.swipe_offset}px`;
-              
-              return;
-            }
-            handleChildSwipeEnd(child,event){
-              this.handleChildSwipeCancel(child,event,true);
-            }
-            handleChildSwipeCancel(child,event,success=false){
-              if(!this.attrs.draggingEle||this.attrs.draggingEle!==child.getDomNode(
-                                )){
-                return;
-              }
-              if(!this.attrs.placeholder){
-                return;
-              }
-              if(this.attrs.isAnimated){
-                return;
-              }
-              let deltax=this.attrs.draggingEle.offsetLeft-this.attrs.placeholder.offsetLeft;
-              
-              const cfg=this.attrs.swipeConfig;
-              if(success){
-                if(deltax>0&&deltax>SWIPE_OFFSET&&cfg&SWIPE_RIGHT){
-                  this.attrs.draggingEle.style.left=`${document.body.clientWidth}px`;
-                  
-                  this.swipeActionLeft=null;
-                  this.swipeActionRight=child;
-                  this.swipeActionCancel=null;
-                }else if(deltax<0&&deltax<-SWIPE_OFFSET){
-                  this.attrs.draggingEle.style.left=this.attrs.placeholder.offsetLeft+'px';
-                  
-                  this.swipeActionLeft=child;
-                  this.swipeActionRight=null;
-                  this.swipeActionCancel=null;
-                }else{
-                  this.attrs.draggingEle.style.left=this.attrs.placeholder.offsetLeft+'px';
-                  
-                  this.swipeActionLeft=null;
-                  this.swipeActionRight=null;
-                  this.swipeActionCancel=child;
-                }
-                this.attrs.draggingEle.style.transition='left .35s';
-                setTimeout(this.handleChildSwipeTimeout.bind(this),350);
-                this.attrs.isAnimated=true;
-              }else{
-                this.swipeActionLeft=null;
-                this.swipeActionRight=null;
-                this.swipeActionCancel=null;
-                this.handleChildSwipeTimeout();
-              }
-            }
-            handleChildSwipeTimeout(){
-              this.attrs.isAnimated=false;
-              this.attrs.x=null;
-              this.attrs.y=null;
-              this.attrs.isDraggingStarted=false;
-              if(this.attrs.placeholder&&this.attrs.placeholder.parentNode){
-                this.attrs.placeholder.parentNode.removeChild(this.attrs.placeholder);
-                
-              }
-              if(!this.attrs.draggingEle){
-                return;
-              }
-              let s=this.attrs.draggingEle.style;
-              s.removeProperty('left');
-              s.removeProperty('position');
-              s.removeProperty('transition');
-              s.removeProperty('width');
-              this.attrs.draggingEle=null;
-              if(!!this.swipeActionRight){
-                this.handleSwipeRight(this.swipeActionRight);
-                this.swipeActionRight=null;
-              }
-              if(!!this.swipeActionLeft){
-                this.handleSwipeLeft(this.swipeActionLeft);
-                this.swipeActionLeft=null;
-              }
-              if(!!this.swipeActionCancel){
-                this.handleSwipeCancel(this.swipeActionCancel);
-                this.swipeActionCancel=null;
-              }
-              this.attrs.isSwipe=false;
-              this.attrs.placeholder=null;
-              this.attrs.draggingEle=null;
-            }
-            handleSwipeRight(child){
-              const index=this.children.indexOf(child);
-              console.log(`handle swipe right index: ${index}`);
-              audio.AudioDevice.instance().queueRemoveIndex(index);
-            }
-            handleSwipeLeft(child){
-              const index=this.children.indexOf(child);
-              console.log(`handle swipe left index: ${index}`);
-              audio.AudioDevice.instance().playIndex(index);
-            }
-            handleSwipeCancel(child){
-              console.log("handle swipe cancel");
-            }
-            debugString(){
-              let str=super.debugString();
-              if(this.attrs.isSwipe){
-                str+=` swipe sx:${this.attrs.swipe_offset}`;
-              }
-              return str;
-            }
-          };
-          class PlaylistPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              this.attrs={'device':audio.AudioDevice.instance(),'header':new Header(
-                                  this),'content':new DomElement("div",{'className':style.content},
-                                  []),'container':new SongList(this),'padding1':new DomElement("div",
-                                  {'className':style.padding1},[]),'padding2':new DomElement("div",
-                                  {'className':style.padding2},[]),'currentIndex':-1,'more':new components.MoreMenu(
-                                  this.handleHideSongMore.bind(this)),'more_info':new components.MoreMenu(
-                                  this.handleHideMoreInfo.bind(this)),'more_index':-1,'more_song':null};
-              
-              this.attrs.container.setPlaceholderClassName(style.songItemPlaceholder);
-              
-              this.attrs.container.addClassName(style.songList);
-              this.attrs.header.addClassName(style.header);
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.padding1);
-              this.appendChild(this.attrs.content);
-              this.attrs.content.appendChild(this.attrs.container);
-              this.appendChild(this.attrs.padding2);
-              this.appendChild(this.attrs.more);
-              this.appendChild(this.attrs.more_info);
-              this.attrs.more.addAction("Play Next",this.handleMorePlaySongNext.bind(
-                                  this));
-              this.attrs.more.addAction("Song Info",this.handleMoreSongInfo.bind(
-                                  this));
-              this.attrs.more.addAction("Search for Artist",this.handleMoreSearchArtist.bind(
-                                  this));
-              this.attrs.more.addAction("Search for Album",this.handleMoreSearchAlbum.bind(
-                                  this));
-              this.attrs.more.addAction("Share",this.handleShareSong.bind(this));
-              
-              this.sec_attrs={"artist":this.attrs.more_info.addSection("Artist",""),
-                              "album":this.attrs.more_info.addSection("Album",""),"title":this.attrs.more_info.addSection(
-                                  "Title",""),"play_count":this.attrs.more_info.addSection("Play Count",
-                                  ""),"year":this.attrs.more_info.addSection("Year","")};
-            }
-            elementMounted(){
-              this.attrs.device.connectView(this);
-              if(daedalus.platform.isAndroid){
-                this.attrs.device.queueLoad();
-              }else{
-                if(this.attrs.device.queueLength()==0){
-                  this.attrs.device.queueLoad();
-                }else{
-                  const song=this.attrs.device.currentSong();
-                  this.attrs.header.setSong(song);
-                  this.handleAudioQueueChanged(this.attrs.device.queue);
-                  ;
-                }
-              }
-              if(daedalus.platform.isAndroid){
-                registerAndroidEvent('onresume',this.handleResume.bind(this));
-              }
-              let status=(this.attrs.device.isPlaying())?"playing":"paused";
-              this.attrs.header.setStatus(status);
-              let playid=daedalus.util.parseParameters()['play'];
-              if(!!playid){
-                const songList=[playid[0]];
-                api.queueSetQueue(songList).then(result=>{
-                    console.log(audio.AudioDevice.instance());
-                    audio.AudioDevice.instance().queueLoad().then(result=>{
-                        audio.AudioDevice.instance().playIndex(0);
-                      });
-                  });
-                ;
-              }
-            }
-            elementUnmounted(){
-              this.attrs.device.disconnectView(this);
-              if(daedalus.platform.isAndroid){
-                registerAndroidEvent('onresume',()=>{});
-              }
-            }
-            handleShowSongMore(index,song){
-              this.attrs.more_index=index;
-              this.attrs.more_song=song;
-              this.attrs.more.show();
-            }
-            handleHideSongMore(){
-              this.attrs.more.hide();
-            }
-            handleMoreSongInfo(){
-              for(const key in this.sec_attrs){
-                this.sec_attrs[key].setText(""+this.attrs.more_song[key]);
-                ;
-              }
-              this.attrs.more_info.show();
-            }
-            handleHideMoreInfo(){
-              this.attrs.more_info.hide();
-            }
-            handleMoreSearchArtist(){
-              let art=this.attrs.more_song.artist.replace(/[\\]/g,'\\\\').replace(
-                              /[\"]/g,'\\"');
-              let query=`artist="${art}"`;
-              history.pushState({},"","/u/library/list?query="+escape(query));
-            }
-            handleMoreSearchAlbum(){
-              let art=this.attrs.more_song.artist.replace(/[\\]/g,'\\\\').replace(
-                              /[\"]/g,'\\"');
-              let alb=this.attrs.more_song.album.replace(/[\\]/g,'\\\\').replace(
-                              /[\"]/g,'\\"');
-              let query=`artist="${art}" album="${alb}"`;
-              history.pushState({},"","/u/library/list?query="+escape(query));
-            }
-            handleShareSong(){
-              const path=window.location.origin+"/u/playlist?play="+this.attrs.more_song.id;
-              
-              console.log(path);
-              navigator.clipboard.writeText(path);
-            }
-            handleMorePlaySongNext(){
-              const current_index=audio.AudioDevice.instance().currentSongIndex();
-              
-              console.log(`move ${this.attrs.more_index} to ${current_index}`);
-              if(current_index!=this.attrs.more_index){
-                audio.AudioDevice.instance().queueReinsertIndex(this.attrs.more_index,
-                                  current_index+1);
-              }
-            }
-            handleAudioPlay(event){
-              this.attrs.header.setStatus("playing");
-            }
-            handleAudioPause(event){
-              this.attrs.header.setStatus("paused");
-            }
-            handleAudioWaiting(event){
-              this.attrs.header.setStatus("waiting");
-            }
-            handleAudioStalled(event){
-              this.attrs.header.setStatus("stalled");
-            }
-            handleAudioEnded(event){
-              this.attrs.header.setStatus("ended");
-            }
-            handleAudioError(event){
-              this.attrs.header.setStatus("error");
-            }
-            handleAudioTimeUpdate(event){
-              this.attrs.header.setTime(event.currentTime,event.duration);
-              if(this.attrs.device.isPlaying()){
-                this.attrs.header.setStatus("playing");
-              }
-              if(event.currentIndex!==undefined){
-                if(event.currentIndex!=this.attrs.currentIndex){
-                  this.attrs.currentIndex=event.currentIndex;
-                  this.attrs.container.children.forEach((child,index)=>{
-                      child.updateActive(index===event.currentIndex);
-                    });
-                  console.log("update index ",event.currentIndex,this.attrs.currentIndex);
-                  
-                }
-              }
-            }
-            handleResume(){
-              console.log("on app resume");
-              this.attrs.container.update();
-            }
-            handleAudioDurationChange(event){
-              this.attrs.header.setTime(event.currentTime,event.duration);
-            }
-            handleAudioSongChanged(song){
-              this.attrs.header.setSong(song);
-              if(song!==null){
-                if(!song.id){
-                  this.attrs.header.setStatus("load error: invalid id");
-                }else{
-                  this.attrs.currentIndex=audio.AudioDevice.instance().currentSongIndex(
-                                    );
-                  this.attrs.header.setStatus("pending");
-                  this.attrs.container.children.forEach((child,index)=>{
-                      child.updateActive(index===this.attrs.currentIndex);
-                    });
-                  this.attrs.header.setTime(0,0);
-                }
-              }else{
-                this.attrs.header.setStatus("load error: null");
-              }
-            }
-            handleAudioQueueChanged(songList){
-              console.log(`update queue with new list`);
-              const current_id=audio.AudioDevice.instance().currentSongId();
-              const current_index=audio.AudioDevice.instance().currentSongIndex();
-              
-              let miss=0;
-              let hit=0;
-              let del=0;
-              let index=0;
-              let item=null;
-              const containerList=this.attrs.container.children;
-              const N=containerList.length<songList.length?containerList.length:songList.length;
-              
-              for(;index<containerList.length&&index<songList.length;index++)
-              {
-                if(containerList[index].attrs.song.id==songList[index].id){
-                  item=containerList[index];
-                  item.setIndex(index);
-                }else if(index<(containerList.length-1)&&containerList[index+1].attrs.song.id==songList[
-                                    index].id){
-                  containerList.splice(index,1);
-                  item=containerList[index];
-                  item.setIndex(index);
-                  del+=1;
-                }else{
-                  miss+=1;
-                  item=new SongItem(this.attrs.container,index,songList[index]);
-                  containerList[index]=item;
-                }
-                item.updateActive(index===current_index);
-              }
-              const removeCount=containerList.length-index;
-              if(removeCount>0){
-                containerList.splice(index,removeCount);
-                del+=removeCount;
-              }
-              for(;index<songList.length;index++)
-              {
-                item=new SongItem(this.attrs.container,index,songList[index]);
-                containerList.push(item);
-                item.updateActive(index===current_index);
-                miss+=1;
-              }
-              if(miss>0||del>0){
-                this.attrs.container.update();
-              }
-              const song=this.attrs.device.currentSong();
-              this.attrs.header.setSong(song);
-              console.log(`update queue miss rate hit: ${hit} miss: ${miss} del: ${del}`);
-              
-            }
-          };
-          return[PlaylistPage];
-        })();
-      const[SettingsPage]=(function(){
-          const style={'main':'dcs-7a525177-0','settingsItem':'dcs-7a525177-1','settingsRowItem':'dcs-7a525177-2'};
-          
-          class SettingsItem extends DomElement {
-            constructor(title){
-              super("div",{'className':style.settingsItem},[]);
-              this.appendChild(new TextElement(title));
-            }
-          };
-          class SettingsButtonItem extends DomElement {
-            constructor(title,action){
-              super("div",{'className':style.settingsRowItem},[]);
-              this.attrs.count=0;
-              this.appendChild(new ButtonElement(title,()=>{
-                    action(this);
-                  }));
-            }
-            setText(text){
-
-            }
-          };
-          class SettingsToggleRangeItem extends DomElement {
-            constructor(title,action,action2){
-              super("div",{'className':style.settingsRowItem},[]);
-              this.attrs.count=0;
-              this.appendChild(new ButtonElement(title,()=>{
-                    action(this);
-                  }));
-              this.appendChild(new DomElement("input",{'min':0,'max':100,'value':50,
-                                      'type':"range",'onchange':action2}));
-            }
-            setText(text){
-
-            }
-          };
-          class SettingsGroupItem extends DomElement {
-            constructor(title,names){
-              super("div",{'className':style.settingsItem},[]);
-              this.appendChild(new TextElement(title));
-              this.appendChild(new DomElement("br",{},[]));
-              const form=this.appendChild(new DomElement("form",{},[]));
-              names.forEach(name=>{
-                  const child=form.appendChild(new DomElement("div",{},[]));
-                  const btn=child.appendChild(new DomElement("input",{'type':"radio",
-                                              'value':name,'name':this.props.id}));
-                  child.appendChild(new DomElement("label",{'forx':btn.props.id},
-                                          [new TextElement(name)]));
-                });
-            }
-          };
-          class Header extends components.NavHeader {
-            constructor(parent){
-              super();
-              this.addAction(resources.svg['menu'],()=>{
-                  store.globals.showMenu();
-                });
-            }
-          };
-          class SettingsPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              this.attrs={'header':new Header(this),'container':new DomElement("div",
-                                  {},[])};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.container);
-              this.attrs.container.appendChild(new SettingsItem("Volume:"));
-              this.attrs.container.appendChild(new SettingsGroupItem("Audio Backend:",
-                                  ["Cloud","Cloud Native","Native"]));
-              this.attrs.container.appendChild(new SettingsButtonItem("file api test",
-                                  (item)=>{
-                    if(Client){
-                      console.log("test");
-                      item.attrs.count+=1;
-                      if(Client.fileExists("sample.dat")){
-                        item.setText(item.attrs.count+" : "+"T");
-                      }else{
-                        item.setText(item.attrs.count+" : "+"F");
-                        const url="http://192.168.1.149:4100/static/index.js";
-                        const folder='Music/test';
-                        const name='index.js';
-                        Client.downloadUrl(url,folder,name);
-                        ;
-                        ;
-                        ;
-                      }
-                    }
-                  }));
-              this.attrs.container.appendChild(new SettingsButtonItem("load",(item)=>{
-                  
-                    if(daedalus.platform.isAndroid){
-                      const url1="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
-                      
-                      const url2="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3";
-                      
-                      const url3="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3";
-                      
-                      const queue=[{'url':url1},{'url':url2},{'url':url3}];
-                      const data=JSON.stringify(queue);
-                      console.log(data);
-                      AndroidNativeAudio.setQueue(data);
-                      AndroidNativeAudio.loadIndex(0);
-                      ;
-                      ;
-                      ;
-                      ;
-                      ;
-                    }
-                  }));
-              this.attrs.container.appendChild(new SettingsButtonItem("play",(item)=>{
-                  
-                    if(daedalus.platform.isAndroid){
-                      AndroidNativeAudio.play();
-                    }
-                  }));
-              this.attrs.container.appendChild(new SettingsButtonItem("pause",(item)=>{
-                  
-                    if(daedalus.platform.isAndroid){
-                      AndroidNativeAudio.pause();
-                    }
-                  }));
-              this.attrs.container.appendChild(new SettingsButtonItem("next",(item)=>{
-                  
-                    if(daedalus.platform.isAndroid){
-                      AndroidNativeAudio.skipToNext();
-                    }
-                  }));
-              this.attrs.container.appendChild(new SettingsButtonItem("prev",(item)=>{
-                  
-                    if(daedalus.platform.isAndroid){
-                      AndroidNativeAudio.skipToPrev();
-                    }
-                  }));
-              this.attrs.container.appendChild(new SettingsButtonItem("fetch",(item)=>{
-                  
-                    if(daedalus.platform.isAndroid){
-                      AndroidNativeAudio.beginFetch(""+api.getAuthToken());
-                    }
-                  }));
-              this.attrs.noise=[new audio.WhiteNoiseContext(),new audio.PinkNoiseContext(
-                                ),new audio.BrownNoiseContext(),new audio.OceanNoiseContext()];
-              for(let i=0;i<this.attrs.noise.length;i++)
-              {
-                let noise=this.attrs.noise[i];
-                this.attrs.container.appendChild(new SettingsToggleRangeItem(noise.color+" noise",
-                                      (item)=>{
-                      if(noise.isPlaying()){
-                        console.log("pause "+noise.color);
-                        noise.pause();
-                      }else{
-                        console.log("play "+noise.color);
-                        noise.play();
-                      }
-                    },(event)=>{
-                      noise.setVolume(event.target.value/100);
-                    }));
-              }
-              ;
-              ;
-            }
-          };
-          return[SettingsPage];
-        })();
-      const[LibraryPage,SavedSearchPage,SyncPage]=(function(){
-          class SearchBannishedCheckBox extends components.CheckBoxElement {
-            onClick(event){
-              this.attrs.callback();
-            }
-            getStateIcons(){
-              return[resources.svg.checkbox_unchecked,resources.svg.checkbox_checked];
-              
-            }
-          };
-          class SearchModeCheckBox extends components.CheckBoxElement {
-            onClick(event){
-              this.attrs.callback();
-            }
-            getStateIcons(){
-              return[resources.svg.checkbox_unchecked,resources.svg.checkbox_synced,
-                              resources.svg.checkbox_not_synced,resources.svg.checkbox_partial];
-              
-            }
-          };
-          class SyncCheckBox extends components.CheckBoxElement {
-            onClick(event){
-              this.attrs.callback();
-            }
-            getStateIcons(){
-              return[resources.svg.checkbox_unchecked,resources.svg.checkbox_download,
-                              resources.svg.checkbox_partial];
-            }
-          };
-          const style={'main':'dcs-33c2f1c6-0','grow':'dcs-33c2f1c6-1','viewPad':'dcs-33c2f1c6-2',
-                      'listItemCheck':'dcs-33c2f1c6-3','savedSearchPage':'dcs-33c2f1c6-4','savedSearchList':'dcs-33c2f1c6-5',
-                      'savedSearchItem':'dcs-33c2f1c6-6','padding1':'dcs-33c2f1c6-7','padding2':'dcs-33c2f1c6-8',
-                      'listItem':'dcs-33c2f1c6-9','listItemMid':'dcs-33c2f1c6-10','listItemQuery':'dcs-33c2f1c6-11',
-                      'listItemInner':'dcs-33c2f1c6-12','show':'dcs-33c2f1c6-13','hide':'dcs-33c2f1c6-14'};
-          
-          class LibraryHeader extends components.NavHeader {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.attrs.txtInput=new TextInputElement("",null,(text)=>{
-                  this.attrs.parent.search(text);
-                });
-              this.attrs.txtInput.updateProps({"autocapitalize":"off"});
-              this.addAction(resources.svg['menu'],()=>{
-                  store.globals.showMenu();
-                });
-              this.addAction(resources.svg['media_prev'],()=>{
-                  audio.AudioDevice.instance().prev();
-                });
-              this.attrs.act_play_pause=this.addAction(resources.svg['media_play'],
-                              ()=>{
-                  audio.AudioDevice.instance().togglePlayPause();
-                });
-              this.addAction(resources.svg['media_next'],()=>{
-                  audio.AudioDevice.instance().next();
-                });
-              this.addRow(false);
-              this.addRowAction(0,resources.svg.media_error,()=>{
-                  this.attrs.txtInput.setText("");
-                  this.attrs.txtInput.getDomNode().focus();
-                  this.attrs.parent.search("");
-                });
-              this.addRowElement(0,this.attrs.txtInput);
-              this.attrs.txtInput.addClassName(style.grow);
-              if(daedalus.platform.isAndroid||daedalus.platform.isQt){
-                this.attrs.chk=new SearchModeCheckBox(this.handleCheck.bind(this),
-                                  1);
-                this.addRowElement(0,new components.HSpacer("1em"));
-                this.addRowElement(0,this.attrs.chk);
-                this.addRowElement(0,new components.HSpacer("1em"));
-              }
-              this.addRowElement(0,new components.HSpacer("1em"));
-              this.addRowAction(0,resources.svg.search,()=>{
-                  const text=this.attrs.txtInput.getText();
-                  console.log("search: "+text);
-                  this.attrs.parent.search(text);
-                });
-            }
-            setQuery(query){
-              this.attrs.txtInput.setText(query);
-            }
-            handleCheck(){
-              this.attrs.chk.setCheckState((this.attrs.chk.attrs.checkState+1)%3);
-              
-            }
-            syncState(){
-              return this.attrs.chk.attrs.checkState;
-            }
-            showBanished(){
-              return false;
-            }
-            setStatus(status){
-              if(status==="playing"){
-                this.attrs.act_play_pause.setUrl(resources.svg['media_pause']);
-              }else{
-                this.attrs.act_play_pause.setUrl(resources.svg['media_play']);
-              }
-            }
-          };
-          class LibraryFooter extends components.NavFooter {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.addAction(resources.svg['select'],()=>{
-                  const count=this.attrs.parent.attrs.view.countSelected();
-                  this.attrs.parent.attrs.view.selectAll(count==0);
-                });
-              this.addSpacer(".5em");
-              this.addAction(resources.svg['sort'],()=>{
-                  let songList=this.attrs.parent.attrs.view.getSelectedSongs();
-                  console.log("creating playlist",songList.length);
-                  songList=api.sortTracks(songList).splice(0,200);
-                  audio.AudioDevice.instance().queueSet(songList);
-                  audio.AudioDevice.instance().next();
-                  this.attrs.parent.attrs.view.selectAll(false);
-                });
-              this.addSpacer(".5em");
-              this.addAction(resources.svg['media_shuffle'],()=>{
-                  let songList=this.attrs.parent.attrs.view.getSelectedSongs();
-                  console.log("creating playlist",songList.length);
-                  songList=api.track_shuffle(songList).splice(0,200);
-                  console.log("creating playlist",songList.length);
-                  console.log(songList);
-                  audio.AudioDevice.instance().queueSet(songList);
-                  audio.AudioDevice.instance().next();
-                  this.attrs.parent.attrs.view.selectAll(false);
-                });
-            }
-          };
-          class ArtistTreeItem extends components.TreeItem {
-            constructor(parent,obj,selectMode=1){
-              let selected=0;
-              if(selectMode==components.TreeItem.SELECTION_MODE_CHECK){
-                selected=obj.selected||0;
-              }
-              super(parent,0,obj.name,obj,selectMode,selected);
-            }
-            buildChildren(obj){
-              return obj.albums.map(album=>new AlbumTreeItem(this,album,this.attrs.selectMode));
-              
-            }
-            constructCheckbox(callback,initialState){
-              return new SyncCheckBox(callback,initialState);
-            }
-          };
-          class AlbumTreeItem extends components.TreeItem {
-            constructor(parent,obj,selectMode=1){
-              let selected=0;
-              if(selectMode==components.TreeItem.SELECTION_MODE_CHECK){
-                selected=obj.selected||0;
-              }
-              super(parent,1,obj.name,obj,selectMode,selected);
-            }
-            buildChildren(obj){
-              return obj.tracks.map(track=>new TrackTreeItem(this,track,this.attrs.selectMode));
-              
-            }
-            constructCheckbox(callback,initialState){
-              return new SyncCheckBox(callback,initialState);
-            }
-          };
-          class TrackTreeItem extends components.TreeItem {
-            constructor(parent,obj,selectMode=1){
-              let selected=0;
-              if(selectMode==components.TreeItem.SELECTION_MODE_CHECK){
-                selected=obj.sync||0;
-              }
-              super(parent,2,obj.title,obj,selectMode,selected);
-              this.setMoreCallback(this.handleMoreClicked.bind(this));
-            }
-            hasChildren(){
-              return false;
-            }
-            handleMoreClicked(){
-              const abm=this.attrs.parent;
-              const art=abm.attrs.parent;
-              const view=art.attrs.parent;
-              const page=view.attrs.parent;
-              const song={...this.attrs.obj,'artist':art.attrs.obj.name,'album':abm.attrs.obj.name};
-              
-              console.log(art.attrs.parent);
-              page.showMore(song);
-            }
-            constructCheckbox(callback,initialState){
-              return new SyncCheckBox(callback,initialState);
-            }
-          };
-          class LibraryTreeView extends components.TreeView {
-            constructor(parent,selectMode){
-              super();
-              this.attrs.parent=parent;
-              this.attrs.selectMode=selectMode;
-            }
-            setForest(forest){
-              forest.forEach(tree=>{
-                  this.addItem(new ArtistTreeItem(this,tree,this.attrs.selectMode));
-                  
-                });
-            }
-            getSelectedSongs(){
-              const result=[];
-              this.attrs.container.children.forEach(child=>{
-                  this._chkArtistSelection(result,child);
-                });
-              return result;
-            }
-            _chkArtistSelection(result,node){
-              if(!node.attrs.children){
-                this._collectArtist(result,node.attrs.obj,node.isSelected());
-                return;
-              }
-              node.attrs.children.forEach(child=>{
-                  this._chkAlbumSelection(result,child,node.attrs.obj.name);
-                });
-            }
-            _collectArtist(result,obj,selected){
-              obj.albums.forEach(child=>{
-                  this._collectAlbum(result,child,obj.name,selected);
-                });
-            }
-            _chkAlbumSelection(result,node,artist){
-              if(!node.attrs.children){
-                this._collectAlbum(result,node.attrs.obj,artist,node.isSelected());
-                
-                return;
-              }
-              node.attrs.children.forEach(child=>{
-                  this._chkTrackSelection(result,child,artist,node.attrs.obj.name);
-                  
-                });
-            }
-            _collectAlbum(result,obj,artist,selected){
-              obj.tracks.forEach(child=>{
-                  this._collectTrack(result,child,artist,obj.name,selected);
-                });
-            }
-            _chkTrackSelection(result,node,artist,album){
-              if(this.attrs.selectMode==components.TreeItem.SELECTION_MODE_CHECK){
-              
-                const item=node.attrs.obj;
-                if(item.sync==1&&node.attrs.selected==0){
-                  const track={"spk":item.spk,'sync':0};
-                  result.push(track);
-                  ;
-                }else if(item.sync==0&&node.attrs.selected==1){
-                  const track={"spk":item.spk,'sync':1};
-                  result.push(track);
-                  ;
-                }
-                ;
-              }else{
-                if(node.isSelected()){
-                  const song={...node.attrs.obj,'artist':artist,'album':album};
-                  result.push(song);
-                  ;
-                }
-              }
-            }
-            _collectTrack(result,obj,artist,album,selected){
-              if(this.attrs.selectMode==components.TreeItem.SELECTION_MODE_CHECK){
-              
-                if(obj.sync==0&&selected==1){
-                  const track={"uid":obj.id,"spk":obj.spk,'sync':1};
-                  result.push(track);
-                  ;
-                }
-                if(obj.sync==1&&selected==0){
-                  const track={"uid":obj.id,"spk":obj.spk,'sync':0};
-                  result.push(track);
-                  ;
-                }
-              }else{
-                if(selected){
-                  const song={...obj,'artist':artist,'album':album};
-                  result.push(song);
-                  ;
-                }
-              }
-            }
-          };
-          class LibraryPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              this.attrs={'device':audio.AudioDevice.instance(),'header':new LibraryHeader(
-                                  this),'footer':new LibraryFooter(this),'view':new LibraryTreeView(
-                                  this,components.TreeItem.SELECTION_MODE_HIGHLIGHT),'more':new components.MoreMenu(
-                                  this.handleHideFileMore.bind(this)),'more_context_item':null,'firstMount':true,
-                              'currentSearch':null};
-              this.attrs.view.addClassName(style.viewPad);
-              this.attrs.more.addAction("Add To Queue",this.handleAddToQueue.bind(
-                                  this));
-              this.appendChild(this.attrs.more);
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.view);
-              this.appendChild(this.attrs.footer);
-            }
-            elementMounted(){
-              console.log("mount library view");
-              this.attrs.device.connectView(this);
-              let query=daedalus.util.parseParameters()['query'];
-              if(query===null||query===undefined){
-                query="";
-              }else{
-                query=""+query;
-              }
-              if(this.attrs.firstMount||(this.attrs.currentSearch!==query)){
-                this.attrs.firstMount=false;
-                this.attrs.header.setQuery(query);
-                this.search(query);
-              }
-              if(daedalus.platform.isAndroid){
-                registerAndroidEvent('onresume',this.handleResume.bind(this));
-              }
-              let status=(this.attrs.device.isPlaying())?"playing":"paused";
-              this.attrs.header.setStatus(status);
-            }
-            elementUnmounted(){
-              this.attrs.device.disconnectView(this);
-              if(daedalus.platform.isAndroid){
-                registerAndroidEvent('onresume',()=>{});
-              }
-            }
-            search(text){
-              this.attrs.view.reset();
-              this.attrs.currentSearch=text;
-              router.navigate(router.routes.userLibraryList({},{'query':text}));
-              this.attrs.search_promise=new Promise((accept,reject)=>{
-                  let showBanished=this.attrs.header.showBanished()===1;
-                  console.log(showBanished);
-                  if(daedalus.platform.isAndroid){
-                    let syncState=this.attrs.header.syncState();
-                    let payload=AndroidNativeAudio.buildForest(text,syncState,showBanished);
-                    
-                    let forest=JSON.parse(payload);
-                    this.attrs.view.setForest(forest);
-                    ;
-                    ;
-                    ;
-                  }else if(daedalus.platform.isQt){
-                    let syncState=1;
-                    let showBanished=false;
-                    window.channel.objects.backend.buildForest(text,syncState,showBanished).then(
-                                          result=>{
-                        result=JSON.parse(result);
-                        if(result.status=="ok"){
-                          this.attrs.view.setForest(result.result);
-                        }else{
-                          components.ErrorDrawer.post("Query Error",result.status);
-                          
-                        }
-                      }).catch(error=>{
-                        console.log(error);
-                      });
-                    ;
-                    ;
-                  }else{
-                    api.librarySearchForest(text,showBanished).then(result=>{
-                        this.attrs.view.setForest(result.result);
-                      }).catch(error=>{
-                        console.log(error);
-                      });
-                  }
-                  accept();
-                });
-            }
-            showMore(item){
-              this.attrs.more_context_item=item;
-              this.attrs.more.show();
-            }
-            handleHideFileMore(){
-              this.attrs.more.hide();
-            }
-            handleAddToQueue(){
-              this.attrs.device.queuePlayNext(this.attrs.more_context_item);
-            }
-            handleResume(){
-              console.log("on app resume");
-            }
-            handleAudioPlay(event){
-              this.attrs.header.setStatus("playing");
-            }
-            handleAudioPause(event){
-              this.attrs.header.setStatus("paused");
-            }
-            handleAudioWaiting(event){
-              this.attrs.header.setStatus("waiting");
-            }
-            handleAudioStalled(event){
-              this.attrs.header.setStatus("stalled");
-            }
-            handleAudioEnded(event){
-              this.attrs.header.setStatus("ended");
-            }
-            handleAudioError(event){
-              this.attrs.header.setStatus("error");
-            }
-          };
-          class SyncHeader extends components.NavHeader {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.attrs.txtInput=new TextInputElement("",null,(text)=>{
-                  this.attrs.parent.search(text);
-                });
-              this.attrs.txtInput.updateProps({"autocapitalize":"off"});
-              this.attrs.status=new components.MiddleText("...");
-              this.addAction(resources.svg['menu'],()=>{
-                  store.globals.showMenu();
-                });
-              this.addAction(resources.svg['media_error'],()=>{
-                  if(daedalus.platform.isAndroid){
-                    AndroidNativeAudio.cancelTask();
-                  }
-                });
-              this.addAction(resources.svg['sort'],()=>{
-                  if(daedalus.platform.isAndroid){
-                    if(!Client.isWifiConnected()){
-                      components.ErrorDrawer.post("Connection Status","Wifi Not Connected");
-                      
-                    }
-                    AndroidNativeAudio.beginFetch(""+api.getAuthToken());
-                  }else if(daedalus.platform.isQt){
-                    window.channel.objects.backend.taskQuery().then(result=>{
-                        let state=JSON.parse(result);
-                        if(!state.busy){
-                          console.log("begin sync");
-                          window.channel.objects.backend.beginFetch(""+api.getAuthToken(
-                                                        ));
-                        }else{
-                          components.ErrorDrawer.post("Task Error","Task in progress");
-                          
-                        }
-                      });
-                  }
-                });
-              this.addAction(resources.svg['save'],()=>{
-                  this.attrs.parent.handleSyncSave();
-                });
-              this.addAction(resources.svg['download'],()=>{
-                  if(daedalus.platform.isAndroid){
-                    console.log("begin sync");
-                    AndroidNativeAudio.beginSync(""+api.getAuthToken());
-                  }else if(daedalus.platform.isQt){
-                    window.channel.objects.backend.taskQuery().then(result=>{
-                        let state=JSON.parse(result);
-                        if(!state.busy){
-                          console.log("begin sync");
-                          window.channel.objects.backend.beginSync(""+api.getAuthToken(
-                                                        ));
-                        }else{
-                          components.ErrorDrawer.post("Task Error","Task in progress");
-                          
-                        }
-                      });
-                  }
-                });
-              if(daedalus.platform.isQt){
-                this.addAction(resources.svg['upload'],()=>{
-                    if(daedalus.platform.isAndroid){
-                      console.log("begin upload history");
-                      AndroidNativeAudio.beginUploadHistory(""+api.getAuthToken());
-                      
-                    }else if(daedalus.platform.isQt){
-                      window.channel.objects.backend.taskQuery().then(result=>{
-                          let state=JSON.parse(result);
-                          if(!state.busy){
-                            console.log("begin upload history");
-                            window.channel.objects.backend.beginUploadHistory(""+api.getAuthToken(
-                                                            ));
-                          }else{
-                            components.ErrorDrawer.post("Task Error","Task in progress");
-                            
-                          }
-                        });
-                    }
-                  });
-              }
-              this.addRow(false);
-              this.addRowElement(0,this.attrs.txtInput);
-              this.attrs.txtInput.addClassName(style.grow);
-              if(daedalus.platform.isAndroid||daedalus.platform.isQt){
-                this.attrs.chk=new SearchModeCheckBox(this.handleCheck.bind(this),
-                                  0);
-                this.addRowElement(0,new components.HSpacer("1em"));
-                this.addRowElement(0,this.attrs.chk);
-                this.addRowElement(0,new components.HSpacer("1em"));
-              }
-              this.addRowAction(0,resources.svg['search'],()=>{
-                  this.attrs.parent.search(this.attrs.txtInput.getText());
-                });
-              this.addRow(false);
-              this.addRowElement(1,this.attrs.status);
-            }
-            updateStatus(text){
-              this.attrs.status.setText(text);
-            }
-            searchText(){
-              return this.attrs.txtInput.getText();
-            }
-            handleCheck(){
-              this.attrs.chk.setCheckState((this.attrs.chk.attrs.checkState+1)%3);
-              
-              console.log("check state",this.attrs.chk.attrs.checkState);
-            }
-            syncState(){
-              return this.attrs.chk.attrs.checkState;
-            }
-          };
-          class SyncFooter extends components.NavFooter {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-            }
-          };
-          class SyncPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              this.attrs={'header':new SyncHeader(this),'footer':new SyncFooter(this),
-                              'view':new LibraryTreeView(this,components.TreeItem.SELECTION_MODE_CHECK),
-                              'more':new components.MoreMenu(this.handleHideFileMore.bind(this)),
-                              'more_context_item':null,'firstMount':true};
-              this.attrs.view.addClassName(style.viewPad);
-              this.attrs.more.addAction("Add To Queue",()=>{});
-              this.appendChild(this.attrs.more);
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.view);
-              this.appendChild(this.attrs.footer);
-              this.attrs.footer_lbl1=this.attrs.footer.addText("");
-            }
-            elementMounted(){
-              console.log("mount sync view");
-              if(this.attrs.firstMount){
-                this.attrs.firstMount=false;
-                this.search("");
-              }
-              if(daedalus.platform.isAndroid){
-                registerAndroidEvent('onfetchprogress',this.handleFetchProgress.bind(
-                                      this));
-                registerAndroidEvent('onfetchcomplete',this.handleFetchComplete.bind(
-                                      this));
-                registerAndroidEvent('onsyncstatusupdated',this.handleSyncStatusUpdated.bind(
-                                      this));
-                registerAndroidEvent('onsyncprogress',this.handleSyncProgress.bind(
-                                      this));
-                registerAndroidEvent('onsynccomplete',this.handleSyncComplete.bind(
-                                      this));
-                registerAndroidEvent('onresume',this.handleResume.bind(this));
-                this.updateInfo();
-              }else if(daedalus.platform.isQt){
-                window.channel.objects.backend.fetchProgress.connect((count,total)=>{
-                  
-                    this.handleFetchProgress({'count':count,'total':total});
-                  });
-                window.channel.objects.backend.fetchComplete.connect(()=>{
-                    this.handleFetchComplete({});
-                  });
-                window.channel.objects.backend.syncProgress.connect((index,total,
-                                      message)=>{
-                    this.handleSyncProgress({'index':index,'total':total,'message':message});
-                    
-                  });
-                window.channel.objects.backend.syncComplete.connect(()=>{
-                    this.handleSyncComplete({});
-                  });
-                window.channel.objects.backend.uploadProgress.connect((count,total)=>{
-                  
-                    this.handleUploadProgress({'count':count,'total':total,'message':message});
-                    
-                  });
-                window.channel.objects.backend.uploadComplete.connect(()=>{
-                    this.handleUploadComplete({});
-                  });
-                this.updateInfo();
-              }
-              if(daedalus.platform.isAndroid){
-                if(!Client.isWifiConnected()){
-                  components.ErrorDrawer.post("Connection Status","Wifi Not Connected");
-                  
-                }
-              }
-            }
-            elementUnmounted(){
-              console.log("unmount sync view");
-              if(daedalus.platform.isAndroid){
-                registerAndroidEvent('onfetchprogress',()=>{});
-                registerAndroidEvent('onfetchcomplete',()=>{});
-                registerAndroidEvent('onsyncstatusupdated',()=>{});
-                registerAndroidEvent('onsyncprogress',()=>{});
-                registerAndroidEvent('onsynccomplete',()=>{});
-                registerAndroidEvent('onresume',()=>{});
-              }
-            }
-            handleHideFileMore(){
-              this.attrs.more.hide();
-            }
-            search(text){
-              this.attrs.view.reset();
-              this.attrs.search_promise=new Promise((accept,reject)=>{
-                  if(daedalus.platform.isAndroid){
-                    let syncState=this.attrs.header.syncState();
-                    let showBanished=false;
-                    let payload=AndroidNativeAudio.buildForest(text,syncState,showBanished);
-                    
-                    let forest=JSON.parse(payload);
-                    this.attrs.view.setForest(forest);
-                    ;
-                    ;
-                    ;
-                    ;
-                  }else if(daedalus.platform.isQt){
-                    let syncState=this.attrs.header.syncState();
-                    let showBanished=false;
-                    window.channel.objects.backend.buildForest(text,syncState,showBanished).then(
-                                          result=>{
-                        result=JSON.parse(result);
-                        if(result.status=="ok"){
-                          this.attrs.view.setForest(result.result);
-                        }else{
-                          components.ErrorDrawer.post("Query Error",result.status);
-                          
-                        }
-                      }).catch(error=>{
-                        console.log(error);
-                      });
-                    ;
-                    ;
-                  }else{
-                    let showBanished=false;
-                    api.librarySearchForest(text,showBanished).then(result=>{
-                        this.attrs.view.setForest(result.result);
-                      }).catch(error=>{
-                        console.log(error);
-                      });
-                    ;
-                  }
-                  accept();
-                });
-            }
-            handleSyncSave(){
-              let items=this.attrs.view.getSelectedSongs();
-              console.log(`sync save selected ${items.length} items`);
-              let data={};
-              for(let i=0;i<items.length;i++)
-              {
-                let item=items[i];
-                data[item.spk]=item.sync;
-              }
-              ;
-              ;
-              if(items.length>0){
-                if(daedalus.platform.isAndroid){
-                  let payload=JSON.stringify(data);
-                  AndroidNativeAudio.updateSyncStatus(payload);
-                  ;
-                }else if(daedalus.platform.isQt){
-                  let payload=JSON.stringify(data);
-                  window.channel.objects.backend.updateSyncStatus(payload);
-                  ;
-                }else{
-                  console.log(data);
-                }
-              }else{
-                console.log("sync save: nothing to save");
-              }
-            }
-            handleFetchProgress(payload){
-              this.attrs.header.updateStatus(`${payload.count}/${payload.total}`);
-              
-            }
-            handleFetchComplete(payload){
-              console.log("fetch complete: "+JSON.stringify(payload));
-              this.attrs.header.updateStatus(`fetch complete`);
-              this.updateInfo();
-            }
-            handleSyncProgress(payload){
-              this.attrs.header.updateStatus(`${payload.index}/${payload.total} ${payload.message}`);
-              
-            }
-            handleSyncComplete(payload){
-              console.log("sync complete: "+JSON.stringify(payload));
-              this.attrs.header.updateStatus("sync complete");
-              this.updateInfo();
-            }
-            handleUploadProgress(payload){
-              this.attrs.header.updateStatus(`upload ${payload.index}/${payload.total}`);
-              
-            }
-            handleUploadComplete(payload){
-              this.attrs.header.updateStatus("upload complete");
-              this.updateInfo();
-            }
-            handleSyncStatusUpdated(payload){
-              this.search(this.attrs.header.searchText());
-            }
-            handleResume(payload){
-              console.log("app resumed from js");
-              if(daedalus.platform.isAndroid){
-                AndroidNativeAudio.syncQueryStatus();
-              }
-            }
-            showMore(item){
-              console.log("on show more clicked");
-            }
-            updateInfo(){
-              if(daedalus.platform.isAndroid){
-                const info=JSON.parse(AndroidNativeAudio.getSyncInfo());
-                this.attrs.footer_lbl1.setText(`records: ${info.record_count} synced: ${info.synced_tracks}`);
-                
-                ;
-              }else if(daedalus.platform.isQt){
-                const data=window.channel.objects.backend.getSyncInfo().then(result=>{
-                  
-                    console.log(result);
-                    const info=JSON.parse(result);
-                    this.attrs.footer_lbl1.setText(`records: ${info.record_count} synced: ${info.synced_tracks} history: ${info.history_count}`);
-                    
-                  });
-                ;
-              }
-            }
-          };
-          class SavedSearchHeader extends components.NavHeader {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.addAction(resources.svg['menu'],()=>{
-                  store.globals.showMenu();
-                });
-            }
-          };
-          class SavedSearchItem extends DomElement {
-            constructor(parent,name,query){
-              super("div",{'className':style.savedSearchItem},[]);
-              this.attrs={'parent':parent,'name':name,'query':query};
-              this.attrs.row0=this.appendChild(new DomElement("div",{'className':style.listItem},
-                                  []));
-              this.attrs.text=this.attrs.row0.appendChild(new DomElement("div",{'className':style.listItemMid},
-                                  [new TextElement(name)]));
-              this.attrs.div_query=this.appendChild(new DomElement("pre",{'className':style.listItemQuery},
-                                  []));
-              this.attrs.div_query_inner=this.attrs.div_query.appendChild(new DomElement(
-                                  "div",{'className':style.listItemInner},[]));
-              this.attrs.div_query_inner.appendChild(new DomElement("div",{},[new TextElement(
-                                          query)]));
-              this.attrs.div_query_inner.appendChild(new components.HSpacer("1em"));
-              
-              this.attrs.row0.appendChild(new components.SvgButtonElement(resources.svg.more,
-                                  ()=>{
-                    this.attrs.parent.handleShowMore(this);
-                  }));
-              this.attrs.row0.appendChild(new components.SvgButtonElement(resources.svg.arrow_right,
-                                  ()=>{
-                    router.navigate(router.routes.userLibraryList({},{'query':this.attrs.query}));
-                    
-                  }));
-              this.attrs.div_query.addClassName(style.hide);
-              this.attrs.text.props.onClick=(event)=>{
-                if(this.attrs.div_query.hasClassName(style.hide)){
-                  this.attrs.div_query.removeClassName(style.hide);
-                  this.attrs.div_query.addClassName(style.show);
-                }else{
-                  this.attrs.div_query.removeClassName(style.show);
-                  this.attrs.div_query.addClassName(style.hide);
-                }
-              };
-            }
-          };
-          const qt=!!(daedalus.platform.isQt);
-          const savedSearches=[{'name':"stoner best",'query':"stoner rating >= 5"},
-                      {'name':"grunge best",'query':"grunge rating >= 5"},{'name':"english best",
-                          'query':"language = english rating >= 5"},{'name':"visual best",'query':"\"visual kei\" rating >= 5"},
-                      {'name':"jrock best",'query':"language = japanese rating >= 2"},{'name':"Gothic Emily",
-                          'query':"\"gothic emily\""},{'name':"Soundwitch Radio",'query':"soundwitch"}];
-          
-          if(daedalus.platform.isAndroid){
-            savedSearches.push({'name':"STP Radio",'query':"\"stone temple pilots\" not STPLIGHT"});
-            
-            savedSearches.push({'name':"Lanegan Radio",'query':"(lanegan || \"screaming trees\") && rating > 3 && p lt -14d"});
-            
-            savedSearches.push({'name':"Driving Hits Volume 1",'query':":DRV && p lt -14d"});
-            
-            savedSearches.push({'name':"Driving Hits Volume 2",'query':":VL2 && p lt -14d"});
-            
-            savedSearches.push({'name':"Driving Hits Volume 3",'query':"(comment=:DRV or comment=:VL2) && p lt -14d"});
-            
-            savedSearches.push({'name':"Best Albums",'query':"comment=:BEST && p lt -14d"});
-            
-          }else{
-            savedSearches.push({'name':"STP Radio",'query':qt?"\"stone temple pilots\" !STPLIGHT":"\"stone temple pilots\" not STPLIGHT"});
-            
-            savedSearches.push({'name':"Lanegan Radio",'query':"(lanegan || \"screaming trees\") && rating > 3"});
-            
-            savedSearches.push({'name':"Driving Hits Volume 1",'query':qt?"comment=:DRV && pcnt < -14d":"comment=:DRV"});
-            
-            savedSearches.push({'name':"Driving Hits Volume 2",'query':qt?"comment=:VL2 && pcnt < -14d":"comment=:VL2"});
-            
-            savedSearches.push({'name':"Driving Hits Volume 3",'query':qt?"(comment=:DRV or comment=:VL2) && pcnt < -14d":"(comment=:DRV or comment=:VL2)"});
-            
-            savedSearches.push({'name':"Best Albums",'query':qt?"comment=:BEST && pcnt < -14d":"comment=:BEST"});
-            
           }
-          class SavedSearchList extends DomElement {
-            constructor(parent){
-              super("div",{'className':style.savedSearchList},[]);
-              this.attrs={'parent':parent};
-              for(let i=0;i<savedSearches.length;i++)
-              {
-                let s=savedSearches[i];
-                this.appendChild(new SavedSearchItem(this,s.name,s.query));
-              }
+          setTrack(track){
+            this.attrs.track_info.setItem(track);
+            thumbnail_ProcessStart();
+          }
+          setTime(currentTime,duration){
+            try{
+              const t1=formatTime(currentTime);
+              const t2=formatTime(duration);
+              this.attrs.txt_SongTime1.setText(t1);
+              this.attrs.txt_SongTime2.setText(t2);
+              this.attrs.pbar_time.setPosition(currentTime,duration);
               ;
               ;
-            }
-            handleShowMore(listItem){
-              this.attrs.parent.handleShowMore(listItem);
-            }
-          };
-          class SavedSearchPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.savedSearchPage},[]);
-              this.attrs={'device':audio.AudioDevice.instance(),'header':new SavedSearchHeader(
-                                  this),'container':new SavedSearchList(this),'padding1':new DomElement(
-                                  "div",{'className':style.padding1},[]),'padding2':new DomElement(
-                                  "div",{'className':style.padding2},[]),'more':new components.MoreMenu(
-                                  this.handleHideMore.bind(this))};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.more);
-              this.appendChild(this.attrs.padding1);
-              this.appendChild(this.attrs.container);
-              this.appendChild(this.attrs.padding2);
-              this.attrs.more.addAction("delete",()=>{});
-            }
-            handleShowMore(listItem){
-              this.attrs.more.show();
-            }
-            handleHideMore(){
-              this.attrs.more.hide();
-            }
-          };
-          return[LibraryPage,SavedSearchPage,SyncPage];
-        })();
-      const[InfoOilPage,RecipeIndexPage,RecipePage]=(function(){
-          const style={'ingredientTable':'dcs-962d71a7-0','ingredientQuantityHeader':'dcs-962d71a7-1',
-                      'ingredientBorder':'dcs-962d71a7-2','ingredientQuantity':'dcs-962d71a7-3',
-                      'ingredientUnit':'dcs-962d71a7-4','ingredientName':'dcs-962d71a7-5','header':'dcs-962d71a7-6',
-                      'summary':'dcs-962d71a7-7','noteList':'dcs-962d71a7-8','noteItem':'dcs-962d71a7-9',
-                      'steps':'dcs-962d71a7-10','select':'dcs-962d71a7-11','text_input':'dcs-962d71a7-12',
-                      'attributeList':'dcs-962d71a7-13','attributeItem':'dcs-962d71a7-14','attributeItemBreakfast':'dcs-962d71a7-15',
-                      'attributeItemLunch':'dcs-962d71a7-16','attributeItemDinner':'dcs-962d71a7-17',
-                      'attributeItemDessert':'dcs-962d71a7-18','attributeItemSnack':'dcs-962d71a7-19',
-                      'attributeItemSide':'dcs-962d71a7-20','attributeItemAppetizer':'dcs-962d71a7-21',
-                      'attributeItemMeal':'dcs-962d71a7-22','recipeHeader':'dcs-962d71a7-23',
-                      'recipeTitle':'dcs-962d71a7-24','divRecipeBody':'dcs-962d71a7-25','infoHeader':'dcs-962d71a7-26',
-                      'infoBox':'dcs-962d71a7-27','infoTitle':'dcs-962d71a7-28','infoRowCalorie':'dcs-962d71a7-29',
-                      'infoRowMacro':'dcs-962d71a7-30','infoRowMacroSub':'dcs-962d71a7-31',
-                      'infoRowMicro':'dcs-962d71a7-32','infoAttribute':'dcs-962d71a7-33','fraction':'dcs-962d71a7-34',
-                      'nutritionTable':'dcs-962d71a7-35','nutritionTableValue':'dcs-962d71a7-36',
-                      'oilTable':'dcs-962d71a7-37','oilTableRowName':'dcs-962d71a7-38','oilTableRowData':'dcs-962d71a7-39',
-                      'oilTableRowSmokePoint1':'dcs-962d71a7-40','oilTableRowSmokePoint2':'dcs-962d71a7-41',
-                      'oilTableRowSmokePoint3':'dcs-962d71a7-42','oilTableRowSmokePoint4':'dcs-962d71a7-43',
-                      'oilTableRowSmokePoint5':'dcs-962d71a7-44','oilTableRowPrice1':'dcs-962d71a7-45',
-                      'oilTableRowPrice2':'dcs-962d71a7-46','oilTableRowPrice3':'dcs-962d71a7-47',
-                      'oilTableRowPrice4':'dcs-962d71a7-48','oilTableRowPrice5':'dcs-962d71a7-49',
-                      'oilTableRowScoreF':'dcs-962d71a7-50','oilTableRowScoreD':'dcs-962d71a7-51',
-                      'oilTableRowScoreC':'dcs-962d71a7-52','oilTableRowScoreB':'dcs-962d71a7-53',
-                      'oilTableRowScoreA':'dcs-962d71a7-54','oilTableRowScoreS':'dcs-962d71a7-55',
-                      'hide':'dcs-962d71a7-56','logo':'dcs-962d71a7-57'};
-          const attr_style={"breakfast":style.attributeItemBreakfast,"lunch":style.attributeItemLunch,
-                      "dinner":style.attributeItemDinner,"dessert":style.attributeItemDessert,
-                      "snack":style.attributeItemSnack,"appetizer":style.attributeItemAppetizer,
-                      "side":style.attributeItemSide,"meal":style.attributeItemMeal};
-          ;
-          ;
-          ;
-          ;
-          ;
-          ;
-          ;
-          ;
-          ;
-          ;
-          ;
-          class PageBreak extends DomElement {
-            constructor(){
-              super("div",{'className':"pagebreak"});
-            }
-          };
-          function fraction(initial){
-            const candidates=[2,3,4,8,16];
-            let whole=Math.floor(initial);
-            let value=initial-whole;
-            if(value<.00001){
-              return{'whole':whole,'num':0,'den':0};
-            }
-            let bound=0;
-            let den=0;
-            let min_error=1.0,error=0.0;
-            for(let i=0;i<candidates.length;i++)
-            {
-              const n=candidates[i];
-              const lower=1.0/n*Math.floor(n*value);
-              error=Math.abs(value-lower)/value;
-              if(error<min_error){
-                min_error=error;
-                bound=lower;
-                den=n;
-              }
-              const upper=1.0/n*Math.floor(n*value+1.0);
-              error=Math.abs(value-upper)/value;
-              if(error<min_error){
-                min_error=error;
-                bound=upper;
-                den=n;
-              }
-            }
-            ;
-            ;
-            ;
-            ;
-            let num=Math.round(den*bound);
-            if(num===den){
-              whole+=1;
-              num=0;
-              den=0;
-            }
-            return{'whole':whole,'num':num,'den':den};
-          };
-          class Fraction extends DomElement {
-            constructor(value,prefix="",suffix="",allow_empty=false){
-              super("div",{'className':style.fraction},[]);
-              this.setValue(value,prefix,suffix,allow_empty);
-            }
-            setValue(value,prefix="",suffix="",allow_empty=false){
-              this.removeChildren();
-              let frac=fraction(value);
-              if(prefix.length){
-                this.appendChild(new TextElement(prefix));
-              }
-              if(!allow_empty&&frac.whole===0&&frac.num===0&&frac.den===0){
-                this.appendChild(new TextElement("0"));
+            }catch(e){
+              console.error(e);
+            };
+          }
+          setAudioState(state){
+            if(!this.attrs.isPublic){
+              if(state==='play'){
+                this.attrs.act_play.setUrl(resources.svg['media_pause']);
+              }else if(state==='pause'){
+                this.attrs.act_play.setUrl(resources.svg['media_play']);
+              }else if(state==='loading'){
+                this.attrs.act_play.setUrl(resources.svg['bolt']);
+              }else if(state==='waiting'){
+                this.attrs.act_play.setUrl(resources.svg['bolt']);
+              }else if(state==='stalled'){
+                this.attrs.act_play.setUrl(resources.svg['bolt']);
               }else{
-                if(frac.whole!==0){
-                  this.appendChild(new TextElement(frac.whole.toString()));
-                }
-                if(frac.num!==0&&frac.den!==0){
-                  this.appendChild(new DomElement("sup",{},[new TextElement(frac.num.toString(
-                                                    ))]));
-                  this.appendChild(new TextElement("\u2044"));
-                  this.appendChild(new DomElement("sub",{},[new TextElement(frac.den.toString(
-                                                    ))]));
-                }
-              }
-              if(suffix.length){
-                this.appendChild(new TextElement(suffix));
+                this.attrs.act_play.setUrl(resources.svg['media_error']);
               }
             }
-          };
-          class RecipeHeader extends DomElement {
-            constructor(text){
-              super("h2",{'className':style.header},[new TextElement(text)]);
-            }
-          };
-          class RecipeIngredientHeader extends DomElement {
-            constructor(span,item){
-              super("tr",{},[]);
-              if(item.header.length>1){
-                span=1;
-              }
-              this.data=item;
-              this.cell=this.appendChild(new DomElement("td",{'className':style.ingredientQuantityHeader},
-                                  [new TextElement(item.header[0])]));
-              this.appendChild(new DomElement("th",{'colSpan':2,'className':style.ingredientQuantityHeader},
-                                  []));
-            }
-            setSelectionIndex(index){
-              if(index<this.data.header.length){
-                this.cell.children[0].setText(this.data.header[index]);
-              }
-            }
-            setScaleFactor(scale){
-
-            }
-          };
-          class RecipeIngredientRow extends DomElement {
-            constructor(span,item){
-              super("tr",{},[]);
-              this.data=item;
-              this.selection_index=0;
-              this.scale_factor=1;
-              this.cell=this.appendChild(new DomElement("td",{'className':style.ingredientQuantity},
-                                  [new Fraction(item.quantities[0],"","",true)]));
-              this.appendChild(new DomElement("td",{'className':style.ingredientUnit},
-                                  [new TextElement(item.unit)]));
-              this.appendChild(new DomElement("td",{'className':style.ingredientName},
-                                  [new TextElement(item.name)]));
-            }
-            setSelectionIndex(index){
-              if(index<this.data.quantities.length){
-                this.selection_index=index;
-                this.cell.children[0].setValue(this.scale_factor*this.data.quantities[
-                                    this.selection_index],"","",true);
-              }
-            }
-            setScaleFactor(scale){
-              this.scale_factor=scale;
-              this.cell.children[0].setValue(this.scale_factor*this.data.quantities[
-                                this.selection_index],"","",true);
-            }
-          };
-          class RecipeIngredientSelect extends DomElement {
-            constructor(options,cbk){
-              super("select",{'className':style.select},[]);
-              this.options=options;
-              this.cbk=cbk;
-              options.forEach(opt=>{
-                  this.appendChild(new DomElement("option",{'value':opt},[new TextElement(
-                                                  opt)]));
-                });
-            }
-            onChange(event){
-              const value=this.getDomNode().value;
-              const index=this.options.indexOf(value);
-              console.log("change",value,index);
-              this.cbk(index);
-            }
-          };
-          class RecipeIngredientScale extends DomElement {
-            constructor(options,cbk){
-              super("input",{'type':"number",'step':".1",'className':style.text_input,
-                                  "required":"1","pattern":"(\d*\.\d+|\d+)"},[]);
-              this.appendChild(new TextElement("1"));
-              this.options=options;
-              this.cbk=cbk;
-            }
-            elementMounted(){
-              this.getDomNode().defaultValue=1;
-            }
-            onInput(event){
-              const value=parseFloat(this.getDomNode().value);
-              if(value!==NaN){
-                console.log("input",value);
-                this.cbk(value);
-              }
-            }
-          };
-          class RecipeIngredientsTable extends DomElement {
-            constructor(items){
-              super("table",{'className':style.ingredientTable},[]);
-              let span=1;
-              items.forEach(item=>{
-                  if(item.quantities!==undefined){
-                    if(item.quantities.length>span){
-                      span=item.quantities.length;
-                    }
-                  }
-                });
-              this.appendChild(new DomElement("tr",{},[new DomElement("th",{'colSpan':2+span},
-                                          [new TextElement("Ingredients")])]));
-              this.options=["small","medium","large"];
-              this.appendChild(new DomElement("tr",{},[new DomElement("td",{'colSpan':2},
-                                          [new TextElement("Scale")]),new DomElement("td",{'colSpan':span},
-                                          [new RecipeIngredientScale(this.options,scale=>this.handleScaleChanged(
-                                                      scale))])]));
-              this.appendChild(new DomElement("tr",{},[new DomElement("th",{'colSpan':2},
-                                          [new TextElement("Quantity")]),new DomElement("th",{},[new TextElement(
-                                                  "Name")])]));
-              this.rows=[];
-              items.forEach(item=>{
-                  if(item.options!==undefined){
-                    this.appendChild(new DomElement("tr",{},[new DomElement("td",
-                                                      {'colSpan':2,'className':style.ingredientName},[new TextElement(
-                                                              item.title)]),new DomElement("td",{'colSpan':span,
-                                                          'className':style.ingredientName},[new RecipeIngredientSelect(
-                                                              item.options,index=>this.handleOptionChanged(index))])]));
-                    
-                  }else if(item.header!==undefined){
-                    let row=this.appendChild(new RecipeIngredientHeader(span,item));
-                    
-                    this.rows.push(row);
-                    ;
+          }
+        };
+        class StationEditHeader extends components.NavHeader {
+          constructor(parent){
+            super("div",{'className':style.header},[]);
+            this.attrs.parent=parent;
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+            this.attrs.act_save=this.addAction(resources.svg['save'],this.handleSaveTracks.bind(
+                              this));
+            this.attrs.act_reset=this.addAction(resources.svg['refresh'],this.handleResetTracks.bind(
+                              this));
+            this.attrs.act_shutdown=this.addAction(resources.svg['discard'],this.handleShutdown.bind(
+                              this));
+            this.addToolBarElement(new DomElement("div",{'className':[style.grow]}));
+            
+            this.attrs.act_clipboard=this.addAction(resources.svg['share'],()=>{
+                if(store.globals.radio_broadcast_id!==null){
+                  const url=api.radioStationUrl(null,store.globals.radio_broadcast_id);
+                  
+                  console.log(url);
+                  if(daedalus.platform.isAndroid){
+                    Client.setClipboardUrl("Yue Radio",url);
                   }else{
-                    let row=this.appendChild(new RecipeIngredientRow(span,item));
-                    
-                    this.rows.push(row);
-                    ;
+                    navigator.clipboard.writeText(url).then(()=>{
+                        console.log('shared');
+                      }).catch(error=>{
+                        components.ErrorDrawer.post("Share Error",formatError(error));
+                        
+                      });
                   }
-                });
-            }
-            handleScaleChanged(index){
-              this.rows.forEach(row=>{
-                  row.setScaleFactor(index);
-                });
-            }
-            handleOptionChanged(index){
-              this.rows.forEach(row=>{
-                  row.setSelectionIndex(index);
-                });
-            }
-          };
-          class RecipeAttributes extends DomElement {
-            constructor(attrs){
-              super("ul",{'className':style.attributeList},[]);
-              attrs.forEach(attr=>{
-                  let child=this.appendChild(new DomElement("li",{'className':style.attributeItem},
-                                          [new TextElement(attr)]));
-                  let s=attr_style[attr];
-                  if(s!==undefined){
-                    child.addClassName(s);
-                  }
-                });
-            }
-          };
-          class RecipeSummary extends DomElement {
-            constructor(summary){
-              super("div",{'className':style.summary},[]);
-              summary.forEach(paragraph=>{
-                  this.appendChild(new DomElement("p",{},[new TextElement(paragraph)]));
-                  
-                });
-            }
-          };
-          class RecipeNotes extends DomElement {
-            constructor(notes){
-              super("ul",{'className':style.noteList},[]);
-              notes.forEach(note=>{
-                  this.appendChild(new DomElement("li",{'className':style.noteItem},
-                                          [new TextElement(note)]));
-                });
-            }
-          };
-          class RecipeSteps extends DomElement {
-            constructor(steps){
-              super("ol",{'className':style.steps},[]);
-              steps.forEach(step=>{
-                  this.appendChild(new DomElement("li",{},[new TextElement(step)]));
-                  
-                });
-            }
-          };
-          class Recipe extends DomElement {
-            constructor(recipe){
-              super("div",{},[]);
-              console.log(recipe);
-              this.top=this.appendChild(new DomElement("div",{'className':style.recipeHeader},
-                                  []));
-              this.top1=this.top.appendChild(new DomElement("div",{'className':style.recipeTitle},
-                                  []));
-              this.top1.appendChild(new RecipeHeader(recipe.title));
-              this.top1.appendChild(new RecipeAttributes(recipe.attributes));
-              if(recipe.summary.length>0){
-                this.top1.appendChild(new RecipeSummary(recipe.summary));
-              }
-              this.info_box=this.top.appendChild(new DomElement("div",{'className':style.infoHeader}));
-              
-              this.buildNutritionFacts(this.info_box,recipe.attributes,recipe.ingredients);
-              
-              this.appendChild(new DomElement("hr"));
-              this.appendChild(new RecipeIngredientsTable(recipe.ingredients));
-              this.steps=this.appendChild(new DomElement("div",{'className':style.divRecipeBody}));
-              
-              recipe.steps.forEach(steps=>{
-                  this.steps.appendChild(new DomElement("h4",{},[new TextElement(
-                                                  steps.header)]));
-                  if(steps.notes.length>0){
-                    this.steps.appendChild(new RecipeNotes(steps.notes));
-                  }
-                  if(steps.steps.length>0){
-                    this.steps.appendChild(new RecipeSteps(steps.steps));
-                  }
-                });
-              this.appendChild(new PageBreak());
-            }
-            buildNutritionFacts(parent,attrs,items){
-              parent.removeChildren();
-              let servings=1;
-              attrs.forEach(attr=>{
-                  if(attr.startsWith("servings=")){
-                    servings=+attr.substr(9);
-                  }
-                });
-              const selection_index=0;
-              const scale_factor=1;
-              const facts={};
-              items.forEach(item=>{
-                  if(item.info){
-                    let _servings=((((item.info)||{}).servings)||{}).value??1;
-                    for(let[key,value]of Object.entries(item.info[selection_index])){
-                    
-                      if(key=="servings"){
-                        continue;
-                      }
-                      if(facts[key]===undefined){
-                        facts[key]={'value':0,'unit':value['unit']};
-                      }
-                      facts[key].value+=value.value*scale_factor/_servings;
-                      ;
-                      ;
-                    }
-                    ;
-                  }
-                });
-              if(Object.keys(facts).length>0){
-                this.buildNutritionFactsTable(parent,1,facts);
-                if(servings>1){
-                  this.buildNutritionFactsTable(parent,servings,facts);
+                  ;
                 }
-              }
-            }
-            buildNutritionFactsTable(parent,servings,facts){
-              const lst=parent.appendChild(new DomElement("div",{'className':style.infoBox},
-                                  []));
-              lst.appendChild(new DomElement("div",{'className':style.infoTitle},
-                                  [new TextElement("Nutrition Facts")]));
-              const amount=((((facts)||{}).amount)||{}).value??0;
-              const unit=((((facts)||{}).amount)||{}).unit??"g";
-              if(servings==1){
-                lst.appendChild(new DomElement("div",{},[new TextElement("per "+(
-                                                  amount)+unit+" serving")]));
-                lst.appendChild(new DomElement("div",{},[new TextElement("\xa0")]));
-                
-              }else{
-                lst.appendChild(new DomElement("div",{},[new TextElement("per "+(
-                                                  amount/servings)+unit+" serving")]));
-                lst.appendChild(new DomElement("div",{},[new TextElement(servings+" servings")]));
-                
-              }
-              const keys=['calories','protein','total_fat','total_carbs','sugar',
-                              'sodium','calcium','potassium'];
-              const title=['Calories','Protein','Fat','Carbohydrates','Sugar','Sodium',
-                              'Calcium','Potassium'];
-              const styles=[style.infoRowCalorie,style.infoRowMacro,style.infoRowMacro,
-                              style.infoRowMacro,style.infoRowMacroSub,style.infoRowMicro,style.infoRowMicro,
-                              style.infoRowMicro];
-              keys.forEach((key,index)=>{
-                  const value=facts[key];
-                  lst.appendChild(new DomElement("div",{'className':styles[index]},
-                                          [new DomElement("div",{'className':style.infoAttribute},[new TextElement(
-                                                          title[index])]),new DomElement("div",{},[new Fraction(
-                                                          (((value)||{}).value??0)/servings,"",(((value)||{}).unit??""))])]));
-                  
-                });
-            }
-          };
-          class RecipePage extends DomElement {
-            elementMounted(){
-              this.removeChildren();
-              const lnk=new LinkElement("Home","/recipe");
-              this.appendChild(new DomElement("div",{},[lnk]));
-              api.recipeGetContent(Router.instance.match.path).then(result=>{
-                  result.result.forEach(recipe=>{
-                      this.appendChild(new Recipe(recipe));
-                    });
-                }).catch(error=>{
-                  console.error(error);
-                });
-            }
-          };
-          class RecipeIndexPage extends DomElement {
-            elementMounted(){
-              this.removeChildren();
-              const lst=this.appendChild(new DomElement("ul",{},[]));
-              api.recipeGetRecipes().then(result=>{
-                  result.result.forEach(item=>{
-                      const lnk=new LinkElement(item.name,"/recipe/"+item.path);
-                      lst.appendChild(new DomElement("li",{},[lnk]));
-                    });
-                }).catch(error=>{
-                  console.error(error);
-                });
-            }
-            buildTable(){
-              const table=this.appendChild(new DomElement("table",{'className':style.nutritionTable},
-                                  []));
-              table.appendChild(new DomElement("tr",{},[new DomElement("th",{},[new TextElement(
-                                                  'name')]),new DomElement("th",{},[new TextElement('source')]),
-                                      new DomElement("th",{},[new TextElement('quantities')]),new DomElement(
-                                          "th",{},[new TextElement('unit')]),new DomElement("th",{},[
-                                              new TextElement('protein')]),new DomElement("th",{},[new TextElement(
-                                                  'total_fat')]),new DomElement("th",{},[new TextElement(
-                                                  'total_carbs')]),new DomElement("th",{},[new TextElement(
-                                                  'suger')]),new DomElement("th",{},[new TextElement('sodium')]),
-                                      new DomElement("th",{},[new TextElement('calcium')]),new DomElement(
-                                          "th",{},[new TextElement('potassium')]),new DomElement("th",
-                                          {},[new TextElement('amount')]),new DomElement("th",{},[new TextElement(
-                                                  'servings')])]));
-              api.getIngredients().then(result=>{
-                  result.forEach(row=>{
-                      table.appendChild(new DomElement("tr",{},[new DomElement("td",
-                                                          {},[new TextElement(row.name)]),new DomElement("td",
-                                                          {},[new TextElement(row.source)]),new DomElement("td",
-                                                          {'className':style.nutritionTableValue},[new TextElement(
-                                                                  row.quantities)]),new DomElement("td",{},[new TextElement(
-                                                                  row.unit)]),new DomElement("td",{'className':style.nutritionTableValue},
-                                                          [new TextElement(((row.protein)||{}).value)]),new DomElement(
-                                                          "td",{'className':style.nutritionTableValue},[new TextElement(
-                                                                  ((row.total_fat)||{}).value)]),new DomElement("td",
-                                                          {'className':style.nutritionTableValue},[new TextElement(
-                                                                  ((row.total_carbs)||{}).value)]),new DomElement(
-                                                          "td",{'className':style.nutritionTableValue},[new TextElement(
-                                                                  ((row.suger)||{}).value)]),new DomElement("td",
-                                                          {'className':style.nutritionTableValue},[new TextElement(
-                                                                  ((row.sodium)||{}).value)]),new DomElement("td",
-                                                          {'className':style.nutritionTableValue},[new TextElement(
-                                                                  ((row.calcium)||{}).value)]),new DomElement("td",
-                                                          {'className':style.nutritionTableValue},[new TextElement(
-                                                                  ((row.potassium)||{}).value)]),new DomElement("td",
-                                                          {'className':style.nutritionTableValue},[new TextElement(
-                                                                  ((row.amount)||{}).value)]),new DomElement("td",
-                                                          {'className':style.nutritionTableValue},[new TextElement(
-                                                                  ((row.servings)||{}).value)])]));
-                    });
-                }).catch(error=>{
-                  console.error(error);
-                });
-            }
-          };
-          class SvgImage extends DomElement {
-            constructor(path){
-              super("img",{'src':path,'className':style.logo},[]);
-            }
-          };
-          class SortableTable extends DomElement {
-            constructor(headers,className=null){
-              super("table",{'className':className},[]);
-              this.appendChild(new DomElement("tr",{},headers.map((name,index)=>{
-                    
-                      return new SortableTableHeader(name,()=>{
-                          this.sortColumn(index);
-                        });
-                    })));
-              this.current_sort_index=0;
-            }
-            addRow(row,rowStyle){
-              let child=this.appendChild(new SortableTableRow(row.map((item,index)=>{
-                    
-                      let col=new SortableTableCell(item.value,item.display);
-                      col.props.className=item.style;
-                      return col;
-                    })));
-              child.props.className=rowStyle;
-            }
-            initSortColumn(column){
-              this.current_sort_index=column+1;
-              this.sortColumn(column);
-            }
-            sortColumn(column){
-              let tmp=this.children.slice(1);
-              console.log(`sort by ${column} rev=${(this.current_sort_index-1)===column}`);
-              
-              tmp.sort((a,b)=>{
-                  let v1=a.children[column].value;
-                  let v2=b.children[column].value;
-                  if(typeof v1==='string'||v1 instanceof String){
-                    return v1.localeCompare(v2);
-                  }else{
-                    return v1-v2;
-                  }
-                });
-              if(this.current_sort_index!==(column+1)){
-                this.current_sort_index=column+1;
-              }else{
-                tmp.reverse();
-                this.current_sort_index=-this.current_sort_index;
-              }
-              this.children[0].children.forEach((child,index)=>{
-                  child.setSortDirection(Math.sign(this.current_sort_index)*(index==(
-                                              column)));
-                });
-              tmp.unshift(this.children[0]);
-              this.children=tmp;
-              this.update();
-            }
-          };
-          class SortableTableHeader extends DomElement {
-            constructor(name,cbk){
-              super("th",{},[new DomElement("div",{},[new TextElement(name)]),new DomElement(
-                                      "div",{'className':style.hide},[new TextElement("\u25B2")]),new DomElement(
-                                      "div",{'className':style.hide},[new TextElement("\u25BC")])]);
-              
-              this.cbk=cbk;
-            }
-            setSortDirection(asc){
-              if(asc>0){
-                this.children[1].removeClassName(style.hide);
-                this.children[2].addClassName(style.hide);
-              }else if(asc<0){
-                this.children[1].addClassName(style.hide);
-                this.children[2].removeClassName(style.hide);
-              }else{
-                this.children[1].addClassName(style.hide);
-                this.children[2].addClassName(style.hide);
-              }
-            }
-            onClick(event){
-              this.cbk();
-            }
-          };
-          class SortableTableRow extends DomElement {
-            constructor(children){
-              super("tr",{},children);
-            }
-          };
-          class SortableTableCell extends DomElement {
-            constructor(value,display){
-              super("td",{},[new TextElement(display)]);
-              this.value=value;
-            }
-          };
-          function emoji_u(codeUnit){
-            return'\\u'+codeUnit.toString(16).toUpperCase();
-          };
-          function emoji(codePoint){
-            return String.fromCodePoint(codePoint);
-          };
-          class InfoOilPage extends DomElement {
-            elementMounted(){
-              this.removeChildren();
-              this.appendChild(new DomElement("div",{},[new LinkElement("Home","/recipe")]));
-              
-              this.appendChild(new DomElement("div",{},[new DomElement("h2",{},[new TextElement(
-                                                  "Oil")])]));
-              let s=emoji(0x1F951);
-              s+=emoji(0x1F96F);
-              s+=emoji(0x1FAD2);
-              s+=emoji(0x1F33D);
-              s+=emoji(0x1F95C);
-              s+=emoji(0x1F9C8);
-              this.appendChild(new DomElement("div",{},[new DomElement("h2",{},[new TextElement(
-                                                  s)])]));
-              this.appendChild(new DomElement("div",{},[new SvgImage("/static/usda-symbol.svg")]));
-              
-              let scheme1=[style.oilTableRowSmokePoint1,style.oilTableRowSmokePoint2,
-                              style.oilTableRowSmokePoint3,style.oilTableRowSmokePoint4,style.oilTableRowSmokePoint5];
-              
-              let scheme2=[style.oilTableRowPrice5,style.oilTableRowPrice4,style.oilTableRowPrice3,
-                              style.oilTableRowPrice2,style.oilTableRowPrice1];
-              api.getInfoOil().then(result=>{
-                  const header=result.result[0];
-                  const data=result.result.slice(1);
-                  this.table=this.appendChild(new SortableTable(header,style.oilTable));
-                  
-                  data.forEach((row,index)=>{
-                      const rowdata=row.map((item,index)=>{
-                          let display=item;
-                          let _style=(index===0)?style.oilTableRowName:style.oilTableRowData;
-                          
-                          if(index>0&&index<row.length-3&&item!==null){
-                            display=item.toFixed(1)+"%";
-                          }else if(index==row.length-1){
-                            if(item>=4.366){
-                              display="S";
-                              _style=[_style,style.oilTableRowScoreS];
-                            }else if(item>=4.082){
-                              display="A";
-                              _style=[_style,style.oilTableRowScoreA];
-                            }else if(item>=3.623){
-                              display="B";
-                              _style=[_style,style.oilTableRowScoreB];
-                            }else if(item>=3.175){
-                              display="C";
-                              _style=[_style,style.oilTableRowScoreC];
-                            }else if(item>=2.722){
-                              display="D";
-                              _style=[_style,style.oilTableRowScoreD];
-                            }else{
-                              display="F";
-                              _style=[_style,style.oilTableRowScoreF];
-                            }
-                          }else if(index==row.length-2){
-                            if(item==0){
-                              display="";
-                            }else{
-                              display=`$${item.toFixed(2)}`;
-                              let j=Math.floor(Math.max(0,Math.min(4,(item-1.0)/25*5)));
-                              
-                              _style=[_style,scheme2[j]];
-                              ;
-                            }
-                          }else if(index==row.length-3){
-                            let j=Math.floor(Math.max(0,Math.min(4,(item-100)/200*5)));
-                            
-                            _style=[_style,scheme1[j]];
-                            ;
-                          }
-                          return{'style':_style,'value':item,'display':display};
-                        });
-                      this.table.addRow(rowdata,style.oilTableRow);
-                    });
-                  this.table.initSortColumn(9);
-                  this.appendChild(new DomElement("div",{},[new TextElement("blah")]));
-                  
-                }).catch(error=>{
-                  console.error(error);
-                });
-            }
-          };
-          return[InfoOilPage,RecipeIndexPage,RecipePage];
-        })();
-      const[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
-              UserRadioListPage,UserRadioStationEditPage,UserRadioStationHistoryPage,UserRadioStationPage,
-              UserRadioStationSearchPage]=(function(){
-          const style={'main':'dcs-d0546ce4-0','grow':'dcs-d0546ce4-1','svgDiv':'dcs-d0546ce4-2',
-                      'header':'dcs-d0546ce4-3','content':'dcs-d0546ce4-4','list':'dcs-d0546ce4-5',
-                      'placeholder':'dcs-d0546ce4-6','editIndex':'dcs-d0546ce4-7','grip':'dcs-d0546ce4-8',
-                      'headerInfo':'dcs-d0546ce4-9','listItem':'dcs-d0546ce4-10','listItemTitle':'dcs-d0546ce4-11',
-                      'listItemInfo':'dcs-d0546ce4-12','textGrey':'dcs-d0546ce4-13','listNoItemRow':'dcs-d0546ce4-14',
-                      'listItemRow':'dcs-d0546ce4-15','listItemRowText':'dcs-d0546ce4-16','listItemColText':'dcs-d0546ce4-17',
-                      'votePanel':'dcs-d0546ce4-18','moreButton':'dcs-d0546ce4-19','voteButton':'dcs-d0546ce4-20',
-                      'icon1':'dcs-d0546ce4-21','icon2':'dcs-d0546ce4-22','padding2':'dcs-d0546ce4-23',
-                      'voteText':'dcs-d0546ce4-24','voteUp':'dcs-d0546ce4-25','voteNuetral':'dcs-d0546ce4-26',
-                      'voteDown':'dcs-d0546ce4-27','show':'dcs-d0546ce4-28','hide':'dcs-d0546ce4-29',
-                      'floater':'dcs-d0546ce4-30','titleText':'dcs-d0546ce4-31','footerHighlight':'dcs-d0546ce4-32'};
-          
-          ;
-          class HiddenEvent{
-            constructor(){
-              let hidden,visibilityChange;
-              if(typeof document.hidden!=="undefined"){
-                hidden="hidden";
-                visibilityChange="visibilitychange";
-              }else if(typeof document.msHidden!=="undefined"){
-                hidden="msHidden";
-                visibilityChange="msvisibilitychange";
-              }else if(typeof document.webkitHidden!=="undefined"){
-                hidden="webkitHidden";
-                visibilityChange="webkitvisibilitychange";
-              }
-              this.h=hidden;
-              this.v=visibilityChange;
-              this.f=this.handleVisibilityChange.bind(this);
-            }
-            connect(){
-              document.addEventListener(this.v,this.f,false);
-            }
-            disconnect(){
-              document.removeEventListener(this.v,this.f,false);
-            }
-            handleVisibilityChange(){
-              if(document[this.h]){
-                console.log('document.hidden');
-              }else{
-                console.log('document.visible');
-              }
-            }
-          };
-          class AudioDevice{
-            constructor(){
-              this.connected_elements=[];
-              this.current_track=null;
-              this.impl=null;
-              this.auto_play=true;
-            }
-            setImpl(impl){
-              this.impl=impl;
-            }
-            duration(){
-              return this.impl.duration();
-            }
-            currentTime(){
-              return this.impl.currentTime();
-            }
-            setCurrentTime(seconds){
-              return this.impl.setCurrentTime(seconds);
-            }
-            togglePlayPause(){
-              if(this.current_track===null){
-                const match=Router.instance.match();
-                api.radioStationCurrentTrack(match.station).then((result)=>{
-                    const track=result.result;
-                    if(track.source==='library'){
-                      const url=api.librarySongAudioUrl(track.sid);
-                      track.stream={'url':url};
-                      ;
-                    }
-                    console.log(track,track.sid,track.stream);
-                    this.playTrack(track);
-                  }).catch(error=>{
-                    if(error.status===404){
-                      this.next();
-                    }else{
-                      console.log(error);
-                      components.ErrorDrawer.post("Update Error",formatError(error));
-                      
-                    }
-                  });
-                return;
-                ;
-              }
-              if(this.impl.isPlaying()){
-                this.impl.pause();
-              }else{
-                this.impl.play();
-              }
-            }
-            loadTrack(track){
-              console.log("loadTrack",track);
-              this.current_track=track;
-              this.impl.loadUrl(track.stream.url);
-              this._sendEvent('handleTrackChanged',track);
-            }
-            playTrack(track){
-              console.log("playTrack",track);
-              this.current_track=track;
-              this.impl.playUrl(track.stream.url);
-              this._sendEvent('handleTrackChanged',track);
-            }
-            next(){
-              if(daedalus.platform.isAndroid){
-                const match=Router.instance.match();
-                console.log("initialize android radio");
-                AndroidNativeAudio.initRadio(api.getAuthToken(),match.station);
-                console.log("play next track");
-                AndroidNativeAudio.playNextRadioUrl();
-                ;
-              }else{
-                const match=Router.instance.match();
-                let station=match.station;
-                api.radioStationNextTrack(station).then(result=>{
-                    const track=result.result;
-                    if(track.source==='library'){
-                      const url=api.librarySongAudioUrl(track.sid);
-                      track.stream={'url':url};
-                      ;
-                    }
-                    this.playTrack(track);
-                    const user_track=store.globals.radio_tracks[track.uid];
-                    if(user_track){
-                      user_track.date_played=Math.round(new Date().getTime()/1000);
-                      
-                      store.globals.radio_previous_tracks.unshift(user_track);
-                      delete store.globals.radio_tracks[user_track.uid];
-                    }else{
-                      console.error('error updating history');
-                    }
-                  }).catch(error=>{
-                    console.log(error);
-                    components.ErrorDrawer.post("Update Error",formatError(error));
-                    
-                  });
-                ;
-                ;
-              }
-            }
-            connectView(elem){
-              if(this.connected_elements.filter(e=>e===elem).length>0){
-                console.error("already connected view");
-                return;
-              }
-              this.connected_elements.push(elem);
-            }
-            disconnectView(elem){
-              this.connected_elements=this.connected_elements.filter(e=>e!==elem);
-              
-            }
-            _sendEvent(eventname,event){
-              this.connected_elements=this.connected_elements.filter(e=>e.isMounted(
-                                ));
-              this.connected_elements.forEach(e=>{
-                  if(e&&e[eventname]){
-                    e[eventname](event);
-                  }
-                });
-            }
-          };
-          let device_instance=null;
-          AudioDevice.instance=function(){
-            if(device_instance===null){
-              device_instance=new AudioDevice();
-              let impl;
-              if(daedalus.platform.isAndroid){
-                impl=new audio.NativeDeviceImpl(device_instance);
-              }else{
-                impl=new audio.RemoteDeviceImpl(device_instance);
-              }
-              device_instance.setImpl(impl);
-              ;
-            }
-            return device_instance;
-          };
-          function formatTime(secs){
-            secs=secs===Infinity?0:secs;
-            let minutes=Math.floor(secs/60)||0;
-            let seconds=Math.floor(secs-minutes*60)||0;
-            return minutes+':'+(seconds<10?'0':'')+seconds;
-          };
-          function formatError(error){
-            console.log(typeof error);
-            if(typeof error==='string'||error instanceof String){
-              return error;
-            }else{
-              console.log(Object.keys(error));
-              if(error.status!==undefined&&error.statusText!==undefined){
-                return error.status+": "+error.statusText;
-              }else{
-                return""+error;
-              }
-            }
-          };
-          let thumbnail_work_queue=[];
-          let thumbnail_work_count=0;
-          function thumbnail_DoProcessNext(tag){
-            if(thumbnail_work_queue.length>0){
-              const elem=thumbnail_work_queue.shift();
-              elem.attrs.tag=tag;
-              if(elem.props.src!=elem.state.url1){
-                elem.updateProps({'src':elem.state.url1});
-              }else{
-                thumbnail_ProcessNext(tag);
-              }
-              ;
-            }else{
-              thumbnail_work_count-=1;
-            }
-          };
-          function thumbnail_ProcessNext(tag){
-            if(thumbnail_work_queue.length>0){
-              requestIdleCallback(()=>thumbnail_DoProcessNext(tag));
-            }else{
-              thumbnail_work_count-=1;
-            }
-          };
-          function thumbnail_ProcessStart(){
-            console.log("thumbnail_ProcessStart: "+thumbnail_work_queue.length);
-            if(thumbnail_work_queue.length>=3){
-              requestIdleCallback(()=>thumbnail_DoProcessNext('A'));
-              requestIdleCallback(()=>thumbnail_DoProcessNext('B'));
-              requestIdleCallback(()=>thumbnail_DoProcessNext('C'));
-              thumbnail_work_count=3;
-            }else if(thumbnail_work_queue.length>0){
-              requestIdleCallback(()=>thumbnail_DoProcessNext('A'));
-              thumbnail_work_count=1;
-            }
-          };
-          function thumbnail_CancelQueue(){
-            thumbnail_work_queue=[];
-            thumbnail_work_count=0;
-          };
-          function radio_reset(){
-            store.globals.radio_tracks=null;
-            store.globals.radio_all_tracks=null;
-            store.globals.radio_previous_tracks=null;
-            store.globals.radio_broadcast_id=null;
-            store.globals.radio_sorted_tracks=null;
-            store.globals.radio_search_source=null;
-            store.globals.radio_search_query=null;
-            store.globals.radio_update_index=undefined;
-          };
-          class TitleTextElement extends DomElement {
-            constructor(text){
-              super("div",{'className':style.titleText},[new TextElement(text)]);
-              
-            }
-          };
-          class SvgIconElementImpl extends DomElement {
-            constructor(url1,url2,props){
-              super("img",{'width':80,'height':60,...props},[]);
-              this.attrs.tag="?";
-              this.setUrls(url1,url2);
-            }
-            onLoad(event){
-              thumbnail_ProcessNext(this.attrs.tag);
-            }
-            onError(error){
-              console.warn("error loading: ",this.props.src,JSON.stringify(error));
-              
-              if(this.props.src!=this.state.url2&&this.state.url2){
-                this.updateProps({'src':this.state.url2});
-              }else{
-                thumbnail_ProcessNext(this.attrs.tag);
-              }
-            }
-            setUrls(url1,url2){
-              this.updateProps({'src':null});
-              this.state={'url1':url1,'url2':url2};
-              if(url1){
-                thumbnail_work_queue.push(this);
-              }
-            }
-          };
-          class SvgIconElement extends DomElement {
-            constructor(url1,url2,props){
-              super("div",{'className':style.svgDiv},[new SvgIconElementImpl(url1,
-                                      url2,props)]);
-            }
-            setUrls(url1,url2){
-              this.children[0].setUrls(url1,url2);
-            }
-          };
-          class StationHeader extends components.NavHeader {
-            constructor(parent,isPublic){
-              super("div",{'className':style.header},[]);
-              this.attrs.parent=parent;
-              this.attrs.isPublic=isPublic;
-              if(!isPublic){
-                this.addAction(resources.svg['menu'],()=>{
-                    store.globals.showMenu();
-                  });
-                this.attrs.act_play=this.addAction(resources.svg['media_play'],()=>{
-                  
-                    AudioDevice.instance().togglePlayPause();
-                  });
-                this.addAction(resources.svg['media_next'],()=>{
-                    AudioDevice.instance().next();
-                  });
-              }else{
-                this.addToolBarElement(new TitleTextElement("Radio"));
-                this.attrs.toolbarInner.addClassName(style.main);
-              }
-              this.attrs.track_info=new CurrentTrackInfoElement();
-              this.attrs.track_div=new DomElement("div",{'className':style.headerInfo},
-                              [this.attrs.track_info]);
-              this.addRow(true);
-              this.addRowElement(0,this.attrs.track_div);
-              this.attrs.txt_SongTime1=new TextElement("00:00:00");
-              this.attrs.txt_SongTime2=new TextElement("00:00:00");
-              if(!isPublic){
-                this.addRow(true);
-                this.addRowElement(1,this.attrs.txt_SongTime1);
-                this.addRowElement(1,new components.HStretch());
-                this.addRowElement(1,this.attrs.txt_SongTime2);
-                this.attrs.pbar_time=new components.ProgressBar((pos)=>{
-                    let inst=AudioDevice.instance();
-                    let dur=inst.duration();
-                    if(!!dur){
-                      inst.setCurrentTime(pos*dur);
-                    }
-                  });
-                this.addRow(true);
-                this.addRowElement(2,this.attrs.pbar_time);
-              }
-            }
-            setTrack(track){
-              this.attrs.track_info.setItem(track);
-              thumbnail_ProcessStart();
-            }
-            setTime(currentTime,duration){
-              try{
-                const t1=formatTime(currentTime);
-                const t2=formatTime(duration);
-                this.attrs.txt_SongTime1.setText(t1);
-                this.attrs.txt_SongTime2.setText(t2);
-                this.attrs.pbar_time.setPosition(currentTime,duration);
-                ;
-                ;
-              }catch(e){
-                console.error(e);
-              };
-            }
-            setAudioState(state){
-              if(!this.attrs.isPublic){
-                if(state==='play'){
-                  this.attrs.act_play.setUrl(resources.svg['media_pause']);
-                }else if(state==='pause'){
-                  this.attrs.act_play.setUrl(resources.svg['media_play']);
-                }else if(state==='loading'){
-                  this.attrs.act_play.setUrl(resources.svg['bolt']);
-                }else if(state==='waiting'){
-                  this.attrs.act_play.setUrl(resources.svg['bolt']);
-                }else if(state==='stalled'){
-                  this.attrs.act_play.setUrl(resources.svg['bolt']);
-                }else{
-                  this.attrs.act_play.setUrl(resources.svg['media_error']);
-                }
-              }
-            }
-          };
-          class StationEditHeader extends components.NavHeader {
-            constructor(parent){
-              super("div",{'className':style.header},[]);
-              this.attrs.parent=parent;
-              this.addAction(resources.svg['menu'],()=>{
-                  store.globals.showMenu();
-                });
-              this.attrs.act_save=this.addAction(resources.svg['save'],this.handleSaveTracks.bind(
-                                  this));
-              this.attrs.act_reset=this.addAction(resources.svg['refresh'],this.handleResetTracks.bind(
-                                  this));
-              this.attrs.act_shutdown=this.addAction(resources.svg['discard'],this.handleShutdown.bind(
-                                  this));
-              this.addToolBarElement(new DomElement("div",{'className':[style.grow]}));
-              
-              this.attrs.act_clipboard=this.addAction(resources.svg['share'],()=>{
-                
-                  if(store.globals.radio_broadcast_id!==null){
-                    const url=api.radioStationUrl(null,store.globals.radio_broadcast_id);
-                    
-                    console.log(url);
-                    if(daedalus.platform.isAndroid){
-                      Client.setClipboardUrl("Yue Radio",url);
-                    }else{
-                      navigator.clipboard.writeText(url).then(()=>{
-                          console.log('shared');
-                        }).catch(error=>{
-                          components.ErrorDrawer.post("Share Error",formatError(error));
-                          
-                        });
-                    }
-                    ;
-                  }
-                });
+              });
+            this.attrs.act_save.addClassName(style.hide);
+            this.attrs.act_reset.addClassName(style.hide);
+            this.attrs.act_shutdown.addClassName(style.hide);
+            this.attrs.act_clipboard.addClassName(style.hide);
+            this.attrs.slider=this.addToolBarElement(new components.Slider(this.handleToggleBroadcasting.bind(
+                                  this)));
+            this.attrs.toolbarInner.addClassName(style.main);
+          }
+          setBroadcasting(enable){
+            this.attrs.slider.setChecked(enable);
+            if(enable){
+              this.attrs.act_clipboard.removeClassName(style.hide);
               this.attrs.act_save.addClassName(style.hide);
               this.attrs.act_reset.addClassName(style.hide);
               this.attrs.act_shutdown.addClassName(style.hide);
+            }else{
               this.attrs.act_clipboard.addClassName(style.hide);
-              this.attrs.slider=this.addToolBarElement(new components.Slider(this.handleToggleBroadcasting.bind(
-                                      this)));
-              this.attrs.toolbarInner.addClassName(style.main);
+              this.attrs.act_save.removeClassName(style.hide);
+              this.attrs.act_reset.removeClassName(style.hide);
+              this.attrs.act_shutdown.removeClassName(style.hide);
             }
-            setBroadcasting(enable){
-              this.attrs.slider.setChecked(enable);
-              if(enable){
-                this.attrs.act_clipboard.removeClassName(style.hide);
-                this.attrs.act_save.addClassName(style.hide);
-                this.attrs.act_reset.addClassName(style.hide);
-                this.attrs.act_shutdown.addClassName(style.hide);
-              }else{
-                this.attrs.act_clipboard.addClassName(style.hide);
-                this.attrs.act_save.removeClassName(style.hide);
-                this.attrs.act_reset.removeClassName(style.hide);
-                this.attrs.act_shutdown.removeClassName(style.hide);
-              }
-            }
-            handleToggleBroadcasting(enable){
-              const match=Router.instance.match();
-              api.radioStationEnable(match.station,enable).then(result=>{
-                  store.globals.radio_broadcast_id=result.result.broadcast_id;
-                  if(enable){
-                    this.attrs.act_clipboard.removeClassName(style.hide);
-                    this.attrs.act_save.addClassName(style.hide);
-                    this.attrs.act_reset.addClassName(style.hide);
-                    this.attrs.act_shutdown.addClassName(style.hide);
-                  }else{
-                    this.attrs.act_clipboard.addClassName(style.hide);
-                    this.attrs.act_save.removeClassName(style.hide);
-                    this.attrs.act_reset.removeClassName(style.hide);
-                    this.attrs.act_shutdown.removeClassName(style.hide);
-                  }
-                  if((store.globals.radio_broadcast_id!==null)^(enable===true)){
-                    this.setBroadcasting(store.globals.radio_broadcast_id!==null);
-                    
-                  }
-                  this.attrs.parent.handleToggleBroadcasting(store.globals.radio_broadcast_id!==null);
-                  
-                }).catch(error=>{
-                  components.ErrorDrawer.post("Broadcast Error","unable to toggle broadcast state");
-                  
-                });
-            }
-            handleSaveTracks(){
-              const match=Router.instance.match();
-              api.radioStationSave(match.station).then(result=>{
-                  console.log(result);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Reset Error",formatError(error));
-                });
-            }
-            handleResetTracks(){
-              const match=Router.instance.match();
-              api.radioStationResetTracks(match.station).then(result=>{
-                  _processUpdates_TrackReset();
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Reset Error",formatError(error));
-                });
-            }
-            handleShutdown(){
-              const match=Router.instance.match();
-              api.radioStationShutdown(match.station).then(result=>{
-                  radio_reset();
-                  router.navigate(router.routes.userRadio());
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Shutdown Error",formatError(error));
-                  
-                });
-            }
-          };
-          class StationHistoryHeader extends components.NavHeader {
-            constructor(parent,isPublic){
-              super("div",{'className':style.header},[]);
-              this.attrs.parent=parent;
-              if(!isPublic){
-                this.addAction(resources.svg['menu'],()=>{
-                    store.globals.showMenu();
-                  });
-              }else{
-                this.addToolBarElement(new TitleTextElement("Track History"));
-                this.attrs.toolbarInner.addClassName(style.main);
-              }
-            }
-          };
-          class StationSearchHeader extends components.NavHeader {
-            constructor(parent,isPublic){
-              super("div",{'className':style.header},[]);
-              this.attrs.parent=parent;
-              this.attrs.isPublic=isPublic;
-              this.attrs.txtInput=new TextInputElement("",null,(text)=>{
-                  this.attrs.parent.search(this.attrs.source,text);
-                });
-              this.attrs.txtInput.updateProps({"autocapitalize":"off"});
-              if(!isPublic){
-                this.attrs.source="library";
-                this.addAction(resources.svg['menu'],()=>{
-                    store.globals.showMenu();
-                  });
-                this.attrs.act_toggle_source=this.addAction(resources.svg['playlist'],
-                                  ()=>{
-                    if(this.attrs.source==='library'){
-                      this.attrs.source='youtube';
-                      this.attrs.act_toggle_source.setUrl(resources.svg['externalmedia']);
-                      
-                    }else{
-                      this.attrs.source='library';
-                      this.attrs.act_toggle_source.setUrl(resources.svg['playlist']);
-                      
-                    }
-                  });
-              }else{
-                this.attrs.source="youtube";
-                this.addToolBarElement(new TitleTextElement("Search Youtube"));
-                this.attrs.toolbarInner.addClassName(style.main);
-              }
-              this.addRow(false);
-              this.addRowAction(0,resources.svg.media_error,()=>{
-                  this.attrs.txtInput.setText("");
-                  this.attrs.txtInput.getDomNode().focus();
-                  this.attrs.parent.search("");
-                });
-              this.addRowElement(0,this.attrs.txtInput);
-              this.attrs.txtInput.addClassName(style.grow);
-              this.addRowAction(0,resources.svg.search,()=>{
-                  const text=this.attrs.txtInput.getText();
-                  this.attrs.parent.search(this.attrs.source,text);
-                });
-            }
-            setSource(source){
-              if(!this.attrs.isPublic){
-                this.attrs.source=source;
-                if(source==='youtube'){
-                  this.attrs.act_toggle_source.setUrl(resources.svg['externalmedia']);
-                  
-                }else if(source==='library'){
-                  this.attrs.act_toggle_source.setUrl(resources.svg['playlist']);
-                  
+          }
+          handleToggleBroadcasting(enable){
+            const match=Router.instance.match();
+            api.radioStationEnable(match.station,enable).then(result=>{
+                store.globals.radio_broadcast_id=result.result.broadcast_id;
+                if(enable){
+                  this.attrs.act_clipboard.removeClassName(style.hide);
+                  this.attrs.act_save.addClassName(style.hide);
+                  this.attrs.act_reset.addClassName(style.hide);
+                  this.attrs.act_shutdown.addClassName(style.hide);
+                }else{
+                  this.attrs.act_clipboard.addClassName(style.hide);
+                  this.attrs.act_save.removeClassName(style.hide);
+                  this.attrs.act_reset.removeClassName(style.hide);
+                  this.attrs.act_shutdown.removeClassName(style.hide);
                 }
-              }
-            }
-            setQuery(query){
-              this.attrs.txtInput.setText(query);
-            }
-          };
-          class ListHeader extends components.NavHeader {
-            constructor(parent){
-              super("div",{'className':style.header},[]);
+                if((store.globals.radio_broadcast_id!==null)^(enable===true)){
+                  this.setBroadcasting(store.globals.radio_broadcast_id!==null);
+                }
+                this.attrs.parent.handleToggleBroadcasting(store.globals.radio_broadcast_id!==null);
+                
+              }).catch(error=>{
+                components.ErrorDrawer.post("Broadcast Error","unable to toggle broadcast state");
+                
+              });
+          }
+          handleSaveTracks(){
+            const match=Router.instance.match();
+            api.radioStationSave(match.station).then(result=>{
+                console.log(result);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Reset Error",formatError(error));
+              });
+          }
+          handleResetTracks(){
+            const match=Router.instance.match();
+            api.radioStationResetTracks(match.station).then(result=>{
+                _processUpdates_TrackReset();
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Reset Error",formatError(error));
+              });
+          }
+          handleShutdown(){
+            const match=Router.instance.match();
+            api.radioStationShutdown(match.station).then(result=>{
+                radio_reset();
+                router.navigate(router.routes.userRadio());
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Shutdown Error",formatError(error));
+                
+              });
+          }
+        };
+        class StationHistoryHeader extends components.NavHeader {
+          constructor(parent,isPublic){
+            super("div",{'className':style.header},[]);
+            this.attrs.parent=parent;
+            if(!isPublic){
               this.addAction(resources.svg['menu'],()=>{
                   store.globals.showMenu();
                 });
+            }else{
+              this.addToolBarElement(new TitleTextElement("Track History"));
+              this.attrs.toolbarInner.addClassName(style.main);
             }
-          };
-          class Footer extends components.NavFooter {
-            constructor(parent,currentIndex,isPublic){
-              super();
-              this.spaceEvenly();
-              this.attrs.parent=parent;
-              if(!isPublic){
-                this.addAction(resources.svg.edit,()=>{
-                    const match=Router.instance.match();
-                    router.navigate(router.routes.userRadioStationEdit({'station':match.station},
-                                              {}));
-                  }).updateProps({'width':64});
-              }else{
-                currentIndex-=1;
-              }
-              this.addAction(resources.svg.history,()=>{
-                  const match=Router.instance.match();
-                  const route_fn=(isPublic)?router.routes.publicRadioHistory:router.routes.userRadioStationHistory;
-                  
-                  router.navigate(route_fn({'station':match.station},{}));
-                }).updateProps({'width':64});
-              this.addAction(resources.svg.microphone,()=>{
-                  const match=Router.instance.match();
-                  const route_fn=(isPublic)?router.routes.publicRadio:router.routes.userRadioStation;
-                  
-                  router.navigate(route_fn({'station':match.station},{}));
-                }).updateProps({'width':64});
-              this.addAction(resources.svg.search_generic,()=>{
-                  const match=Router.instance.match();
-                  const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
-                  
-                  let params={};
-                  if(store.globals.radio_search_source!==undefined){
-                    params={'source':store.globals.radio_search_source,'query':store.globals.radio_search_query};
+          }
+        };
+        class StationSearchHeader extends components.NavHeader {
+          constructor(parent,isPublic){
+            super("div",{'className':style.header},[]);
+            this.attrs.parent=parent;
+            this.attrs.isPublic=isPublic;
+            this.attrs.txtInput=new TextInputElement("",null,(text)=>{
+                this.attrs.parent.search(this.attrs.source,text);
+              });
+            this.attrs.txtInput.updateProps({"autocapitalize":"off"});
+            if(!isPublic){
+              this.attrs.source="library";
+              this.addAction(resources.svg['menu'],()=>{
+                  store.globals.showMenu();
+                });
+              this.attrs.act_toggle_source=this.addAction(resources.svg['playlist'],
+                              ()=>{
+                  if(this.attrs.source==='library'){
+                    this.attrs.source='youtube';
+                    this.attrs.act_toggle_source.setUrl(resources.svg['externalmedia']);
+                    
+                  }else{
+                    this.attrs.source='library';
+                    this.attrs.act_toggle_source.setUrl(resources.svg['playlist']);
                     
                   }
-                  router.navigate(route_fn({'station':match.station},params));
+                });
+            }else{
+              this.attrs.source="youtube";
+              this.addToolBarElement(new TitleTextElement("Search Youtube"));
+              this.attrs.toolbarInner.addClassName(style.main);
+            }
+            this.addRow(false);
+            this.addRowAction(0,resources.svg.media_error,()=>{
+                this.attrs.txtInput.setText("");
+                this.attrs.txtInput.getDomNode().focus();
+                this.attrs.parent.search("");
+              });
+            this.addRowElement(0,this.attrs.txtInput);
+            this.attrs.txtInput.addClassName(style.grow);
+            this.addRowAction(0,resources.svg.search,()=>{
+                const text=this.attrs.txtInput.getText();
+                this.attrs.parent.search(this.attrs.source,text);
+              });
+          }
+          setSource(source){
+            if(!this.attrs.isPublic){
+              this.attrs.source=source;
+              if(source==='youtube'){
+                this.attrs.act_toggle_source.setUrl(resources.svg['externalmedia']);
+                
+              }else if(source==='library'){
+                this.attrs.act_toggle_source.setUrl(resources.svg['playlist']);
+              }
+            }
+          }
+          setQuery(query){
+            this.attrs.txtInput.setText(query);
+          }
+        };
+        class ListHeader extends components.NavHeader {
+          constructor(parent){
+            super("div",{'className':style.header},[]);
+            this.addAction(resources.svg['menu'],()=>{
+                store.globals.showMenu();
+              });
+          }
+        };
+        class Footer extends components.NavFooter {
+          constructor(parent,currentIndex,isPublic){
+            super();
+            this.spaceEvenly();
+            this.attrs.parent=parent;
+            if(!isPublic){
+              this.addAction(resources.svg.edit,()=>{
+                  const match=Router.instance.match();
+                  router.navigate(router.routes.userRadioStationEdit({'station':match.station},
+                                          {}));
                 }).updateProps({'width':64});
-              const child=this.attrs.toolbarInner.children[currentIndex];
-              child.addClassName(style.footerHighlight);
+            }else{
+              currentIndex-=1;
             }
-          };
-          class UpcomingTracksListElement extends DomElement {
-            constructor(elem){
-              super("div",{'className':style.list},[]);
-            }
-          };
-          class CurrentTrackInfoElement extends DomElement {
-            constructor(showDetails=0){
-              super("div",{'className':style.listItemRow},[]);
-              this.attrs.showDetails=showDetails;
-              const url1=null;
-              const url2=null;
-              this.attrs.lbl_thumb=new SvgIconElement(url1,url2,{'className':style.icon1});
+            this.addAction(resources.svg.history,()=>{
+                const match=Router.instance.match();
+                const route_fn=(isPublic)?router.routes.publicRadioHistory:router.routes.userRadioStationHistory;
+                
+                router.navigate(route_fn({'station':match.station},{}));
+              }).updateProps({'width':64});
+            this.addAction(resources.svg.microphone,()=>{
+                const match=Router.instance.match();
+                const route_fn=(isPublic)?router.routes.publicRadio:router.routes.userRadioStation;
+                
+                router.navigate(route_fn({'station':match.station},{}));
+              }).updateProps({'width':64});
+            this.addAction(resources.svg.search_generic,()=>{
+                const match=Router.instance.match();
+                const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
+                
+                let params={};
+                if(store.globals.radio_search_source!==undefined){
+                  params={'source':store.globals.radio_search_source,'query':store.globals.radio_search_query};
+                  
+                }
+                router.navigate(route_fn({'station':match.station},params));
+              }).updateProps({'width':64});
+            const child=this.attrs.toolbarInner.children[currentIndex];
+            child.addClassName(style.footerHighlight);
+          }
+        };
+        class UpcomingTracksListElement extends DomElement {
+          constructor(elem){
+            super("div",{'className':style.list},[]);
+          }
+        };
+        class CurrentTrackInfoElement extends DomElement {
+          constructor(showDetails=0){
+            super("div",{'className':style.listItemRow},[]);
+            this.attrs.showDetails=showDetails;
+            const url1=null;
+            const url2=null;
+            this.attrs.lbl_thumb=new SvgIconElement(url1,url2,{'className':style.icon1});
+            
+            this.appendChild(this.attrs.lbl_thumb);
+            this.attrs.lbl_title=new TextElement("");
+            const div=this.appendChild(new DomElement("div",{'className':style.listItemColText}));
+            
+            div.appendChild(new DomElement("div",{'className':style.listItemTitle},
+                              [this.attrs.lbl_title]));
+          }
+          setItem(item){
+            const text1=item.title;
+            const url1=((((item)||{}).thumbnail)||{}).url??resources.svg.disc;
+            const url2=null;
+            this.attrs.item=item;
+            this.attrs.lbl_title.setText(text1);
+            this.attrs.lbl_thumb.setUrls(url1,url2);
+          }
+        };
+        class NoTrackElement extends DomElement {
+          constructor(showDetails=0){
+            super("div",{'className':style.listNoItemRow},[]);
+            this.appendChild(new TextElement("No element"));
+          }
+        };
+        class TrackInfoElement extends DomElement {
+          constructor(showDetails=0,showThumb=1){
+            super("div",{'className':style.listItemRow},[]);
+            this.attrs.showDetails=showDetails;
+            this.attrs.showThumb=showThumb;
+            const url1=null;
+            const url2=null;
+            if(showThumb!==0){
+              this.attrs.lbl_thumb=new SvgIconElement(url1,url2,{'className':style.icon2});
               
               this.appendChild(this.attrs.lbl_thumb);
-              this.attrs.lbl_title=new TextElement("");
-              const div=this.appendChild(new DomElement("div",{'className':style.listItemColText}));
-              
-              div.appendChild(new DomElement("div",{'className':style.listItemTitle},
-                                  [this.attrs.lbl_title]));
             }
-            setItem(item){
-              const text1=item.title;
-              const url1=((((item)||{}).thumbnail)||{}).url??resources.svg.disc;
-              const url2=null;
-              this.attrs.item=item;
-              this.attrs.lbl_title.setText(text1);
+            this.attrs.lbl_title=new TextElement("");
+            this.attrs.lbl_duration=new TextElement("");
+            const div=this.appendChild(new DomElement("div",{'className':style.listItemColText}));
+            
+            div.appendChild(new DomElement("div",{'className':style.listItemTitle},
+                              [this.attrs.lbl_title,new DomElement("br"),new TextElement("\xa0")]));
+            
+            if(showDetails!==0){
+              this.attrs.lbl_date=new TextElement("");
+              const div2=div.appendChild(new DomElement("div",{'className':style.listItemInfo}));
+              
+              div2.appendChild(new DomElement("div",{'className':style.textGrey},
+                                  [this.attrs.lbl_date]));
+              div2.appendChild(new DomElement("div",{'className':style.grow},[]));
+              
+              div2.appendChild(new DomElement("div",{},[this.attrs.lbl_duration]));
+              
+              ;
+            }else{
+              this.appendChild(this.attrs.lbl_duration);
+            }
+          }
+          setItem(item){
+            const text1=item.title;
+            const text2=formatTime(item.duration);
+            const url1=((((item)||{}).thumbnail)||{}).url??resources.svg.disc;
+            const url2=null;
+            this.attrs.item=item;
+            this.attrs.lbl_title.setText(text1);
+            this.attrs.lbl_duration.setText(text2);
+            if(this.attrs.showThumb!==0){
               this.attrs.lbl_thumb.setUrls(url1,url2);
             }
-          };
-          class NoTrackElement extends DomElement {
-            constructor(showDetails=0){
-              super("div",{'className':style.listNoItemRow},[]);
-              this.appendChild(new TextElement("No element"));
-            }
-          };
-          class TrackInfoElement extends DomElement {
-            constructor(showDetails=0,showThumb=1){
-              super("div",{'className':style.listItemRow},[]);
-              this.attrs.showDetails=showDetails;
-              this.attrs.showThumb=showThumb;
-              const url1=null;
-              const url2=null;
-              if(showThumb!==0){
-                this.attrs.lbl_thumb=new SvgIconElement(url1,url2,{'className':style.icon2});
-                
-                this.appendChild(this.attrs.lbl_thumb);
-              }
-              this.attrs.lbl_title=new TextElement("");
-              this.attrs.lbl_duration=new TextElement("");
-              const div=this.appendChild(new DomElement("div",{'className':style.listItemColText}));
+            if(this.attrs.showDetails!==0){
+              let t=(this.attrs.showDetails===1)?item.date_added:item.date_played;
               
-              div.appendChild(new DomElement("div",{'className':style.listItemTitle},
-                                  [this.attrs.lbl_title,new DomElement("br"),new TextElement("\xa0")]));
+              let dt=new Date(t*1000);
+              const y=dt.getFullYear();
+              const m=dt.getMonth()+1;
+              const d=dt.getDate();
+              const hh=dt.getHours();
+              let mm=dt.getMinutes();
+              let ss=dt.getSeconds();
+              mm=(mm<10?'0':'')+mm;
+              ss=(ss<10?'0':'')+ss;
+              this.attrs.lbl_date.setText(`${y}/${m}/${d} ${hh}:${mm}:${ss} ${item.uid}`);
               
-              if(showDetails!==0){
-                this.attrs.lbl_date=new TextElement("");
-                const div2=div.appendChild(new DomElement("div",{'className':style.listItemInfo}));
-                
-                div2.appendChild(new DomElement("div",{'className':style.textGrey},
-                                      [this.attrs.lbl_date]));
-                div2.appendChild(new DomElement("div",{'className':style.grow},[]));
-                
-                div2.appendChild(new DomElement("div",{},[this.attrs.lbl_duration]));
-                
-                ;
-              }else{
-                this.appendChild(this.attrs.lbl_duration);
-              }
+              ;
+              ;
+              ;
+              ;
+              ;
+              ;
+              ;
+              ;
             }
-            setItem(item){
-              const text1=item.title;
-              const text2=formatTime(item.duration);
-              const url1=((((item)||{}).thumbnail)||{}).url??resources.svg.disc;
-              const url2=null;
+          }
+        };
+        TrackInfoElement.D_NONE=0;
+        TrackInfoElement.D_DATE_ADDED=1;
+        TrackInfoElement.D_DATE_PLAYED=2;
+        class TrackVotesElement extends DomElement {
+          constructor(parent){
+            super("div",{'className':style.votePanel},[]);
+            this.attrs.parent=parent;
+            this.attrs.btn_up=this.appendChild(new components.SvgButtonElement(resources.svg.vote_up_1,
+                              this.voteUp.bind(this)));
+            this.attrs.btn_up.updateProps({'width':24,'height':16,'className':style.voteButton});
+            
+            this.attrs.lbl_vote=new TextElement("-");
+            this.appendChild(new DomElement("div",{'className':style.voteText},[this.attrs.lbl_vote]));
+            
+            this.attrs.btn_down=this.appendChild(new components.SvgButtonElement(
+                              resources.svg.vote_down_1,this.voteDown.bind(this)));
+            this.attrs.btn_down.updateProps({'width':24,'height':16,'className':style.voteButton});
+            
+            this.appendChild(new DomElement("div",{'className':style.grow},[]));
+          }
+          setItem(item){
+            this.attrs.item=item;
+            this.attrs.lbl_vote.setText(((item)||{}).vote_total??"*");
+            if(item.vote===0){
+              this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_0});
+              this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_0});
+              
+            }else if(item.vote>0){
+              this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_1});
+              this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_0});
+              
+            }else if(item.vote<0){
+              this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_0});
+              this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_1});
+              
+            }
+          }
+          voteUp(){
+            const item=this.attrs.item;
+            item.vote_total-=item.vote;
+            item.vote=(item.vote>0)?0:1;
+            item.vote_total+=item.vote;
+            if(item.vote===0){
+              this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_0});
+              this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_0});
+              
+            }else{
+              this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_1});
+              this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_0});
+              
+            }
+            this.attrs.lbl_vote.setText(item.vote_total);
+            this.attrs.parent.vote(this.attrs.item).then(result=>{
+
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Vote Error",formatError(error));
+              });
+          }
+          voteDown(){
+            const item=this.attrs.item;
+            item.vote_total-=item.vote;
+            item.vote=(item.vote<0)?0:-1;
+            item.vote_total+=item.vote;
+            if(item.vote===0){
+              this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_0});
+              this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_0});
+              
+            }else{
+              this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_0});
+              this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_1});
+              
+            }
+            this.attrs.lbl_vote.setText(item.vote_total);
+            this.attrs.parent.vote(this.attrs.item).then(result=>{
+
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Vote Error",formatError(error));
+              });
+          }
+        };
+        class UpcomingTrackElement extends DomElement {
+          constructor(page,item){
+            super("div",{'className':style.listItem},[]);
+            this.attrs={'page':page,'item':item};
+            this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_DATE_ADDED));
+            
+            this.attrs.vote=this.attrs.info.insertChild(0,new TrackVotesElement(this));
+            
+            this.attrs.action=this.attrs.info.appendChild(new components.SvgButtonElement(
+                              resources.svg.more,()=>{
+                  page.handleShowMore(this.attrs.item);
+                }));
+            this.attrs.action.updateProps({'width':16,'height':16,'className':style.moreButton});
+            
+            this.attrs.info.setItem(item);
+            this.attrs.vote.setItem(item);
+          }
+          setItem(item){
+            if(item.uid!==this.attrs.item.uid||item.vote_total!==this.attrs.item.vote_total){
+            
               this.attrs.item=item;
-              this.attrs.lbl_title.setText(text1);
-              this.attrs.lbl_duration.setText(text2);
-              if(this.attrs.showThumb!==0){
-                this.attrs.lbl_thumb.setUrls(url1,url2);
-              }
-              if(this.attrs.showDetails!==0){
-                let t=(this.attrs.showDetails===1)?item.date_added:item.date_played;
-                
-                let dt=new Date(t*1000);
-                const y=dt.getFullYear();
-                const m=dt.getMonth()+1;
-                const d=dt.getDate();
-                const hh=dt.getHours();
-                let mm=dt.getMinutes();
-                let ss=dt.getSeconds();
-                mm=(mm<10?'0':'')+mm;
-                ss=(ss<10?'0':'')+ss;
-                this.attrs.lbl_date.setText(`${y}/${m}/${d} ${hh}:${mm}:${ss} ${item.uid}`);
-                
-                ;
-                ;
-                ;
-                ;
-                ;
-                ;
-                ;
-                ;
-              }
-            }
-          };
-          TrackInfoElement.D_NONE=0;
-          TrackInfoElement.D_DATE_ADDED=1;
-          TrackInfoElement.D_DATE_PLAYED=2;
-          class TrackVotesElement extends DomElement {
-            constructor(parent){
-              super("div",{'className':style.votePanel},[]);
-              this.attrs.parent=parent;
-              this.attrs.btn_up=this.appendChild(new components.SvgButtonElement(
-                                  resources.svg.vote_up_1,this.voteUp.bind(this)));
-              this.attrs.btn_up.updateProps({'width':24,'height':16,'className':style.voteButton});
-              
-              this.attrs.lbl_vote=new TextElement("-");
-              this.appendChild(new DomElement("div",{'className':style.voteText},
-                                  [this.attrs.lbl_vote]));
-              this.attrs.btn_down=this.appendChild(new components.SvgButtonElement(
-                                  resources.svg.vote_down_1,this.voteDown.bind(this)));
-              this.attrs.btn_down.updateProps({'width':24,'height':16,'className':style.voteButton});
-              
-              this.appendChild(new DomElement("div",{'className':style.grow},[]));
-              
-            }
-            setItem(item){
-              this.attrs.item=item;
-              this.attrs.lbl_vote.setText(((item)||{}).vote_total??"*");
-              if(item.vote===0){
-                this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_0});
-                this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_0});
-                
-              }else if(item.vote>0){
-                this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_1});
-                this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_0});
-                
-              }else if(item.vote<0){
-                this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_0});
-                this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_1});
-                
-              }
-            }
-            voteUp(){
-              const item=this.attrs.item;
-              item.vote_total-=item.vote;
-              item.vote=(item.vote>0)?0:1;
-              item.vote_total+=item.vote;
-              if(item.vote===0){
-                this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_0});
-                this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_0});
-                
-              }else{
-                this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_1});
-                this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_0});
-                
-              }
-              this.attrs.lbl_vote.setText(item.vote_total);
-              this.attrs.parent.vote(this.attrs.item).then(result=>{}).catch(error=>{
-                
-                  console.log(error);
-                  components.ErrorDrawer.post("Vote Error",formatError(error));
-                });
-            }
-            voteDown(){
-              const item=this.attrs.item;
-              item.vote_total-=item.vote;
-              item.vote=(item.vote<0)?0:-1;
-              item.vote_total+=item.vote;
-              if(item.vote===0){
-                this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_0});
-                this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_0});
-                
-              }else{
-                this.attrs.btn_up.updateProps({'src':resources.svg.vote_up_0});
-                this.attrs.btn_down.updateProps({'src':resources.svg.vote_down_1});
-                
-              }
-              this.attrs.lbl_vote.setText(item.vote_total);
-              this.attrs.parent.vote(this.attrs.item).then(result=>{}).catch(error=>{
-                
-                  console.log(error);
-                  components.ErrorDrawer.post("Vote Error",formatError(error));
-                });
-            }
-          };
-          class UpcomingTrackElement extends DomElement {
-            constructor(page,item){
-              super("div",{'className':style.listItem},[]);
-              this.attrs={'page':page,'item':item};
-              this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_DATE_ADDED));
-              
-              this.attrs.vote=this.attrs.info.insertChild(0,new TrackVotesElement(
-                                  this));
-              this.attrs.action=this.attrs.info.appendChild(new components.SvgButtonElement(
-                                  resources.svg.more,()=>{
-                    page.handleShowMore(this.attrs.item);
-                  }));
-              this.attrs.action.updateProps({'width':16,'height':16,'className':style.moreButton});
-              
               this.attrs.info.setItem(item);
               this.attrs.vote.setItem(item);
             }
-            setItem(item){
-              if(item.uid!==this.attrs.item.uid||item.vote_total!==this.attrs.item.vote_total){
-              
-                this.attrs.item=item;
-                this.attrs.info.setItem(item);
-                this.attrs.vote.setItem(item);
-              }
-            }
-            vote(item){
-              return this.attrs.page.vote(item);
-            }
-          };
-          class PreviousTrackElement extends DomElement {
-            constructor(parent,item){
-              super("div",{'className':style.listItem},[]);
-              this.attrs={'parent':parent,'item':item};
-              this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_DATE_PLAYED));
-              
-              this.attrs.info.setItem(item);
-            }
-            setItem(item){
-              if(item.uid!==this.attrs.item.uid||item.vote_total!==this.attrs.item.vote_total){
-              
-                this.attrs.item=item;
-                this.attrs.info.setItem(item);
-              }
-            }
-          };
-          class SearchResultElement extends DomElement {
-            constructor(parent){
-              super("div",{'className':style.listItem},[]);
-              this.attrs.parent=parent;
-              this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_NONE));
-              
-              this.attrs.action=this.attrs.info.appendChild(new components.SvgButtonElement(
-                                  resources.svg.plus,this.addItem.bind(this)));
-            }
-            setItem(item){
+          }
+          vote(item){
+            return this.attrs.page.vote(item);
+          }
+        };
+        class PreviousTrackElement extends DomElement {
+          constructor(parent,item){
+            super("div",{'className':style.listItem},[]);
+            this.attrs={'parent':parent,'item':item};
+            this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_DATE_PLAYED));
+            
+            this.attrs.info.setItem(item);
+          }
+          setItem(item){
+            if(item.uid!==this.attrs.item.uid||item.vote_total!==this.attrs.item.vote_total){
+            
               this.attrs.item=item;
               this.attrs.info.setItem(item);
             }
-            addItem(){
-              this.attrs.parent.addTrackToPool(this.attrs.item).then(result=>{
-                  const track=this.attrs.item;
-                  track.uid=result.result[0];
-                  track.vote=1;
-                  track.vote_total=1;
-                  track.date_added=Math.round(Date.now()/1000);
-                  store.globals.radio_tracks[track.uid]=track;
-                  this.attrs.parent.removeTrackBySID(track.source,track.sid);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Add Track Error",formatError(error));
-                  
-                });
+          }
+        };
+        class SearchResultElement extends DomElement {
+          constructor(parent){
+            super("div",{'className':style.listItem},[]);
+            this.attrs.parent=parent;
+            this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_NONE));
+            
+            this.attrs.action=this.attrs.info.appendChild(new components.SvgButtonElement(
+                              resources.svg.plus,this.addItem.bind(this)));
+          }
+          setItem(item){
+            this.attrs.item=item;
+            this.attrs.info.setItem(item);
+          }
+          addItem(){
+            this.attrs.parent.addTrackToPool(this.attrs.item).then(result=>{
+                const track=this.attrs.item;
+                track.uid=result.result[0];
+                track.vote=1;
+                track.vote_total=1;
+                track.date_added=Math.round(Date.now()/1000);
+                store.globals.radio_tracks[track.uid]=track;
+                this.attrs.parent.removeTrackBySID(track.source,track.sid);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Add Track Error",formatError(error));
+                
+              });
+          }
+        };
+        class Grip extends DomElement {
+          constructor(parent,lst){
+            super("div",{'className':style.grip});
+            this.attrs.parent=parent;
+            this.attrs.lst=lst;
+          }
+          onMouseDown(event){
+            if(this.attrs.lst.handleChildDragBegin(this.attrs.parent,event)){
+              let node=this.attrs.parent.getDomNode();
+              node.style.width=(node.clientWidth-4)+'px';
+              node.style.background="white";
+              this.attrs.lst.attrs.test=this.attrs.parent;
+              ;
             }
-          };
-          class Grip extends DomElement {
-            constructor(parent,lst){
-              super("div",{'className':style.grip});
-              this.attrs.parent=parent;
-              this.attrs.lst=lst;
+          }
+          onTouchStart(event){
+            if(this.attrs.lst.handleChildDragBegin(this.attrs.parent,event)){
+              let node=this.attrs.parent.getDomNode();
+              node.style.width=(node.clientWidth-4)+'px';
+              node.style.background="white";
+              ;
             }
-            onMouseDown(event){
-              if(this.attrs.lst.handleChildDragBegin(this.attrs.parent,event)){
-                let node=this.attrs.parent.getDomNode();
-                node.style.width=(node.clientWidth-4)+'px';
-                node.style.background="white";
-                this.attrs.lst.attrs.test=this.attrs.parent;
-                ;
-              }
-            }
-            onTouchStart(event){
-              if(this.attrs.lst.handleChildDragBegin(this.attrs.parent,event)){
-                let node=this.attrs.parent.getDomNode();
-                node.style.width=(node.clientWidth-4)+'px';
-                node.style.background="white";
-                ;
-              }
-            }
-          };
-          class EditIndexElement extends DomElement {
-            constructor(text=""){
-              super("div",{'className':style.editIndex});
-              this.attrs.text=this.appendChild(new TextElement(text+"."));
-            }
-            setText(text){
-              this.attrs.text.setText(text);
-            }
-          };
-          class EditTrackElement extends DomElement {
-            constructor(page,item){
-              super("div",{'className':style.listItem},[]);
-              this.attrs={'page':page,'item':item,'parent':page.attrs.lst};
-              this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_DATE_ADDED,
-                                  0));
+          }
+        };
+        class EditIndexElement extends DomElement {
+          constructor(text=""){
+            super("div",{'className':style.editIndex});
+            this.attrs.text=this.appendChild(new TextElement(text+"."));
+          }
+          setText(text){
+            this.attrs.text.setText(text);
+          }
+        };
+        class EditTrackElement extends DomElement {
+          constructor(page,item){
+            super("div",{'className':style.listItem},[]);
+            this.attrs={'page':page,'item':item,'parent':page.attrs.lst};
+            this.attrs.info=this.appendChild(new TrackInfoElement(TrackInfoElement.D_DATE_ADDED,
+                              0));
+            this.attrs.info.setItem(item);
+            this.attrs.action=this.attrs.info.appendChild(new components.SvgButtonElement(
+                              resources.svg.more,()=>{
+                  page.handleShowMore(this.attrs.item);
+                }));
+            this.attrs.action.updateProps({'width':16,'height':16,'className':style.moreButton});
+            
+            const grip=this.attrs.info.insertChild(0,new Grip(this,page.attrs.lst));
+            
+            this.attrs.index=this.attrs.info.insertChild(1,new EditIndexElement(this.attrs.item.index+1));
+            
+          }
+          setItem(item){
+            if(item.uid!==this.attrs.item.uid){
+              this.attrs.item=item;
+              this.attrs.index.setText(this.attrs.item.index+1);
               this.attrs.info.setItem(item);
-              this.attrs.action=this.attrs.info.appendChild(new components.SvgButtonElement(
-                                  resources.svg.more,()=>{
-                    page.handleShowMore(this.attrs.item);
-                  }));
-              this.attrs.action.updateProps({'width':16,'height':16,'className':style.moreButton});
-              
-              const grip=this.attrs.info.insertChild(0,new Grip(this,page.attrs.lst));
-              
-              this.attrs.index=this.attrs.info.insertChild(1,new EditIndexElement(
-                                  this.attrs.item.index+1));
             }
-            setItem(item){
-              if(item.uid!==this.attrs.item.uid){
-                this.attrs.item=item;
-                this.attrs.index.setText(this.attrs.item.index+1);
-                this.attrs.info.setItem(item);
-              }
+          }
+          onTouchMove(event){
+            if(!event.cancelable){
+              return;
             }
-            onTouchMove(event){
-              if(!event.cancelable){
-                return;
-              }
-              if(this.attrs.parent.handleChildDragMove(this,event)){
-                event.stopPropagation();
-              }
-            }
-            onTouchEnd(event){
-              this.attrs.parent.handleChildDragEnd(this,{'target':this.getDomNode(
-                                    )});
-              let node=this.getDomNode();
-              node.style.removeProperty('width');
-              node.style.removeProperty('background');
+            if(this.attrs.parent.handleChildDragMove(this,event)){
               event.stopPropagation();
             }
-            onTouchCancel(event){
-              this.attrs.parent.handleChildDragEnd(this,{'target':this.getDomNode(
-                                    )});
-              let node=this.getDomNode();
-              node.style.removeProperty('width');
-              node.style.removeProperty('background');
-              event.stopPropagation();
-            }
-            onMouseUp(event){
-              if(this.attrs.parent.handleChildDragEnd(this,{'target':this.getDomNode(
-                                        )})){
-                let node=this.getDomNode();
-                node.style.removeProperty('width');
-                node.style.removeProperty('background');
-                ;
-              }
-            }
-            setIndex(index){
-              this.attrs.item.index=index;
-              this.attrs.index.setText(index+1);
-            }
-          };
-          class TrackEditList extends daedalus.DraggableList {
-            constructor(parent){
-              super();
-              this.attrs.parent=parent;
-              this.attrs.test=null;
-            }
-            updateModel(indexStart,indexEnd){
-              daedalus.util.array_move(store.globals.radio_all_tracks,indexStart,
-                              indexEnd);
-            }
-            onMouseMove(event){
-              if(event.buttons!==1){
-                return;
-              }
-              if(!this.attrs.test){
-                return;
-              }
-              if(this.handleChildDragMove(this.attrs.test,event)){
-                event.preventDefault();
-                event.stopPropagation();
-              }
-            }
-            onMouseLeave(event){
-              if(!this.attrs.test){
-                return;
-              }
-              if(this.handleChildDragEnd(this.attrs.test,{'target':this.attrs.test.getDomNode(
-                                        )})){
-                let node=this.attrs.test.getDomNode();
-                node.style.removeProperty('width');
-                node.style.removeProperty('background');
-                event.stopPropagation();
-                ;
-              }
-            }
-          };
-          class StationListInfoElement extends DomElement {
-            constructor(item){
-              super("div",{'className':style.listItemRow},[]);
-              const active=(item.active)?((item.broadcast_id!=='')?'***':'*'):'';
-              
-              const text=`${active}${item.name}`;
-              const elem=this.appendChild(new components.MiddleText(text));
-              elem.addClassName(style.listItemRowText);
-              this.appendChild(new components.SvgButtonElement(resources.svg.arrow_right,
-                                  ()=>{
-                    const route_fn=(item.broadcast_id!=='')?router.routes.userRadioStation:router.routes.userRadioStationEdit;
-                    
-                    router.navigate(route_fn({'station':item.name},{}));
-                  }));
-            }
-          };
-          class StationListItemElement extends DomElement {
-            constructor(item){
-              super("div",{'className':style.listItem},[]);
-              this.appendChild(new StationListInfoElement(item));
-            }
-          };
-          class Floater extends DomElement {
-            constructor(){
-              super("div",{'className':[style.floater]});
-              this.appendChild(new TextElement("loading..."));
-            }
-            setVisible(visible){
-              if(visible){
-                this.removeClassName(style.hide);
-              }else{
-                this.addClassName(style.hide);
-              }
-            }
-          };
-          function getToken(){
-            let _array=new Uint8Array(16);
-            crypto.getRandomValues(_array);
-            let _string=[..._array].map(x=>x.toString(16).padStart(2,'0')).join('');
+          }
+          onTouchEnd(event){
+            this.attrs.parent.handleChildDragEnd(this,{'target':this.getDomNode()});
             
-            return _string;
-          };
-          function checkPublicAuthentication(){
-            const params=daedalus.util.parseParameters();
-            const logout=((((params)||{}).logout)||{})[0];
-            if(!!logout){
-              api.clearPublicToken(token2);
-              requestIdleCallback(()=>{
-                  router.navigate(router.routes.login());
-                });
-              return false;
+            let node=this.getDomNode();
+            node.style.removeProperty('width');
+            node.style.removeProperty('background');
+            event.stopPropagation();
+          }
+          onTouchCancel(event){
+            this.attrs.parent.handleChildDragEnd(this,{'target':this.getDomNode()});
+            
+            let node=this.getDomNode();
+            node.style.removeProperty('width');
+            node.style.removeProperty('background');
+            event.stopPropagation();
+          }
+          onMouseUp(event){
+            if(this.attrs.parent.handleChildDragEnd(this,{'target':this.getDomNode(
+                                    )})){
+              let node=this.getDomNode();
+              node.style.removeProperty('width');
+              node.style.removeProperty('background');
+              ;
             }
-            const stored_token=api.getPublictoken();
-            if(stored_token!==null){
-              if(stored_token.length==32){
-                return true;
-              }
+          }
+          setIndex(index){
+            this.attrs.item.index=index;
+            this.attrs.index.setText(index+1);
+          }
+        };
+        class TrackEditList extends daedalus.DraggableList {
+          constructor(parent){
+            super();
+            this.attrs.parent=parent;
+            this.attrs.test=null;
+          }
+          updateModel(indexStart,indexEnd){
+            daedalus.util.array_move(store.globals.radio_all_tracks,indexStart,indexEnd);
+            
+          }
+          onMouseMove(event){
+            if(event.buttons!==1){
+              return;
             }
-            const login=((((params)||{}).login)||{})[0];
-            if(!login){
-              requestIdleCallback(()=>{
-                  router.navigate(router.routes.login());
-                });
-              return false;
+            if(!this.attrs.test){
+              return;
             }
-            let token=getToken();
-            api.setPublictoken(token);
-            return true;
-          };
-          function getStationInfo(){
-            const match=Router.instance.match();
-            let station=match.station;
-            if(store.globals.radio_broadcast_id!==undefined){
-              return new Promise((accept,reject)=>{
-                  accept({'broadcast_id':store.globals.radio_broadcast_id});
-                });
+            if(this.handleChildDragMove(this.attrs.test,event)){
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }
+          onMouseLeave(event){
+            if(!this.attrs.test){
+              return;
+            }
+            if(this.handleChildDragEnd(this.attrs.test,{'target':this.attrs.test.getDomNode(
+                                    )})){
+              let node=this.attrs.test.getDomNode();
+              node.style.removeProperty('width');
+              node.style.removeProperty('background');
+              event.stopPropagation();
+              ;
+            }
+          }
+        };
+        class StationListInfoElement extends DomElement {
+          constructor(item){
+            super("div",{'className':style.listItemRow},[]);
+            const active=(item.active)?((item.broadcast_id!=='')?'***':'*'):'';
+            const text=`${active}${item.name}`;
+            const elem=this.appendChild(new components.MiddleText(text));
+            elem.addClassName(style.listItemRowText);
+            this.appendChild(new components.SvgButtonElement(resources.svg.arrow_right,
+                              ()=>{
+                  const route_fn=(item.broadcast_id!=='')?router.routes.userRadioStation:router.routes.userRadioStationEdit;
+                  
+                  router.navigate(route_fn({'station':item.name},{}));
+                }));
+          }
+        };
+        class StationListItemElement extends DomElement {
+          constructor(item){
+            super("div",{'className':style.listItem},[]);
+            this.appendChild(new StationListInfoElement(item));
+          }
+        };
+        class Floater extends DomElement {
+          constructor(){
+            super("div",{'className':[style.floater]});
+            this.appendChild(new TextElement("loading..."));
+          }
+          setVisible(visible){
+            if(visible){
+              this.removeClassName(style.hide);
             }else{
-              return new Promise((accept,reject)=>{
-                  api.radioStationInfo(station).then(result=>{
-                      store.globals.radio_broadcast_id=result.result.broadcast_id;
-                      
-                      accept(result.result);
-                    }).catch(error=>reject(error));
-                });
+              this.addClassName(style.hide);
             }
-          };
-          const sortOrder=[{'key':'vote_total','ascending':true},{'key':'date_added',
-                          'ascending':true},{'key':'uid','ascending':false}];
-          function getUpcomingTracks(){
-            let tracks=Object.keys(store.globals.radio_tracks).map(k=>store.globals.radio_tracks[
-                            k]);
-            tracks=api.multiSort(tracks,sortOrder);
-            tracks.reverse();
-            store.globals.radio_sorted_tracks=tracks;
-            return tracks;
-          };
-          function getAllTracks(){
-            let tracks=Object.keys(store.globals.radio_tracks).map(k=>store.globals.radio_tracks[
-                            k]);
-            tracks=[...tracks,...store.globals.radio_previous_tracks];
-            tracks=api.multiSort(tracks,[{'key':'uid','ascending':true}]);
-            let next_index=0;
-            let missing=[];
-            tracks.forEach((track,index)=>{
-                if(track.index!==undefined){
-                  if(track.index>next_index){
-                    next_index=track.index;
-                  }
-                }else{
-                  missing.push(track);
+          }
+        };
+        function getToken(){
+          let _array=new Uint8Array(16);
+          crypto.getRandomValues(_array);
+          let _string=[..._array].map(x=>x.toString(16).padStart(2,'0')).join('');
+          
+          return _string;
+        };
+        function checkPublicAuthentication(){
+          const params=daedalus.util.parseParameters();
+          const logout=((((params)||{}).logout)||{})[0];
+          if(!!logout){
+            api.clearPublicToken(token2);
+            requestIdleCallback(()=>{
+                router.navigate(router.routes.login());
+              });
+            return false;
+          }
+          const stored_token=api.getPublictoken();
+          if(stored_token!==null){
+            if(stored_token.length==32){
+              return true;
+            }
+          }
+          const login=((((params)||{}).login)||{})[0];
+          if(!login){
+            requestIdleCallback(()=>{
+                router.navigate(router.routes.login());
+              });
+            return false;
+          }
+          let token=getToken();
+          api.setPublictoken(token);
+          return true;
+        };
+        function getStationInfo(){
+          const match=Router.instance.match();
+          let station=match.station;
+          if(store.globals.radio_broadcast_id!==undefined){
+            return new Promise((accept,reject)=>{
+                accept({'broadcast_id':store.globals.radio_broadcast_id});
+              });
+          }else{
+            return new Promise((accept,reject)=>{
+                api.radioStationInfo(station).then(result=>{
+                    store.globals.radio_broadcast_id=result.result.broadcast_id;
+                    accept(result.result);
+                  }).catch(error=>reject(error));
+              });
+          }
+        };
+        const sortOrder=[{'key':'vote_total','ascending':true},{'key':'date_added',
+                      'ascending':true},{'key':'uid','ascending':false}];
+        function getUpcomingTracks(){
+          let tracks=Object.keys(store.globals.radio_tracks).map(k=>store.globals.radio_tracks[
+                        k]);
+          tracks=api.multiSort(tracks,sortOrder);
+          tracks.reverse();
+          store.globals.radio_sorted_tracks=tracks;
+          return tracks;
+        };
+        function getAllTracks(){
+          let tracks=Object.keys(store.globals.radio_tracks).map(k=>store.globals.radio_tracks[
+                        k]);
+          tracks=[...tracks,...store.globals.radio_previous_tracks];
+          tracks=api.multiSort(tracks,[{'key':'uid','ascending':true}]);
+          let next_index=0;
+          let missing=[];
+          tracks.forEach((track,index)=>{
+              if(track.index!==undefined){
+                if(track.index>next_index){
+                  next_index=track.index;
                 }
-              });
-            next_index+=1;
-            missing.forEach((track,index)=>{
-                track.index=next_index;
-                next_index+=1;
-              });
-            tracks=api.multiSort(tracks,[{'key':'index','ascending':true}]);
-            tracks.forEach((track,index)=>track.index=index);
-            store.globals.radio_all_tracks=tracks;
-            return tracks;
-          };
-          function _processUpdates_TrackAdded(track){
-            if(store.globals.radio_tracks[track.uid]!==undefined){
-              store.globals.radio_tracks[track.uid]={...store.globals.radio_tracks[
-                                track.uid],...track};
-            }else{
-              track['vote']=0;
-              track['vote_total']=1;
+              }else{
+                missing.push(track);
+              }
+            });
+          next_index+=1;
+          missing.forEach((track,index)=>{
+              track.index=next_index;
+              next_index+=1;
+            });
+          tracks=api.multiSort(tracks,[{'key':'index','ascending':true}]);
+          tracks.forEach((track,index)=>track.index=index);
+          store.globals.radio_all_tracks=tracks;
+          return tracks;
+        };
+        function _processUpdates_TrackAdded(track){
+          if(store.globals.radio_tracks[track.uid]!==undefined){
+            store.globals.radio_tracks[track.uid]={...store.globals.radio_tracks[
+                            track.uid],...track};
+          }else{
+            track['vote']=0;
+            track['vote_total']=1;
+            store.globals.radio_tracks[track.uid]=track;
+          }
+        };
+        function _processUpdates_TrackReset(){
+          console.log("reset length",store.globals.radio_previous_tracks.length);
+          
+          store.globals.radio_previous_tracks.forEach(track=>{
+              console.log("reset",track);
               store.globals.radio_tracks[track.uid]=track;
-            }
-          };
-          function _processUpdates_TrackReset(){
-            console.log("reset length",store.globals.radio_previous_tracks.length);
-            
-            store.globals.radio_previous_tracks.forEach(track=>{
-                console.log("reset",track);
+            });
+          store.globals.radio_previous_tracks=[];
+        };
+        function processUpdates(updates){
+          console.log(updates);
+          let current_track=null;
+          if(updates.kind==='refresh'){
+            store.globals.radio_tracks={};
+            updates.payload.tracks.forEach(track=>{
                 store.globals.radio_tracks[track.uid]=track;
               });
-            store.globals.radio_previous_tracks=[];
-          };
-          function processUpdates(updates){
-            console.log(updates);
-            let current_track=null;
-            if(updates.kind==='refresh'){
-              store.globals.radio_tracks={};
-              updates.payload.tracks.forEach(track=>{
-                  store.globals.radio_tracks[track.uid]=track;
-                });
-              store.globals.radio_previous_tracks=updates.payload.previous_tracks;
-              
-              store.globals.radio_previous_tracks.reverse();
-              store.globals.radio_update_index=updates.uid;
-              const tmp=store.globals.radio_previous_tracks;
-              if(tmp.length>0){
-                current_track=tmp[0];
-              }
-              ;
-            }else if(updates.kind==='update'){
-              updates.payload.forEach(update=>{
-                  if(update.type==='vote_total_changed'){
-                    const track=store.globals.radio_tracks[update.payload.uid];
-                    track['vote_total']=update.payload.total;
-                    ;
-                  }else if(update.type==='current_track_changed'){
-                    current_track=store.globals.radio_tracks[update.payload.uid];
-                    
-                    if(store.globals.radio_tracks[update.payload.uid]){
-                      delete store.globals.radio_tracks[update.payload.uid];
-                      store.globals.radio_previous_tracks.unshift(current_track);
-                      
-                    }
-                  }else if(update.type==='track_removed'){
-                    if(store.globals.radio_tracks[update.payload.uid]){
-                      delete store.globals.radio_tracks[update.payload.uid];
-                    }else{
-                      console.error("unable to remove track "+update.payload.uid);
-                      
-                    }
-                  }else if(update.type==='track_added'){
-                    _processUpdates_TrackAdded(update.payload);
-                  }else if(update.type==='track_reset'){
-                    _processUpdates_TrackReset();
-                  }else{
-                    console.error(`unknown type: ${update.type}`);
+            store.globals.radio_previous_tracks=updates.payload.previous_tracks;
+            store.globals.radio_previous_tracks.reverse();
+            store.globals.radio_update_index=updates.uid;
+            const tmp=store.globals.radio_previous_tracks;
+            if(tmp.length>0){
+              current_track=tmp[0];
+            }
+            ;
+          }else if(updates.kind==='update'){
+            updates.payload.forEach(update=>{
+                if(update.type==='vote_total_changed'){
+                  const track=store.globals.radio_tracks[update.payload.uid];
+                  track['vote_total']=update.payload.total;
+                  ;
+                }else if(update.type==='current_track_changed'){
+                  current_track=store.globals.radio_tracks[update.payload.uid];
+                  if(store.globals.radio_tracks[update.payload.uid]){
+                    delete store.globals.radio_tracks[update.payload.uid];
+                    store.globals.radio_previous_tracks.unshift(current_track);
                   }
-                });
-              store.globals.radio_update_index=updates.uid;
-            }else{
-              console.error(`unknown kind: ${updates.kind}`);
-            }
-            if(current_track!==null){
-              store.globals.radio_current_track=current_track;
-            }else if(store.globals.radio_current_track===undefined){
-              store.globals.radio_current_track=null;
-            }
-            getUpcomingTracks();
-          };
-          function reconcileUpdates(page,elem,tracks,clsRowElement){
-            const lst=elem.children;
-            let index=0;
-            for(;index<lst.length&&index<tracks.length;index++)
-            {
-              lst[index].setItem(tracks[index]);
-            }
-            const removeCount=lst.length-index;
-            if(removeCount>0){
-              lst.splice(index,removeCount);
-            }
-            for(;index<tracks.length;index++)
-            {
-              lst.push(new clsRowElement(page,tracks[index]));
-            }
-            elem.update();
-            thumbnail_ProcessStart();
-          };
-          function reconcileTrackUpdates(page,header,elem){
-            const tracks=store.globals.radio_sorted_tracks;
-            if(store.globals.radio_current_track){
-              header.setTrack(store.globals.radio_current_track);
-            }
-            reconcileUpdates(page,elem,tracks,UpcomingTrackElement);
-          };
-          function reconcilePreviousTrackUpdates(page,elem){
-            const tracks=store.globals.radio_previous_tracks;
-            reconcileUpdates(page,elem,tracks,PreviousTrackElement);
-          };
-          function timeoutResolver(ms){
-            return new Promise((resolve,reject)=>{
-                setTimeout(function(){
-                    resolve(true);
-                  },ms);
-              });
-          };
-          function _search_parse_query(page,isPublic){
-            const match=Router.instance.match();
-            const params=daedalus.util.parseParameters();
-            const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
-            
-            const f=(k,d)=>{
-              const v=params[k];
-              return(v===null||v===undefined)?d:v[0];
-            };
-            let source=f("source","library");
-            let query=f("query","");
-            if(source!='youtube'&&source!='library'){
-              source='youtube';
-            }
-            page.attrs.header.setSource(source);
-            page.attrs.header.setQuery(query);
-            if(source!==store.globals.radio_search_source||query!==store.globals.radio_search_query||!store.globals.radio_search_results){
-            
-              if(query!==""){
-                page.search(source,query);
-              }else{
-                store.globals.radio_search_source=source;
-                store.globals.radio_search_query=query;
-                store.globals.radio_search_results=[];
-                page.updateSearchResults();
-                router.navigate(route_fn({'station':match.station},{'query':query,
-                                          'source':source}));
-              }
-            }
-          };
-          function _search_impl(page,isPublic,source,query){
-            if(!page.attrs.enable_search){
-              console.log("ignore search request");
-              return;
-            }
-            query=query.trim();
-            const match=Router.instance.match();
-            const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
-            
-            router.navigate(route_fn({'station':match.station},{'query':query,'source':source}));
-            
-            page.attrs.lst.removeChildren();
-            store.globals.radio_search_source=source;
-            store.globals.radio_search_query=query;
-            store.globals.radio_search_results=[];
-            if(query.length===0){
-              page.updateSearchResults();
-              return;
-            }
-            page.attrs.enable_search=false;
-            page.attrs.floater.setVisible(true);
-            const api_fn=(isPublic)?api.radioPublicStationSearch:api.radioStationSearch;
-            
-            api_fn(match.station,source,query).then(result=>{
-                page.attrs.enable_search=true;
-                page.attrs.floater.setVisible(false);
-                console.log(result);
-                store.globals.radio_search_results=result.result;
-                page.updateSearchResults();
-              }).catch(error=>{
-                page.attrs.enable_search=true;
-                page.attrs.floater.setVisible(false);
-                console.log(error);
-                components.ErrorDrawer.post("Search Error",formatError(error));
-              });
-          };
-          let update_timer=null;
-          let update_duration=1000;
-          let update_interval=15;
-          let update_counter=0;
-          let update_page=null;
-          function installUpdateTimer(page){
-            if(update_timer===null){
-              update_timer=setInterval(updateTimerTimeout,update_duration);
-            }
-            update_page=page;
-          };
-          function updateTimerTimeout(){
-            update_counter+=1;
-            if(update_counter>update_interval){
-              console.log("update page");
-              update_page.getTracks(true);
-              update_counter=0;
-            }
-          };
-          class UserRadioListPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              this.attrs={'header':new ListHeader(this),'lst':new UpcomingTracksListElement(
-                                ),'refresh':new components.Refresh(()=>{
-                    this.getList();
-                  })};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.lst);
-              this.appendChild(this.attrs.refresh);
-              this.attrs.refresh.connect(this);
-            }
-            elementMounted(){
-              console.log("mount user radio list");
-              this.getList();
-            }
-            getList(){
-              api.radioStationList().then(result=>{
-                  this.attrs.lst.removeChildren();
-                  console.log(result);
-                  result.result.forEach(item=>{
-                      this.attrs.lst.appendChild(new StationListItemElement(item));
-                      
-                    });
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("List Error",formatError(error));
-                });
-            }
-          };
-          class UserRadioStationPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              this.attrs={'device':AudioDevice.instance(),'header':new StationHeader(
-                                  this),'footer':new Footer(this,2,false),'padding2':new DomElement(
-                                  "div",{'className':style.padding2},[]),'lst':new UpcomingTracksListElement(
-                                ),'more':new components.MoreMenu(this.handleHideMore.bind(this)),
-                              'refresh':new components.Refresh(()=>{
-                    this.getTracks(true);
-                  })};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.lst);
-              this.appendChild(this.attrs.padding2);
-              this.appendChild(this.attrs.footer);
-              this.appendChild(this.attrs.more);
-              this.appendChild(this.attrs.refresh);
-              this.attrs.act_watch=this.attrs.more.addAction("Watch on Youtube",this.handleOpenExternal.bind(
-                                  this));
-              this.attrs.act_related=this.attrs.more.addAction("Browse Related",this.handleBrowseRelated.bind(
-                                  this));
-              this.attrs.act_remove=this.attrs.more.addAction("Remove Track",this.handleRemoveTrack.bind(
-                                  this));
-              this.attrs.refresh.connect(this);
-            }
-            elementMounted(){
-              console.log("mount user radio page");
-              this.attrs.device.connectView(this);
-              this.attrs.header.setTime(this.attrs.device.currentTime(),this.attrs.device.duration(
-                                ));
-              this.getTracks(false);
-            }
-            elementUnmounted(){
-              this.attrs.device.disconnectView(this);
-            }
-            handleShowMore(track){
-              this.attrs.more_track=track;
-              if(track.source=='youtube'){
-                this.attrs.act_watch.removeClassName(style.hide);
-                this.attrs.act_related.removeClassName(style.hide);
-              }else{
-                this.attrs.act_watch.addClassName(style.hide);
-                this.attrs.act_related.addClassName(style.hide);
-              }
-              this.attrs.more.show();
-            }
-            handleHideMore(){
-              this.attrs.more.hide();
-            }
-            handleTrackChanged(track){
-              console.log("on handle track changed");
-              this.attrs.header.setTrack(track);
-              this.removeTrackByUID(track.uid);
-            }
-            handleAudioLoadStart(){
-              this.attrs.header.setAudioState("loading");
-            }
-            handleAudioWaiting(){
-              this.attrs.header.setAudioState("waiting");
-            }
-            handleAudioStalled(){
-              this.attrs.header.setAudioState("stalled");
-            }
-            handleAudioError(){
-              this.attrs.header.setAudioState("error");
-            }
-            handleAudioPlay(){
-              this.attrs.header.setAudioState("play");
-            }
-            handleAudioPause(){
-              this.attrs.header.setAudioState("pause");
-            }
-            handleAudioTimeUpdate(event){
-              this.attrs.header.setTime(event.currentTime,event.duration);
-            }
-            handleAudioDurationChange(event){
-              this.attrs.header.setTime(event.currentTime,event.duration);
-            }
-            handleOpenExternal(){
-              if(this.attrs.more_track.source=="youtube"){
-                const url="https://www.youtube.com/watch?v="+this.attrs.more_track.sid;
-                
-                api.openTab(url);
-                ;
-              }
-            }
-            handleBrowseRelated(){
-              if(this.attrs.more_track.source=="youtube"){
-                const query="related:"+this.attrs.more_track.sid;
-                const source=this.attrs.more_track.source;
-                const match=Router.instance.match();
-                const station=match.station;
-                router.navigate(router.routes.userRadioStationSearch({'station':station},
-                                      {'source':source,'query':query}));
-                ;
-                ;
-                ;
-                ;
-              }else{
-                console.error("cannot browse related for source:"+this.attrs.more_track.source);
-                
-              }
-            }
-            handleRemoveTrack(){
-              const match=Router.instance.match();
-              let station=match.station;
-              api.radioStationRemoveTrack(station,this.attrs.more_track.uid).then(
-                              result=>{
-                  this.removeTrackByUID(this.attrs.more_track.uid);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Remove Error",formatError(error));
-                  
-                });
-            }
-            removeTrackByUID(uid){
-              const lst=this.attrs.lst.children;
-              const N=lst.length;
-              for(let index=0;index<lst.length;index++)
-              {
-                const child=lst[index];
-                if(child.attrs.item.uid==uid){
-                  lst.splice(index,1);
-                  this.attrs.lst.update();
-                  console.log(`removed track ${uid}`);
-                  return;
+                }else if(update.type==='track_removed'){
+                  if(store.globals.radio_tracks[update.payload.uid]){
+                    delete store.globals.radio_tracks[update.payload.uid];
+                  }else{
+                    console.error("unable to remove track "+update.payload.uid);
+                  }
+                }else if(update.type==='track_added'){
+                  _processUpdates_TrackAdded(update.payload);
+                }else if(update.type==='track_reset'){
+                  _processUpdates_TrackReset();
+                }else{
+                  console.error(`unknown type: ${update.type}`);
                 }
-              }
-              ;
-              ;
-              console.error(`failed to remove track ${uid}`);
-            }
-            getTracks(force){
-              const match=Router.instance.match();
-              let station=match.station;
-              let uid=store.globals.radio_update_index;
-              if(uid===undefined||station!=store.globals.radio_update_station){
-                uid=-1;
-              }
-              console.log(`get update ${force} ${uid}`);
-              if(uid>0&&force===false){
-                const _=getUpcomingTracks();
-                reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
-                return;
-                ;
-              }
-              api.radioStationUpdates(station,uid).then(result=>{
-                  store.globals.radio_update_station=station;
-                  processUpdates(result.result);
-                  reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Update Error",formatError(error));
-                  
-                });
-            }
-            vote(item){
-              const match=Router.instance.match();
-              let station=match.station;
-              return api.radioStationVote(station,item.uid,item.vote);
-            }
+              });
+            store.globals.radio_update_index=updates.uid;
+          }else{
+            console.error(`unknown kind: ${updates.kind}`);
+          }
+          if(current_track!==null){
+            store.globals.radio_current_track=current_track;
+          }else if(store.globals.radio_current_track===undefined){
+            store.globals.radio_current_track=null;
+          }
+          getUpcomingTracks();
+        };
+        function reconcileUpdates(page,elem,tracks,clsRowElement){
+          const lst=elem.children;
+          let index=0;
+          for(;index<lst.length&&index<tracks.length;index++)
+          {
+            lst[index].setItem(tracks[index]);
+          }
+          const removeCount=lst.length-index;
+          if(removeCount>0){
+            lst.splice(index,removeCount);
+          }
+          for(;index<tracks.length;index++)
+          {
+            lst.push(new clsRowElement(page,tracks[index]));
+          }
+          elem.update();
+          thumbnail_ProcessStart();
+        };
+        function reconcileTrackUpdates(page,header,elem){
+          const tracks=store.globals.radio_sorted_tracks;
+          if(store.globals.radio_current_track){
+            header.setTrack(store.globals.radio_current_track);
+          }
+          reconcileUpdates(page,elem,tracks,UpcomingTrackElement);
+        };
+        function reconcilePreviousTrackUpdates(page,elem){
+          const tracks=store.globals.radio_previous_tracks;
+          reconcileUpdates(page,elem,tracks,PreviousTrackElement);
+        };
+        function timeoutResolver(ms){
+          return new Promise((resolve,reject)=>{
+              setTimeout(function(){
+                  resolve(true);
+                },ms);
+            });
+        };
+        function _search_parse_query(page,isPublic){
+          const match=Router.instance.match();
+          const params=daedalus.util.parseParameters();
+          const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
+          
+          const f=(k,d)=>{
+            const v=params[k];
+            return(v===null||v===undefined)?d:v[0];
           };
-          class UserRadioStationEditPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              this.attrs={'device':AudioDevice.instance(),'header':new StationEditHeader(
-                                  this),'footer':new Footer(this,0,false),'padding2':new DomElement(
-                                  "div",{'className':style.padding2},[]),'content':new DomElement(
-                                  "div",{'className':style.content},[]),'lst':new TrackEditList(),
-                              'more':new components.MoreMenu(this.handleHideMore.bind(this)),'qrcode':new components.QrCodeElement(
-                                  "hello world")};
-              this.attrs.lst.setPlaceholderClassName(style.placeholder);
-              this.attrs.lst.addClassName(style.list);
-              this.attrs.header.addClassName(style.header);
-              this.attrs.footer.addClassName(style.header);
-              this.appendChild(this.attrs.header);
-              this.attrs.content.appendChild(this.attrs.lst);
-              this.appendChild(this.attrs.qrcode);
-              this.appendChild(this.attrs.content);
-              this.appendChild(this.attrs.padding2);
-              this.appendChild(this.attrs.footer);
-              this.appendChild(this.attrs.more);
-              this.attrs.more.addAction("Remove Track",this.handleRemoveSelectedTrack.bind(
-                                  this));
+          let source=f("source","library");
+          let query=f("query","");
+          if(source!='youtube'&&source!='library'){
+            source='youtube';
+          }
+          page.attrs.header.setSource(source);
+          page.attrs.header.setQuery(query);
+          if(source!==store.globals.radio_search_source||query!==store.globals.radio_search_query||!store.globals.radio_search_results){
+          
+            if(query!==""){
+              page.search(source,query);
+            }else{
+              store.globals.radio_search_source=source;
+              store.globals.radio_search_query=query;
+              store.globals.radio_search_results=[];
+              page.updateSearchResults();
+              router.navigate(route_fn({'station':match.station},{'query':query,'source':source}));
+              
+            }
+          }
+        };
+        function _search_impl(page,isPublic,source,query){
+          if(!page.attrs.enable_search){
+            console.log("ignore search request");
+            return;
+          }
+          query=query.trim();
+          const match=Router.instance.match();
+          const route_fn=(isPublic)?router.routes.publicRadioSearch:router.routes.userRadioStationSearch;
+          
+          router.navigate(route_fn({'station':match.station},{'query':query,'source':source}));
+          
+          page.attrs.lst.removeChildren();
+          store.globals.radio_search_source=source;
+          store.globals.radio_search_query=query;
+          store.globals.radio_search_results=[];
+          if(query.length===0){
+            page.updateSearchResults();
+            return;
+          }
+          page.attrs.enable_search=false;
+          page.attrs.floater.setVisible(true);
+          const api_fn=(isPublic)?api.radioPublicStationSearch:api.radioStationSearch;
+          
+          api_fn(match.station,source,query).then(result=>{
+              page.attrs.enable_search=true;
+              page.attrs.floater.setVisible(false);
+              console.log(result);
+              store.globals.radio_search_results=result.result;
+              page.updateSearchResults();
+            }).catch(error=>{
+              page.attrs.enable_search=true;
+              page.attrs.floater.setVisible(false);
+              console.log(error);
+              components.ErrorDrawer.post("Search Error",formatError(error));
+            });
+        };
+        let update_timer=null;
+        let update_duration=1000;
+        let update_interval=15;
+        let update_counter=0;
+        let update_page=null;
+        function installUpdateTimer(page){
+          if(update_timer===null){
+            update_timer=setInterval(updateTimerTimeout,update_duration);
+          }
+          update_page=page;
+        };
+        function updateTimerTimeout(){
+          update_counter+=1;
+          if(update_counter>update_interval){
+            console.log("update page");
+            update_page.getTracks(true);
+            update_counter=0;
+          }
+        };
+        class UserRadioListPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            this.attrs={'header':new ListHeader(this),'lst':new UpcomingTracksListElement(
+                            ),'refresh':new components.Refresh(()=>{
+                  this.getList();
+                })};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.refresh);
+            this.attrs.refresh.connect(this);
+          }
+          elementMounted(){
+            console.log("mount user radio list");
+            this.getList();
+          }
+          getList(){
+            api.radioStationList().then(result=>{
+                this.attrs.lst.removeChildren();
+                console.log(result);
+                result.result.forEach(item=>{
+                    this.attrs.lst.appendChild(new StationListItemElement(item));
+                    
+                  });
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("List Error",formatError(error));
+              });
+          }
+        };
+        class UserRadioStationPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            this.attrs={'device':AudioDevice.instance(),'header':new StationHeader(
+                              this),'footer':new Footer(this,2,false),'padding2':new DomElement(
+                              "div",{'className':style.padding2},[]),'lst':new UpcomingTracksListElement(
+                            ),'more':new components.MoreMenu(this.handleHideMore.bind(this)),'refresh':new components.Refresh(
+                              ()=>{
+                  this.getTracks(true);
+                })};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.more);
+            this.appendChild(this.attrs.refresh);
+            this.attrs.act_watch=this.attrs.more.addAction("Watch on Youtube",this.handleOpenExternal.bind(
+                              this));
+            this.attrs.act_related=this.attrs.more.addAction("Browse Related",this.handleBrowseRelated.bind(
+                              this));
+            this.attrs.act_remove=this.attrs.more.addAction("Remove Track",this.handleRemoveTrack.bind(
+                              this));
+            this.attrs.refresh.connect(this);
+          }
+          elementMounted(){
+            console.log("mount user radio page");
+            this.attrs.device.connectView(this);
+            this.attrs.header.setTime(this.attrs.device.currentTime(),this.attrs.device.duration(
+                            ));
+            this.getTracks(false);
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+          }
+          handleShowMore(track){
+            this.attrs.more_track=track;
+            if(track.source=='youtube'){
+              this.attrs.act_watch.removeClassName(style.hide);
+              this.attrs.act_related.removeClassName(style.hide);
+            }else{
+              this.attrs.act_watch.addClassName(style.hide);
+              this.attrs.act_related.addClassName(style.hide);
+            }
+            this.attrs.more.show();
+          }
+          handleHideMore(){
+            this.attrs.more.hide();
+          }
+          handleTrackChanged(track){
+            console.log("on handle track changed");
+            this.attrs.header.setTrack(track);
+            this.removeTrackByUID(track.uid);
+          }
+          handleAudioLoadStart(){
+            this.attrs.header.setAudioState("loading");
+          }
+          handleAudioWaiting(){
+            this.attrs.header.setAudioState("waiting");
+          }
+          handleAudioStalled(){
+            this.attrs.header.setAudioState("stalled");
+          }
+          handleAudioError(){
+            this.attrs.header.setAudioState("error");
+          }
+          handleAudioPlay(){
+            this.attrs.header.setAudioState("play");
+          }
+          handleAudioPause(){
+            this.attrs.header.setAudioState("pause");
+          }
+          handleAudioTimeUpdate(event){
+            this.attrs.header.setTime(event.currentTime,event.duration);
+          }
+          handleAudioDurationChange(event){
+            this.attrs.header.setTime(event.currentTime,event.duration);
+          }
+          handleOpenExternal(){
+            if(this.attrs.more_track.source=="youtube"){
+              const url="https://www.youtube.com/watch?v="+this.attrs.more_track.sid;
+              
+              api.openTab(url);
+              ;
+            }
+          }
+          handleBrowseRelated(){
+            if(this.attrs.more_track.source=="youtube"){
+              const query="related:"+this.attrs.more_track.sid;
+              const source=this.attrs.more_track.source;
+              const match=Router.instance.match();
+              const station=match.station;
+              router.navigate(router.routes.userRadioStationSearch({'station':station},
+                                  {'source':source,'query':query}));
+              ;
+              ;
+              ;
+              ;
+            }else{
+              console.error("cannot browse related for source:"+this.attrs.more_track.source);
+              
+            }
+          }
+          handleRemoveTrack(){
+            const match=Router.instance.match();
+            let station=match.station;
+            api.radioStationRemoveTrack(station,this.attrs.more_track.uid).then(result=>{
+              
+                this.removeTrackByUID(this.attrs.more_track.uid);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Remove Error",formatError(error));
+              });
+          }
+          removeTrackByUID(uid){
+            const lst=this.attrs.lst.children;
+            const N=lst.length;
+            for(let index=0;index<lst.length;index++)
+            {
+              const child=lst[index];
+              if(child.attrs.item.uid==uid){
+                lst.splice(index,1);
+                this.attrs.lst.update();
+                console.log(`removed track ${uid}`);
+                return;
+              }
+            }
+            ;
+            ;
+            console.error(`failed to remove track ${uid}`);
+          }
+          getTracks(force){
+            const match=Router.instance.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
+            }
+            console.log(`get update ${force} ${uid}`);
+            if(uid>0&&force===false){
+              const _=getUpcomingTracks();
+              reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
+              return;
+              ;
+            }
+            api.radioStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+                reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
+              });
+          }
+          vote(item){
+            const match=Router.instance.match();
+            let station=match.station;
+            return api.radioStationVote(station,item.uid,item.vote);
+          }
+        };
+        class UserRadioStationEditPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            this.attrs={'device':AudioDevice.instance(),'header':new StationEditHeader(
+                              this),'footer':new Footer(this,0,false),'padding2':new DomElement(
+                              "div",{'className':style.padding2},[]),'content':new DomElement("div",
+                              {'className':style.content},[]),'lst':new TrackEditList(),'more':new components.MoreMenu(
+                              this.handleHideMore.bind(this)),'qrcode':new components.QrCodeElement(
+                              "hello world")};
+            this.attrs.lst.setPlaceholderClassName(style.placeholder);
+            this.attrs.lst.addClassName(style.list);
+            this.attrs.header.addClassName(style.header);
+            this.attrs.footer.addClassName(style.header);
+            this.appendChild(this.attrs.header);
+            this.attrs.content.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.qrcode);
+            this.appendChild(this.attrs.content);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.more);
+            this.attrs.more.addAction("Remove Track",this.handleRemoveSelectedTrack.bind(
+                              this));
+            this.attrs.qrcode.addClassName(style.hide);
+          }
+          elementMounted(){
+            console.log("mount user radio edit page");
+            this.attrs.device.connectView(this);
+            getStationInfo().then(result=>{
+                this.attrs.header.setBroadcasting(result.broadcast_id!==null);
+                this.handleToggleBroadcasting(result.broadcast_id!==null);
+                this.getTracks(false);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Load Error",formatError(error));
+              });
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+          }
+          handleToggleBroadcasting(broadcasting){
+            if(broadcasting){
+              this.attrs.content.addClassName(style.hide);
+              this.attrs.qrcode.removeClassName(style.hide);
+              const url=api.radioStationUrl(null,store.globals.radio_broadcast_id);
+              
+              this.attrs.qrcode.setText(url);
+              ;
+            }else{
+              this.attrs.content.removeClassName(style.hide);
               this.attrs.qrcode.addClassName(style.hide);
             }
-            elementMounted(){
-              console.log("mount user radio edit page");
-              this.attrs.device.connectView(this);
-              getStationInfo().then(result=>{
-                  this.attrs.header.setBroadcasting(result.broadcast_id!==null);
-                  this.handleToggleBroadcasting(result.broadcast_id!==null);
-                  this.getTracks(false);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Load Error",formatError(error));
+          }
+          handleShowMore(track){
+            this.attrs.selected_track=track;
+            this.attrs.more.show();
+          }
+          handleHideMore(){
+            this.attrs.more.hide();
+          }
+          handleRemoveSelectedTrack(){
+            let i=this.attrs.selected_track.index;
+            console.log(`remove ${i} ${this.attrs.selected_track.title}`);
+            let x=store.globals.radio_all_tracks.splice(i,1);
+            let y=this.attrs.lst.children.splice(i,1);
+            this.attrs.lst.update();
+            store.globals.radio_all_tracks.forEach((track,index)=>{
+                track.index=index;
+              });
+          }
+          getTracks(force){
+            const match=Router.instance.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
+            }
+            api.radioStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+                const tracks=getAllTracks();
+                reconcileUpdates(this,this.attrs.lst,tracks,EditTrackElement);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
+              });
+          }
+        };
+        class UserRadioStationSearchPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            this.attrs={'device':AudioDevice.instance(),'header':new StationSearchHeader(
+                              this),'footer':new Footer(this,3,false),'lst':new UpcomingTracksListElement(
+                            ),'padding2':new DomElement("div",{'className':style.padding2},[]),
+                          'refresh':new components.Refresh(()=>{
+                  this.getTracks(true);
+                }),'floater':new Floater(),'enable_search':true};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.refresh);
+            this.appendChild(this.attrs.floater);
+            this.attrs.floater.setVisible(false);
+            this.attrs.refresh.connect(this);
+          }
+          elementMounted(){
+            console.log("mount user radio search");
+            this.attrs.device.connectView(this);
+            _search_parse_query(this,false);
+            this.getTracks(false);
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+          }
+          search(source,query){
+            _search_impl(this,false,source,query);
+          }
+          updateSearchResults(){
+            this.attrs.lst.removeChildren();
+            if(store.globals.radio_search_results.length==0){
+              this.attrs.lst.appendChild(new NoTrackElement());
+            }else{
+              store.globals.radio_search_results.forEach(item=>{
+                  const elem=new SearchResultElement(this);
+                  elem.setItem(item);
+                  this.attrs.lst.appendChild(elem);
                 });
             }
-            elementUnmounted(){
-              this.attrs.device.disconnectView(this);
+            thumbnail_ProcessStart();
+          }
+          getTracks(force){
+            const match=Router.instance.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
             }
-            handleToggleBroadcasting(broadcasting){
-              if(broadcasting){
-                this.attrs.content.addClassName(style.hide);
-                this.attrs.qrcode.removeClassName(style.hide);
-                const url=api.radioStationUrl(null,store.globals.radio_broadcast_id);
-                
-                this.attrs.qrcode.setText(url);
-                ;
-              }else{
-                this.attrs.content.removeClassName(style.hide);
-                this.attrs.qrcode.addClassName(style.hide);
+            if(uid>0&&force===false){
+              return;
+            }
+            console.log(`get update ${uid}`);
+            api.radioStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
+              });
+          }
+          addTrackToPool(track){
+            const match=Router.instance.match();
+            let station=match.station;
+            return api.radioStationAddTrack(station,track);
+          }
+          removeTrackBySID(source,sid){
+            const lst=this.attrs.lst.children;
+            const N=lst.length;
+            for(let index=0;index<lst.length;index++)
+            {
+              const child=lst[index];
+              if(child.attrs.item.source==source&&child.attrs.item.sid==sid){
+                lst.splice(index,1);
+                this.attrs.lst.update();
+                break;
               }
             }
-            handleShowMore(track){
-              this.attrs.selected_track=track;
-              this.attrs.more.show();
+            ;
+            ;
+          }
+        };
+        class UserRadioStationHistoryPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            this.attrs={'device':AudioDevice.instance(),'header':new StationHistoryHeader(
+                              this),'footer':new Footer(this,1,false),'padding2':new DomElement(
+                              "div",{'className':style.padding2},[]),'lst':new UpcomingTracksListElement(
+                            ),'refresh':new components.Refresh(()=>{
+                  this.getTracks(true);
+                })};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.refresh);
+            this.attrs.refresh.connect(this);
+          }
+          elementMounted(){
+            console.log("mount user history");
+            this.attrs.device.connectView(this);
+            this.getTracks(false);
+          }
+          elementUnmounted(){
+            this.attrs.device.disconnectView(this);
+          }
+          handleTrackChanged(track){
+            console.log("on handle track changed");
+            console.log(track);
+            this.attrs.header.setTrack(track);
+          }
+          getTracks(force){
+            const match=Router.instance.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
             }
-            handleHideMore(){
-              this.attrs.more.hide();
+            if(uid>0&&force===false){
+              reconcilePreviousTrackUpdates(this,this.attrs.lst);
+              return;
             }
-            handleRemoveSelectedTrack(){
-              let i=this.attrs.selected_track.index;
-              console.log(`remove ${i} ${this.attrs.selected_track.title}`);
-              let x=store.globals.radio_all_tracks.splice(i,1);
-              let y=this.attrs.lst.children.splice(i,1);
-              this.attrs.lst.update();
-              store.globals.radio_all_tracks.forEach((track,index)=>{
-                  track.index=index;
-                });
-            }
-            getTracks(force){
-              const match=Router.instance.match();
-              let station=match.station;
-              let uid=store.globals.radio_update_index;
-              if(uid===undefined||station!=store.globals.radio_update_station){
-                uid=-1;
-              }
-              api.radioStationUpdates(station,uid).then(result=>{
-                  store.globals.radio_update_station=station;
-                  processUpdates(result.result);
-                  const tracks=getAllTracks();
-                  reconcileUpdates(this,this.attrs.lst,tracks,EditTrackElement);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Update Error",formatError(error));
-                  
-                });
-            }
-          };
-          class UserRadioStationSearchPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              this.attrs={'device':AudioDevice.instance(),'header':new StationSearchHeader(
-                                  this),'footer':new Footer(this,3,false),'lst':new UpcomingTracksListElement(
-                                ),'padding2':new DomElement("div",{'className':style.padding2},[]),
-                              'refresh':new components.Refresh(()=>{
-                    this.getTracks(true);
-                  }),'floater':new Floater(),'enable_search':true};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.lst);
-              this.appendChild(this.attrs.padding2);
-              this.appendChild(this.attrs.footer);
-              this.appendChild(this.attrs.refresh);
-              this.appendChild(this.attrs.floater);
-              this.attrs.floater.setVisible(false);
-              this.attrs.refresh.connect(this);
-            }
-            elementMounted(){
-              console.log("mount user radio search");
-              this.attrs.device.connectView(this);
-              _search_parse_query(this,false);
-              this.getTracks(false);
-            }
-            elementUnmounted(){
-              this.attrs.device.disconnectView(this);
-            }
-            search(source,query){
-              _search_impl(this,false,source,query);
-            }
-            updateSearchResults(){
-              this.attrs.lst.removeChildren();
-              if(store.globals.radio_search_results.length==0){
-                this.attrs.lst.appendChild(new NoTrackElement());
-              }else{
-                store.globals.radio_search_results.forEach(item=>{
-                    const elem=new SearchResultElement(this);
-                    elem.setItem(item);
-                    this.attrs.lst.appendChild(elem);
-                  });
-              }
-              thumbnail_ProcessStart();
-            }
-            getTracks(force){
-              const match=Router.instance.match();
-              let station=match.station;
-              let uid=store.globals.radio_update_index;
-              if(uid===undefined||station!=store.globals.radio_update_station){
-                uid=-1;
-              }
-              if(uid>0&&force===false){
-                return;
-              }
-              console.log(`get update ${uid}`);
-              api.radioStationUpdates(station,uid).then(result=>{
-                  store.globals.radio_update_station=station;
-                  processUpdates(result.result);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Update Error",formatError(error));
-                  
-                });
-            }
-            addTrackToPool(track){
-              const match=Router.instance.match();
-              let station=match.station;
-              return api.radioStationAddTrack(station,track);
-            }
-            removeTrackBySID(source,sid){
-              const lst=this.attrs.lst.children;
-              const N=lst.length;
-              for(let index=0;index<lst.length;index++)
-              {
-                const child=lst[index];
-                if(child.attrs.item.source==source&&child.attrs.item.sid==sid){
-                  lst.splice(index,1);
-                  this.attrs.lst.update();
-                  break;
-                }
-              }
-              ;
-              ;
-            }
-          };
-          class UserRadioStationHistoryPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              this.attrs={'device':AudioDevice.instance(),'header':new StationHistoryHeader(
-                                  this),'footer':new Footer(this,1,false),'padding2':new DomElement(
-                                  "div",{'className':style.padding2},[]),'lst':new UpcomingTracksListElement(
-                                ),'refresh':new components.Refresh(()=>{
-                    this.getTracks(true);
-                  })};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.lst);
-              this.appendChild(this.attrs.padding2);
-              this.appendChild(this.attrs.footer);
-              this.appendChild(this.attrs.refresh);
-              this.attrs.refresh.connect(this);
-            }
-            elementMounted(){
-              console.log("mount user history");
-              this.attrs.device.connectView(this);
-              this.getTracks(false);
-            }
-            elementUnmounted(){
-              this.attrs.device.disconnectView(this);
-            }
-            handleTrackChanged(track){
-              console.log("on handle track changed");
-              console.log(track);
-              this.attrs.header.setTrack(track);
-            }
-            getTracks(force){
-              const match=Router.instance.match();
-              let station=match.station;
-              let uid=store.globals.radio_update_index;
-              if(uid===undefined||station!=store.globals.radio_update_station){
-                uid=-1;
-              }
-              if(uid>0&&force===false){
+            console.log(`get update ${uid}`);
+            api.radioStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
                 reconcilePreviousTrackUpdates(this,this.attrs.lst);
-                return;
-              }
-              console.log(`get update ${uid}`);
-              api.radioStationUpdates(station,uid).then(result=>{
-                  store.globals.radio_update_station=station;
-                  processUpdates(result.result);
-                  reconcilePreviousTrackUpdates(this,this.attrs.lst);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Update Error",formatError(error));
-                  
-                });
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
+              });
+          }
+        };
+        class PublicRadioStationPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            if(!checkPublicAuthentication()){
+              this.attrs.auth_failed=true;
+              return;
             }
-          };
-          class PublicRadioStationPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              if(!checkPublicAuthentication()){
-                this.attrs.auth_failed=true;
-                return;
-              }
-              this.attrs={'header':new StationHeader(this,true),'footer':new Footer(
-                                  this,2,true),'padding2':new DomElement("div",{'className':style.padding2},
-                                  []),'lst':new UpcomingTracksListElement(),'more':new components.MoreMenu(
-                                  this.handleHideMore.bind(this)),'refresh':new components.Refresh(
-                                  ()=>{
-                    this.getTracks(true);
-                  })};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.lst);
-              this.appendChild(this.attrs.padding2);
-              this.appendChild(this.attrs.footer);
-              this.appendChild(this.attrs.more);
-              this.appendChild(this.attrs.refresh);
-              this.attrs.refresh.connect(this);
-              this.attrs.act_watch=this.attrs.more.addAction("Watch on Youtube",this.handleOpenExternal.bind(
-                                  this));
-              this.attrs.act_related=this.attrs.more.addAction("Browse Related",this.handleBrowseRelated.bind(
-                                  this));
-              this.attrs.more.addAction("Close",()=>{});
+            this.attrs={'header':new StationHeader(this,true),'footer':new Footer(
+                              this,2,true),'padding2':new DomElement("div",{'className':style.padding2},
+                              []),'lst':new UpcomingTracksListElement(),'more':new components.MoreMenu(
+                              this.handleHideMore.bind(this)),'refresh':new components.Refresh(
+                              ()=>{
+                  this.getTracks(true);
+                })};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.more);
+            this.appendChild(this.attrs.refresh);
+            this.attrs.refresh.connect(this);
+            this.attrs.act_watch=this.attrs.more.addAction("Watch on Youtube",this.handleOpenExternal.bind(
+                              this));
+            this.attrs.act_related=this.attrs.more.addAction("Browse Related",this.handleBrowseRelated.bind(
+                              this));
+            this.attrs.more.addAction("Close",()=>{
+
+              });
+          }
+          elementMounted(){
+            if(this.attrs.auth_failed){
+              return;
             }
-            elementMounted(){
-              if(this.attrs.auth_failed){
-                return;
-              }
-              installUpdateTimer(this);
-              console.log("mount public radio page");
-              this.getTracks(false);
+            installUpdateTimer(this);
+            console.log("mount public radio page");
+            this.getTracks(false);
+          }
+          handleShowMore(track){
+            this.attrs.more_track=track;
+            if(track.source=='youtube'){
+              this.attrs.act_watch.removeClassName(style.hide);
+              this.attrs.act_related.removeClassName(style.hide);
+            }else{
+              this.attrs.act_watch.addClassName(style.hide);
+              this.attrs.act_related.addClassName(style.hide);
             }
-            handleShowMore(track){
-              this.attrs.more_track=track;
-              if(track.source=='youtube'){
-                this.attrs.act_watch.removeClassName(style.hide);
-                this.attrs.act_related.removeClassName(style.hide);
-              }else{
-                this.attrs.act_watch.addClassName(style.hide);
-                this.attrs.act_related.addClassName(style.hide);
-              }
-              this.attrs.more.show();
+            this.attrs.more.show();
+          }
+          handleHideMore(){
+            this.attrs.more.hide();
+          }
+          handleOpenExternal(){
+            if(this.attrs.more_track.source=="youtube"){
+              const url="https://www.youtube.com/watch?v="+this.attrs.more_track.sid;
+              
+              api.openTab(url);
+              ;
             }
-            handleHideMore(){
-              this.attrs.more.hide();
-            }
-            handleOpenExternal(){
-              if(this.attrs.more_track.source=="youtube"){
-                const url="https://www.youtube.com/watch?v="+this.attrs.more_track.sid;
-                
-                api.openTab(url);
-                ;
-              }
-            }
-            handleBrowseRelated(){
-              if(this.attrs.more_track.source=="youtube"){
-                const query="related:"+this.attrs.more_track.sid;
-                const source=this.attrs.more_track.source;
-                const match=Router.instance.match();
-                const station=match.station;
-                router.navigate(router.routes.userRadioStationSearch({'station':station},
-                                      {'source':source,'query':query}));
-                ;
-                ;
-                ;
-                ;
-              }else{
-                console.error("cannot browse related for source:"+this.attrs.more_track.source);
-                
-              }
-            }
-            getTracks(force){
+          }
+          handleBrowseRelated(){
+            if(this.attrs.more_track.source=="youtube"){
+              const query="related:"+this.attrs.more_track.sid;
+              const source=this.attrs.more_track.source;
               const match=Router.instance.match();
-              let station=match.station;
-              let uid=store.globals.radio_update_index;
-              if(uid===undefined||station!=store.globals.radio_update_station){
-                uid=-1;
-              }
-              if(uid>0&&force===false){
-                const _=getUpcomingTracks();
-                reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
-                return;
-                ;
-              }
-              console.log(`get update ${uid}`);
-              api.radioPublicStationUpdates(station,uid).then(result=>{
-                  store.globals.radio_update_station=station;
-                  processUpdates(result.result);
-                  reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Update Error",formatError(error));
-                  
-                });
-            }
-            vote(item){
-              const match=Router.instance.match();
-              return api.radioPublicStationVote(match.station,item.uid,item.vote);
+              const station=match.station;
+              router.navigate(router.routes.userRadioStationSearch({'station':station},
+                                  {'source':source,'query':query}));
+              ;
+              ;
+              ;
+              ;
+            }else{
+              console.error("cannot browse related for source:"+this.attrs.more_track.source);
               
             }
-          };
-          class PublicRadioStationSearchPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              if(!checkPublicAuthentication()){
-                this.attrs.auth_failed=true;
-                return;
-              }
-              this.attrs={'header':new StationSearchHeader(this,true),'footer':new Footer(
-                                  this,3,true),'padding2':new DomElement("div",{'className':style.padding2},
-                                  []),'lst':new UpcomingTracksListElement(),'refresh':new components.Refresh(
-                                  ()=>{
-                    this.getTracks(true);
-                  }),'floater':new Floater(),'enable_search':true};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.lst);
-              this.appendChild(this.attrs.padding2);
-              this.appendChild(this.attrs.footer);
-              this.appendChild(this.attrs.refresh);
-              this.appendChild(this.attrs.floater);
-              this.attrs.refresh.connect(this);
-              this.attrs.floater.setVisible(false);
+          }
+          getTracks(force){
+            const match=Router.instance.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
             }
-            elementMounted(){
-              if(this.attrs.auth_failed){
-                return;
-              }
-              installUpdateTimer(this);
-              console.log("mount public radio search");
-              _search_parse_query(this,true);
-              this.getTracks(false);
+            if(uid>0&&force===false){
+              const _=getUpcomingTracks();
+              reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
+              return;
+              ;
             }
-            search(source,query){
-              _search_impl(this,true,source,query);
+            console.log(`get update ${uid}`);
+            api.radioPublicStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+                reconcileTrackUpdates(this,this.attrs.header,this.attrs.lst);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
+              });
+          }
+          vote(item){
+            const match=Router.instance.match();
+            return api.radioPublicStationVote(match.station,item.uid,item.vote);
+          }
+        };
+        class PublicRadioStationSearchPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            if(!checkPublicAuthentication()){
+              this.attrs.auth_failed=true;
+              return;
             }
-            updateSearchResults(){
-              this.attrs.lst.removeChildren();
-              if(store.globals.radio_search_results.length==0){
-                this.attrs.lst.appendChild(new NoTrackElement());
-              }else{
-                store.globals.radio_search_results.forEach(item=>{
-                    const elem=new SearchResultElement(this);
-                    elem.setItem(item);
-                    this.attrs.lst.appendChild(elem);
-                  });
-              }
-              thumbnail_ProcessStart();
+            this.attrs={'header':new StationSearchHeader(this,true),'footer':new Footer(
+                              this,3,true),'padding2':new DomElement("div",{'className':style.padding2},
+                              []),'lst':new UpcomingTracksListElement(),'refresh':new components.Refresh(
+                              ()=>{
+                  this.getTracks(true);
+                }),'floater':new Floater(),'enable_search':true};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.refresh);
+            this.appendChild(this.attrs.floater);
+            this.attrs.refresh.connect(this);
+            this.attrs.floater.setVisible(false);
+          }
+          elementMounted(){
+            if(this.attrs.auth_failed){
+              return;
             }
-            getTracks(force){
-              const match=Router.instance.match();
-              let station=match.station;
-              let uid=store.globals.radio_update_index;
-              if(uid===undefined||station!=store.globals.radio_update_station){
-                uid=-1;
-              }
-              if(uid>0&&force===false){
-                return;
-              }
-              console.log(`get update ${uid}`);
-              api.radioPublicStationUpdates(station,uid).then(result=>{
-                  store.globals.radio_update_station=station;
-                  processUpdates(result.result);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Update Error",formatError(error));
-                  
+            installUpdateTimer(this);
+            console.log("mount public radio search");
+            _search_parse_query(this,true);
+            this.getTracks(false);
+          }
+          search(source,query){
+            _search_impl(this,true,source,query);
+          }
+          updateSearchResults(){
+            this.attrs.lst.removeChildren();
+            if(store.globals.radio_search_results.length==0){
+              this.attrs.lst.appendChild(new NoTrackElement());
+            }else{
+              store.globals.radio_search_results.forEach(item=>{
+                  const elem=new SearchResultElement(this);
+                  elem.setItem(item);
+                  this.attrs.lst.appendChild(elem);
                 });
             }
-            addTrackToPool(track){
-              console.log("add public track");
-              const match=Router.instance.match();
-              let station=match.station;
-              return api.radioPublicStationAddTrack(station,track);
+            thumbnail_ProcessStart();
+          }
+          getTracks(force){
+            const match=Router.instance.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
             }
-            removeTrackBySID(source,sid){
-              const lst=this.attrs.lst.children;
-              const N=lst.length;
-              for(let index=0;index<lst.length;index++)
-              {
-                const child=lst[index];
-                if(child.attrs.item.source==source&&child.attrs.item.sid==sid){
-                  lst.splice(index,1);
-                  this.attrs.lst.update();
-                  break;
-                }
-              }
-              ;
-              ;
+            if(uid>0&&force===false){
+              return;
             }
-          };
-          class PublicRadioStationHistoryPage extends DomElement {
-            constructor(){
-              super("div",{'className':style.main},[]);
-              if(!checkPublicAuthentication()){
-                this.attrs.auth_failed=true;
-                return;
+            console.log(`get update ${uid}`);
+            api.radioPublicStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
+              });
+          }
+          addTrackToPool(track){
+            console.log("add public track");
+            const match=Router.instance.match();
+            let station=match.station;
+            return api.radioPublicStationAddTrack(station,track);
+          }
+          removeTrackBySID(source,sid){
+            const lst=this.attrs.lst.children;
+            const N=lst.length;
+            for(let index=0;index<lst.length;index++)
+            {
+              const child=lst[index];
+              if(child.attrs.item.source==source&&child.attrs.item.sid==sid){
+                lst.splice(index,1);
+                this.attrs.lst.update();
+                break;
               }
-              this.attrs={'header':new StationHistoryHeader(this,true),'footer':new Footer(
-                                  this,1,true),'padding2':new DomElement("div",{'className':style.padding2},
-                                  []),'lst':new UpcomingTracksListElement(),'refresh':new components.Refresh(
-                                  ()=>{
-                    this.getTracks(true);
-                  })};
-              this.appendChild(this.attrs.header);
-              this.appendChild(this.attrs.lst);
-              this.appendChild(this.attrs.padding2);
-              this.appendChild(this.attrs.footer);
-              this.appendChild(this.attrs.refresh);
-              this.attrs.refresh.connect(this);
             }
-            elementMounted(){
-              if(this.attrs.auth_failed){
-                return;
-              }
-              installUpdateTimer(this);
-              console.log("mount public radio history");
-              this.getTracks(false);
+            ;
+            ;
+          }
+        };
+        class PublicRadioStationHistoryPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            if(!checkPublicAuthentication()){
+              this.attrs.auth_failed=true;
+              return;
             }
-            getTracks(force){
-              const match=Router.instance.match();
-              let station=match.station;
-              let uid=store.globals.radio_update_index;
-              if(uid===undefined||station!=store.globals.radio_update_station){
-                uid=-1;
-              }
-              if(uid>0&&force===false){
+            this.attrs={'header':new StationHistoryHeader(this,true),'footer':new Footer(
+                              this,1,true),'padding2':new DomElement("div",{'className':style.padding2},
+                              []),'lst':new UpcomingTracksListElement(),'refresh':new components.Refresh(
+                              ()=>{
+                  this.getTracks(true);
+                })};
+            this.appendChild(this.attrs.header);
+            this.appendChild(this.attrs.lst);
+            this.appendChild(this.attrs.padding2);
+            this.appendChild(this.attrs.footer);
+            this.appendChild(this.attrs.refresh);
+            this.attrs.refresh.connect(this);
+          }
+          elementMounted(){
+            if(this.attrs.auth_failed){
+              return;
+            }
+            installUpdateTimer(this);
+            console.log("mount public radio history");
+            this.getTracks(false);
+          }
+          getTracks(force){
+            const match=Router.instance.match();
+            let station=match.station;
+            let uid=store.globals.radio_update_index;
+            if(uid===undefined||station!=store.globals.radio_update_station){
+              uid=-1;
+            }
+            if(uid>0&&force===false){
+              reconcilePreviousTrackUpdates(this,this.attrs.lst);
+              return;
+            }
+            console.log(`get update ${uid}`);
+            api.radioPublicStationUpdates(station,uid).then(result=>{
+                store.globals.radio_update_station=station;
+                processUpdates(result.result);
                 reconcilePreviousTrackUpdates(this,this.attrs.lst);
-                return;
+              }).catch(error=>{
+                console.log(error);
+                components.ErrorDrawer.post("Update Error",formatError(error));
+              });
+          }
+        };
+        return[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
+                  UserRadioListPage,UserRadioStationEditPage,UserRadioStationHistoryPage,
+                  UserRadioStationPage,UserRadioStationSearchPage];
+      })();
+    const[OpenApiDocPage]=(function(){
+        const styles={'main':'dcs-3d60ceff-0'};
+        class OpenApiDocPage extends DomElement {
+          constructor(){
+            super("div",{'className':styles.main},[]);
+            this.doc=this.appendChild(new DomElement("pre"));
+          }
+          elementMounted(){
+            api.userDoc(location.origin).then((result)=>{
+                this.doc.appendChild(new TextElement(result));
+              }).catch((err)=>{
+                console.error(err);
+              });
+          }
+        };
+        return[OpenApiDocPage];
+      })();
+    const[PassInputElement,PasswordPage]=(function(){
+        const style={'main':'dcs-9bab9de7-0','btn_center':'dcs-9bab9de7-1','edit':'dcs-9bab9de7-2',
+                  'edit2':'dcs-9bab9de7-3','btnt':'dcs-9bab9de7-4','warning':'dcs-9bab9de7-5',
+                  'hbox':'dcs-9bab9de7-6','hide':'dcs-9bab9de7-7'};
+        class PassInputElement extends DomElement {
+          constructor(text,change_callback,submit_callback){
+            super("input",{'value':text,'type':"text"},[]);
+            this.change_callback=change_callback;
+            this.submit_callback=submit_callback;
+          }
+          setText(text){
+            this.getDomNode().value=text;
+          }
+          getText(){
+            return this.getDomNode().value;
+          }
+          onChange(event){
+            if(this.change_callback){
+              this.change_callback(this.getText());
+            }
+          }
+          onPaste(event){
+            if(this.change_callback){
+              this.change_callback(this.getText());
+            }
+          }
+          onKeyUp(event){
+            if(event.key=="Enter"){
+              if(this.submit_callback){
+                this.submit_callback(this.getText());
               }
-              console.log(`get update ${uid}`);
-              api.radioPublicStationUpdates(station,uid).then(result=>{
-                  store.globals.radio_update_station=station;
-                  processUpdates(result.result);
-                  reconcilePreviousTrackUpdates(this,this.attrs.lst);
-                }).catch(error=>{
-                  console.log(error);
-                  components.ErrorDrawer.post("Update Error",formatError(error));
-                  
-                });
+            }else{
+              if(this.change_callback){
+                this.change_callback(this.getText());
+              }
             }
+          }
+        };
+        let alphabet="0123456789";
+        alphabet+="abcdefghjklmnpqrstuvwxyz";
+        alphabet+="ABCDEFGHJKLMNPQRSTUVWXYZ";
+        alphabet+="!@#$%*-=_+.~";
+        function getPrimaryHostname(url){
+          const publicSuffixes=new Set(['com','net','org','edu','gov','mil','co.uk',
+                          'org.uk','co.jp','com.au','co.in']);
+          let hostname;
+          try{
+            if(!url.includes("://")){
+              hostname=new URL("http://"+url).hostname;
+            }else{
+              hostname=new URL(url).hostname;
+            }
+          }catch(e){
+            return url;
           };
-          return[PublicRadioStationHistoryPage,PublicRadioStationPage,PublicRadioStationSearchPage,
-                      UserRadioListPage,UserRadioStationEditPage,UserRadioStationHistoryPage,
-                      UserRadioStationPage,UserRadioStationSearchPage];
-        })();
-      const[OpenApiDocPage]=(function(){
-          const styles={'main':'dcs-3d60ceff-0'};
-          class OpenApiDocPage extends DomElement {
-            constructor(){
-              super("div",{'className':styles.main},[]);
-              this.doc=this.appendChild(new DomElement("pre"));
-            }
-            elementMounted(){
-              api.userDoc(location.origin).then((result)=>{
-                  this.doc.appendChild(new TextElement(result));
-                }).catch((err)=>{
-                  console.error(err);
-                });
-            }
-          };
-          return[OpenApiDocPage];
-        })();
-      const[]=(function(){
-          return[];
-        })();
-      return{'FileSystemPage':FileSystemPage,'InfoOilPage':InfoOilPage,'LandingPage':LandingPage,
-              'LibraryPage':LibraryPage,'LoginPage':LoginPage,'NoteContentPage':NoteContentPage,
-              'NoteContext':NoteContext,'NoteEditPage':NoteEditPage,'NotesPage':NotesPage,
-              'OpenApiDocPage':OpenApiDocPage,'PlaylistPage':PlaylistPage,'PublicFilePage':PublicFilePage,
-              'PublicRadioStationHistoryPage':PublicRadioStationHistoryPage,'PublicRadioStationPage':PublicRadioStationPage,
-              'PublicRadioStationSearchPage':PublicRadioStationSearchPage,'RecipeIndexPage':RecipeIndexPage,
-              'RecipePage':RecipePage,'SavedSearchPage':SavedSearchPage,'SettingsPage':SettingsPage,
-              'StoragePage':StoragePage,'StoragePreviewPage':StoragePreviewPage,'SyncPage':SyncPage,
-              'UserRadioListPage':UserRadioListPage,'UserRadioStationEditPage':UserRadioStationEditPage,
-              'UserRadioStationHistoryPage':UserRadioStationHistoryPage,'UserRadioStationPage':UserRadioStationPage,
-              'UserRadioStationSearchPage':UserRadioStationSearchPage,'fmtEpochTime':fmtEpochTime};
-      
-    })(api,components,daedalus,pages.audio,resources,router,store));
+          const parts=hostname.split('.');
+          if(parts.length<2){
+            return url;
+          }
+          const lastTwo=parts.slice(-2).join('.');
+          const lastThree=parts.slice(-3).join('.');
+          if(publicSuffixes.has(lastTwo)&&parts.length>=3){
+            return parts[parts.length-3];
+          }else if(publicSuffixes.has(parts[parts.length-1])&&parts.length>=2){
+            return parts[parts.length-2];
+          }
+          return parts.length>=2?parts[parts.length-2]:null;
+        };
+        function encodeHexToBase(hexStr,alphabet){
+          const base=alphabet.length;
+          if(base<2){
+            throw new Error("Alphabet must contain at least 2 characters.");
+          }
+          if(hexStr.startsWith("0x")||hexStr.startsWith("0X")){
+            hexStr=hexStr.slice(2);
+          }
+          const num=BigInt('0x'+hexStr);
+          if(num===0n){
+            return alphabet[0];
+          }
+          let n=num;
+          let encoded=[];
+          while(n>0n){
+            const rem=n%BigInt(base);
+            n=n/BigInt(base);
+            encoded.push(alphabet[Number(rem)]);
+          }
+          return encoded.reverse().join('');
+        };
+        class PasswordPage extends DomElement {
+          constructor(){
+            super("div",{'className':style.main},[]);
+            console.log("sadasd");
+            this.edit_hostname=new PassInputElement("",this.onChange.bind(this),this.onSubmit.bind(
+                              this));
+            this.edit_password=new PassInputElement("",this.onChange.bind(this),this.onSubmit.bind(
+                              this));
+            this.edit_result1=new TextInputElement("");
+            this.edit_result2=new TextInputElement("");
+            this.btn_toggle_visible1=new ButtonElement("\uD83D\uDC41",this.onTogglePasswordVisible.bind(
+                              this));
+            this.btn_toggle_visible2=new ButtonElement("\uD83D\uDC41",this.onCopyResult.bind(
+                              this));
+            this.warning=new DomElement("div",{'className':style.warning},[new TextElement(
+                                  "Invalid Username or Password")]);
+            this.hbox_hostname=new DomElement("div",{'className':style.hbox},[this.edit_hostname]);
+            
+            this.hbox_password=new DomElement("div",{'className':style.hbox},[this.edit_password,
+                              this.btn_toggle_visible1]);
+            this.hbox_result1=new DomElement("div",{'className':style.hbox},[this.edit_result1]);
+            
+            this.hbox_result2=new DomElement("div",{'className':style.hbox},[this.edit_result2,
+                              this.btn_toggle_visible2]);
+            this.edit_hostname.addClassName(style.edit);
+            this.edit_password.addClassName(style.edit2);
+            this.edit_result1.addClassName(style.edit);
+            this.edit_result2.addClassName(style.edit2);
+            this.btn_toggle_visible1.addClassName(style.btn);
+            this.btn_toggle_visible2.addClassName(style.btn);
+            this.edit_hostname.updateProps({'placeholder':'Hostname','name':"a",'type':'text',
+                              'autocomplete':'new-password'});
+            this.edit_password.updateProps({'placeholder':'Password','name':"b",'type':'password',
+                              'autocomplete':'new-password'});
+            this.edit_result1.updateProps({'placeholder':'Hostname','name':"c",'type':'text',
+                              'readonly':true});
+            this.edit_result2.updateProps({'placeholder':'Password','name':"d",'type':'password',
+                              'readonly':true});
+            this.warning.addClassName(style.hide);
+            this.appendChild(this.hbox_hostname);
+            this.appendChild(this.hbox_password);
+            this.appendChild(this.hbox_result1);
+            this.appendChild(this.hbox_result2);
+            this.appendChild(this.warning);
+            console.log(sha3_256("password"));
+            console.log(getPrimaryHostname("https://www.example.com"));
+            console.log(getPrimaryHostname("https://store.example.co.jp"));
+            console.log(getPrimaryHostname("example"));
+            console.log(getPrimaryHostname("www.example.zzz"));
+            console.log(getPrimaryHostname("example.zzz"));
+            let secret="example|password";
+            let encoded=encodeHexToBase(sha3_256(secret),alphabet).slice(0,20);
+            console.log(secret);
+            console.log(encoded);
+            console.log("1-dB_!bFWU2ycJBq_~ZD");
+          }
+          onChange(text){
+            this.handleUpdatePassword();
+          }
+          onSubmit(text){
+            this.handleUpdatePassword();
+          }
+          handleUpdatePassword(){
+            let host=this.edit_hostname.getText();
+            let pass=this.edit_password.getText();
+            let hostname=getPrimaryHostname(host);
+            let secret=hostname+"|"+pass;
+            console.log(secret);
+            let encoded=encodeHexToBase(sha3_256(secret),alphabet).slice(0,20);
+            this.edit_result1.setText(hostname);
+            this.edit_result2.setText(encoded);
+          }
+          onCopyResult(){
+            let result=this.edit_result2.getText();
+            navigator.clipboard.writeText(result).then(()=>{
+                console.log("Copied to clipboard: "+result);
+              }).catch(err=>{
+                console.error("Failed to copy: ",err);
+              });
+          }
+          onTogglePasswordVisible(){
+            let type=(this.edit_password.props.type=="password")?"text":"password";
+            
+            this.edit_password.updateProps({'type':type});
+            this.edit_result2.updateProps({'type':type});
+          }
+        };
+        return[PassInputElement,PasswordPage];
+      })();
+    const[]=(function(){
+        return[];
+      })();
+    return{'FileSystemPage':FileSystemPage,'InfoOilPage':InfoOilPage,'LandingPage':LandingPage,
+          'LibraryPage':LibraryPage,'LoginPage':LoginPage,'NoteContentPage':NoteContentPage,
+          'NoteContext':NoteContext,'NoteEditPage':NoteEditPage,'NotesPage':NotesPage,
+          'OpenApiDocPage':OpenApiDocPage,'PassInputElement':PassInputElement,'PasswordPage':PasswordPage,
+          'PlaylistPage':PlaylistPage,'PublicFilePage':PublicFilePage,'PublicRadioStationHistoryPage':PublicRadioStationHistoryPage,
+          'PublicRadioStationPage':PublicRadioStationPage,'PublicRadioStationSearchPage':PublicRadioStationSearchPage,
+          'RecipeIndexPage':RecipeIndexPage,'RecipePage':RecipePage,'SavedSearchPage':SavedSearchPage,
+          'SettingsPage':SettingsPage,'StoragePage':StoragePage,'StoragePreviewPage':StoragePreviewPage,
+          'SyncPage':SyncPage,'UserRadioListPage':UserRadioListPage,'UserRadioStationEditPage':UserRadioStationEditPage,
+          'UserRadioStationHistoryPage':UserRadioStationHistoryPage,'UserRadioStationPage':UserRadioStationPage,
+          'UserRadioStationSearchPage':UserRadioStationSearchPage,'fmtEpochTime':fmtEpochTime};
+    
+  })(api,audio,components,daedalus,resources,router,store);
 app=(function(api,components,daedalus,pages,resources,router,store){
     "use strict";
     const StyleSheet=daedalus.StyleSheet;
@@ -10993,6 +11203,7 @@ app=(function(api,components,daedalus,pages,resources,router,store){
       
       rt.addRoute(u.recipeContent,(cbk)=>parent.handleRoute(cbk,pages.RecipePage));
       
+      rt.addRoute(u.password,(cbk)=>parent.handleRoute(cbk,pages.PasswordPage));
       rt.addAuthRoute(u.userWildCard,(cbk)=>{
           history.pushState({},"","/u/storage/list");
         },'/login');
