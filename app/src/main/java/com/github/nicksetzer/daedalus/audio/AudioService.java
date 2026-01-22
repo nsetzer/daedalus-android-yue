@@ -490,13 +490,17 @@ public class AudioService extends MediaBrowserServiceCompat {
                         break;
                     case AudioActions.ACTION_FETCH:
                         Log.info( "fetch");
+                        syncProgressUpdate(0, 1, "begin fetch");
                         token = intent.getExtras().getString("token");
                         launchFetchTask(token);
                         break;
                     case AudioActions.ACTION_SYNC_UPDATE:
                         Log.info("sync_update");
+                        syncProgressUpdate(0, 1, "begin save");
                         String payload = intent.getExtras().getString("payload");
                         m_database.m_songsTable.updateSyncStatus(payload);
+                        syncProgressUpdate(0, 1, "save complete");
+                        // TODO: shouldnt this event do something
                         sendEvent(AudioEvents.ONSYNCSTATUSUPDATED, "{}");
                         break;
 

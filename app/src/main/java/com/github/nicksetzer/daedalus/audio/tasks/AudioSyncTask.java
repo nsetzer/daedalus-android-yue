@@ -30,6 +30,7 @@ public class AudioSyncTask implements Runnable {
     public void run() {
 
         try {
+            m_service.syncProgressUpdate(0, 1, "sync starting");
 
             int errors = _syncAll();
 
