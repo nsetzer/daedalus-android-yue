@@ -3,6 +3,7 @@ package com.github.nicksetzer.daedalus.audio;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.media.AudioFocusRequest;
 
 import android.net.Uri;
 import android.os.Handler;
@@ -72,6 +73,7 @@ public class AudioManager {
     private ExoPlayer m_mediaPlayer;
 
     private final android.media.AudioManager m_manager;
+    private AudioFocusRequest m_audioFocusRequest;
 
     private boolean m_autoPlay = true;
     private int m_playback_mode = 0;
@@ -127,7 +129,8 @@ public class AudioManager {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
                 .build();
-        m_mediaPlayer.setAudioAttributes(attrs, true);
+        // Set handleAudioFocus to false because we manage it manually
+        m_mediaPlayer.setAudioAttributes(attrs, false);
         m_mediaPlayer.setHandleAudioBecomingNoisy(true);
 
         m_mediaListener = new PlayerEventListener(this);
@@ -135,6 +138,19 @@ public class AudioManager {
 
         m_manager = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         m_manager.setMode(android.media.AudioManager.MODE_NORMAL);
+
+        // Initialize audio focus request
+        android.media.AudioAttributes focusAttrs = new android.media.AudioAttributes.Builder()
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .build();
+
+        m_audioFocusRequest = new AudioFocusRequest.Builder(
+                android.media.AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(focusAttrs)
+                .setOnAudioFocusChangeListener(this::onAudioFocusChange)
+                .setWillPauseWhenDucked(true)
+                .build();
 
         loadQueueData();
 
@@ -339,28 +355,45 @@ public class AudioManager {
 
         /*
             playback can fail with an error (-32, 0) if the media has been paused
-            for a long time. there is no way to query the current state,
-            but m_currentUrl will be set in this case. Since the MediaPlayer state cannot
-            be queried, catch the error and call loadResume instead of preemptivley
-            trying to reload the current track.
-
-            seems like simulating paused for a long time can be done by closing
-            the app then swiping the notification while paused. using
-            bluetooth to resume playback will then continue to play from the same spot
-
+            for a long time. Android may clean up resources during extended pause periods.
+            We now validate ExoPlayer state and request audio focus to prevent this.
          */
+
+        // Request audio focus before attempting playback
+        if (!requestAudioFocus()) {
+            Log.warn("Failed to obtain audio focus, cannot play");
+            return;
+        }
+
         if (m_currentUrl == null) {
             Log.warn("mediaplayer play: no current url");
-        } else {
-            Log.info("mediaplayer play");
+            return;
         }
-        //android.util.Log.d("myapp", android.util.Log.getStackTraceString(new Exception()));
 
+        // Check if ExoPlayer is in IDLE state (media was released)
+        int state = m_mediaPlayer.getPlaybackState();
+        boolean willPlay = m_mediaPlayer.getPlayWhenReady();
+        Log.info("mediaplayer state before play: " + state + ", playWhenReady: " + willPlay);
+
+        if (state == Player.STATE_IDLE) {
+            // Player was released during pause, reload the media
+            Log.warn("Player in IDLE state, reloading media from: " + m_currentUrl);
+            int currentIndex = m_queue.getCurrentIndex();
+            long resumeTime = m_pausedTimeMs >= 0 ? m_pausedTimeMs : 0;
+            loadUrl(m_queue.getUrl(currentIndex), true, resumeTime);
+            return; // loadUrl will handle autoplay
+        }
+
+        Log.info("mediaplayer play");
+
+        // Seek to saved position before playing if we have one
         if (m_pausedTimeMs >= 0) {
             m_mediaPlayer.seekTo((int)m_pausedTimeMs);
+            Log.info("seeked to paused position: " + m_pausedTimeMs);
         }
 
         m_mediaPlayer.play();
+        Log.info("called m_mediaPlayer.play(), isPlaying: " + m_mediaPlayer.isPlaying());
 
         long ct = getCurrentPosition();
         Log.info("on play current_time=" + ct + " paused_time=" + m_pausedTimeMs);
@@ -379,12 +412,15 @@ public class AudioManager {
         Log.info("mediaplayer pause");
         //android.util.Log.d("myapp", android.util.Log.getStackTraceString(new Exception()));
         m_mediaPlayer.pause();
+
+        // Abandon audio focus when pausing
+        abandonAudioFocus();
+
         m_service.updateNotification();
 
         String event = (m_mediaPlayer.isPlaying()?AudioEvents.ONERROR:AudioEvents.ONPAUSE);
         m_service.sendEvent(event, "{}");
 
-        // todo: implement resume by calling start() followed by seekto(saved_position)
         m_pausedTimeMs = getCurrentPosition();
 
         saveMediaPlayerState();
@@ -696,8 +732,88 @@ public class AudioManager {
         m_service.sendEvent("oninvalidateplaylist", "{}");
     }
 
+    /**
+     * Request audio focus from the system.
+     * @return true if audio focus was granted, false otherwise
+     */
+    private boolean requestAudioFocus() {
+        if (m_manager == null || m_audioFocusRequest == null) {
+            Log.warn("Cannot request audio focus: manager or request is null");
+            return false;
+        }
+        int result = m_manager.requestAudioFocus(m_audioFocusRequest);
+        boolean granted = result == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        Log.info("Audio focus request: " + (granted ? "GRANTED" : "DENIED"));
+        return granted;
+    }
 
-    private void saveMediaPlayerState() {
+    /**
+     * Abandon audio focus when pausing or stopping playback.
+     */
+    private void abandonAudioFocus() {
+        if (m_manager == null || m_audioFocusRequest == null) {
+            Log.warn("Cannot abandon audio focus: manager or request is null");
+            return;
+        }
+        int result = m_manager.abandonAudioFocusRequest(m_audioFocusRequest);
+        Log.info("Audio focus abandoned: " + (result == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED ? "SUCCESS" : "FAILED"));
+    }
+
+    /**
+     * Handle audio focus changes from the system.
+     * @param focusChange the type of focus change
+     */
+    private void onAudioFocusChange(int focusChange) {
+        if (m_mediaPlayer == null) {
+            Log.warn("onAudioFocusChange called but mediaPlayer is null, ignoring");
+            return;
+        }
+
+        switch (focusChange) {
+            case android.media.AudioManager.AUDIOFOCUS_GAIN:
+                // Regained focus, restore volume if ducked
+                Log.info("Audio focus GAIN");
+                m_mediaPlayer.setVolume(1.0f);
+                // Resume playback if we were paused due to focus loss
+                if (!m_isPlaying && m_pausedTimeMs >= 0 && m_currentUrl != null) {
+                    play();
+                }
+                break;
+
+            case android.media.AudioManager.AUDIOFOCUS_LOSS:
+                // Permanent loss of audio focus, pause and save state
+                Log.info("Audio focus LOSS (permanent)");
+                if (m_isPlaying) {
+                    pause();
+                }
+                break;
+
+            case android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                // Temporary loss (e.g., phone call), pause playback
+                Log.info("Audio focus LOSS_TRANSIENT");
+                if (m_isPlaying) {
+                    pause();
+                }
+                break;
+
+            case android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+                // Temporary loss but can duck (lower volume)
+                Log.info("Audio focus LOSS_TRANSIENT_CAN_DUCK");
+                m_mediaPlayer.setVolume(0.3f);
+                break;
+
+            default:
+                Log.warn("Unknown audio focus change: " + focusChange);
+                break;
+        }
+    }
+
+    void saveMediaPlayerState() {
+
+        if (m_service == null || m_service.m_database == null) {
+            Log.warn("unable to save media player state: service or database is null");
+            return;
+        }
 
         if (m_service.m_database.isClosed()) {
             Log.warn("unable to save media player state because DB is closed");

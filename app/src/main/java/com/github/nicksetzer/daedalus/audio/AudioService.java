@@ -20,6 +20,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ComponentCallbacks2;
 import android.content.Intent;
 import android.content.Context;
 
@@ -564,6 +565,19 @@ public class AudioService extends MediaBrowserServiceCompat {
         super.onDestroy();
     }
 
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE) {
+            Log.warn("System requesting memory trim at level " + level + ", saving state");
+            if (m_manager != null && !m_manager.isPlaying()) {
+                // Proactively save state during memory pressure when paused
+                m_manager.saveMediaPlayerState();
+            }
+        }
+    }
+
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
@@ -671,7 +685,7 @@ public class AudioService extends MediaBrowserServiceCompat {
     public void fetchProgressUpdate(int count, int total) {
         sendEvent(AudioEvents.ONFETCHPROGRESS, "{\"count\": " + count + ", \"total\": " + total + "}");
     }
-    
+
     public void fetchComplete() {
         m_fetchLock.lock();
         try {
